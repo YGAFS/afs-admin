@@ -18,6 +18,16 @@ type Employee = {
 }
 type Summary = { vac: number; sick: number; wfh: number; toil: number; other: number }
 type Monthly = Record<number, Summary>
+type License = {
+  id: string; account_id: string; account_type: string
+  display_name: string; email_address: string; alias?: string
+  license_plan?: string; monthly_cost_cad: number; status: string; notes?: string
+}
+type Asset = {
+  id: string; asset_id: string; category?: string; item_name?: string
+  brand?: string; model?: string; serial_number?: string
+  purchase_date?: string; purchase_price?: number; condition: string; notes?: string
+}
 
 const MO = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
 
@@ -84,6 +94,8 @@ export default function EmployeeSearch() {
   const [probEndVal,   setProbEndVal]   = useState('')
   const [statsYear,    setStatsYear]    = useState(new Date().getFullYear())
   const [carryover,    setCarryover]    = useState(0)
+  const [licenses,     setLicenses]     = useState<License[]>([])
+  const [assets,       setAssets]       = useState<Asset[]>([])
 
   useEffect(() => {
     supabase.from('companies').select('id,name').order('name')
@@ -132,13 +144,55 @@ export default function EmployeeSearch() {
 
   async function select(emp: Employee) {
     setSel(emp)
-    await loadStats(emp, statsYear)
+    setLicenses([]); setAssets([])
+    await Promise.all([
+      loadStats(emp, statsYear),
+      supabase.from('licenses').select('id,account_id,account_type,display_name,email_address,alias,license_plan,monthly_cost_cad,status,notes').eq('employee_id', emp.id).then(({ data }) => setLicenses(data ?? [])),
+      supabase.from('assets').select('id,asset_id,category,item_name,brand,model,serial_number,purchase_date,purchase_price,condition,notes').eq('employee_id', emp.id).then(({ data }) => setAssets(data ?? [])),
+    ])
   }
 
   async function changeYear(y: number) {
     if (!selected) return
     setStatsYear(y)
     await loadStats(selected, y)
+  }
+
+  function exportEmployee() {
+    if (!selected || !summary) return
+    const companyName = (selected.companies as any)?.name ?? ''
+    const monthlyCost = licenses.filter(l => l.account_type === 'Individual').reduce((s, l) => s + l.monthly_cost_cad, 0)
+    const rows: string[][] = [
+      ['항목', '값'],
+      ['이름', selected.name],
+      ['회사', companyName],
+      ['팀', selected.team ?? ''],
+      ['직급', selected.position ?? ''],
+      ['입사일', selected.start_date ?? ''],
+      ['퇴사일', selected.end_date ?? ''],
+      [''],
+      ['연차 사용', String(summary.vac)],
+      ['병가 사용', String(summary.sick)],
+      ['재택', String(summary.wfh)],
+      ['Unpaid', String(summary.toil)],
+      [''],
+      ['[이메일 계정]', '', '', ''],
+      ['Account ID', '이메일', '유형', '라이선스', '월 비용 CAD'],
+      ...licenses.map(l => [l.account_id, l.email_address ?? '', l.account_type, l.license_plan ?? '', l.account_type === 'Individual' ? String(l.monthly_cost_cad) : '(Shared-제외)']),
+      [''],
+      ['[IT 자산]', '', '', ''],
+      ['Asset ID', '장비', '모델', '시리얼'],
+      ...assets.map(a => [a.asset_id, a.item_name ?? '', a.model ?? '', a.serial_number ?? '']),
+      [''],
+      ['월 라이선스 비용 합계 (Individual)', `$${monthlyCost.toFixed(2)} CAD`],
+    ]
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `${selected.name}_profile.csv`
+    document.body.appendChild(a); a.click()
+    document.body.removeChild(a); URL.revokeObjectURL(url)
   }
 
   async function saveDateEdit() {
@@ -386,7 +440,7 @@ export default function EmployeeSearch() {
                   </div>
                 </div>
 
-                <div className="flex-shrink-0 ml-4">
+                <div className="flex-shrink-0 ml-4 flex flex-col items-end gap-2">
                   {selected.is_active ? (
                     <button onClick={() => { setTermDate(todayIso()); setTermModal(true) }}
                       className="px-4 py-2 text-sm font-semibold text-red-600 border-2 border-red-200 rounded-lg hover:bg-red-50 transition-colors">
@@ -398,6 +452,10 @@ export default function EmployeeSearch() {
                       복직 처리
                     </button>
                   )}
+                  <button onClick={exportEmployee}
+                    className="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                    ↓ Export CSV
+                  </button>
                 </div>
               </div>
 
@@ -514,6 +572,60 @@ export default function EmployeeSearch() {
                   </tbody>
                 </table>
               </div>
+              {/* 월 유지 비용 + 이메일 + 자산 */}
+              {(licenses.length > 0 || assets.length > 0) && (() => {
+                const individualCost = licenses.filter(l => l.account_type === 'Individual').reduce((s, l) => s + (l.monthly_cost_cad ?? 0), 0)
+                return (
+                  <div className="mt-3 space-y-3">
+                    {/* 월 비용 요약 */}
+                    <div className="border-2 border-indigo-100 bg-indigo-50 rounded-xl px-4 py-3 flex items-center justify-between">
+                      <span className="text-sm font-bold text-indigo-800">월 유지 비용 (라이선스)</span>
+                      <span className="text-xl font-bold text-indigo-900">${individualCost.toFixed(2)} <span className="text-sm font-semibold text-indigo-600">CAD/월</span></span>
+                    </div>
+
+                    {/* 이메일 계정 */}
+                    {licenses.length > 0 && (
+                      <div className="border-2 border-gray-200 rounded-xl overflow-hidden">
+                        <div className="px-3 py-2 bg-gray-100 text-xs font-bold text-gray-700">📧 이메일 계정</div>
+                        {licenses.map(l => (
+                          <div key={l.id} className="px-3 py-2.5 border-t border-gray-100 flex items-center justify-between">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-gray-800 truncate">{l.email_address}</div>
+                              <div className="text-xs text-gray-400">{l.license_plan}</div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                              {l.account_type === 'Shared' && (
+                                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-medium">Shared</span>
+                              )}
+                              <span className={`text-xs font-semibold ${l.account_type === 'Shared' ? 'text-gray-300' : 'text-blue-600'}`}>
+                                {l.account_type === 'Shared' ? '—' : `$${l.monthly_cost_cad}/월`}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* IT 자산 */}
+                    {assets.length > 0 && (
+                      <div className="border-2 border-gray-200 rounded-xl overflow-hidden">
+                        <div className="px-3 py-2 bg-gray-100 text-xs font-bold text-gray-700">💻 IT 자산</div>
+                        {assets.map(a => (
+                          <div key={a.id} className="px-3 py-2.5 border-t border-gray-100 flex items-center justify-between">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-gray-800">{a.item_name}{a.model ? ` — ${a.model}` : ''}</div>
+                              <div className="text-xs text-gray-400">{a.asset_id}{a.serial_number ? ` · ${a.serial_number}` : ''}</div>
+                            </div>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ml-2 ${a.condition === 'In Use' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                              {a.condition}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           )
         })() : (
