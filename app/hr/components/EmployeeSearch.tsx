@@ -28,7 +28,9 @@ function calcAccrued(emp: { vacation_allowance: number; probation_end?: string }
   if (emp.probation_end) {
     const pe = new Date(emp.probation_end)
     if (pe > calcTo) return 0
-    return Math.min(((calcTo.getTime() - pe.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
+    // 수습이 전년도에 종료됐으면 해당 연도 1월 1일부터 새로 적립
+    const accrualStart = pe.getFullYear() < year ? new Date(year, 0, 1) : pe
+    return Math.min(((calcTo.getTime() - accrualStart.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
   }
   const soy = new Date(year, 0, 1)
   return Math.min(((calcTo.getTime() - soy.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)

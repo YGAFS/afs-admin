@@ -58,7 +58,9 @@ function calcAccrued(emp: Employee, refYear: number, refMonth: number): number {
   if (emp.probation_end) {
     const pe = new Date(emp.probation_end)
     if (pe > calcTo) return 0   // 뷰 월 기준으로 아직 수습 중
-    return Math.min(((calcTo.getTime() - pe.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
+    // 수습이 전년도에 종료됐으면 해당 연도 1월 1일부터 새로 적립
+    const accrualStart = pe.getFullYear() < refYear ? new Date(refYear, 0, 1) : pe
+    return Math.min(((calcTo.getTime() - accrualStart.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
   }
   const soy = new Date(calcTo.getFullYear(), 0, 1)
   return Math.min(((calcTo.getTime() - soy.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
