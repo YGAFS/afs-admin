@@ -13,6 +13,7 @@ type Employee = {
   vacation_allowance: number; position: string
   is_exempt: boolean; uses_accrual: boolean; is_active: boolean
   start_date?: string; end_date?: string
+  probation_start?: string; probation_end?: string
   companies: { id: string; name: string }
 }
 type Summary = { vac: number; sick: number; wfh: number; toil: number; other: number }
@@ -21,10 +22,15 @@ type Monthly = Record<number, Summary>
 const MO = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
 
 function calcDays(code: string) { return ['L1','L2','S1','S2'].includes(code) ? 0.5 : 1 }
-function calcAccrued(annual: number) {
+function calcAccrued(emp: { vacation_allowance: number; probation_end?: string }): number {
   const today = new Date()
-  const soy   = new Date(today.getFullYear(), 0, 1)
-  return Math.min(((today.getTime() - soy.getTime()) / 86400000 / 365) * annual, annual)
+  if (emp.probation_end) {
+    const pe = new Date(emp.probation_end)
+    if (pe > today) return 0
+    return Math.min(((today.getTime() - pe.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
+  }
+  const soy = new Date(today.getFullYear(), 0, 1)
+  return Math.min(((today.getTime() - soy.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
 }
 function todayIso() {
   const d = new Date()
@@ -77,7 +83,7 @@ export default function EmployeeSearch() {
 
   useEffect(() => {
     let q = supabase.from('employees')
-      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,companies(id,name)')
+      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,companies(id,name)')
       .eq('is_active', !showInactive).order('name')
     if (query)                q = q.ilike('name', `%${query}%`)
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
@@ -153,7 +159,7 @@ export default function EmployeeSearch() {
     setSaving(false)
     // refresh list
     let q = supabase.from('employees')
-      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,companies(id,name)')
+      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,companies(id,name)')
       .eq('is_active', !showInactive).order('name')
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
     q.then(({ data }) => setEmps((data as Employee[]) ?? []))
@@ -162,7 +168,7 @@ export default function EmployeeSearch() {
   function getVacStats(emp: Employee, vacUsed: number) {
     if (emp.is_exempt) return null
     if (emp.uses_accrual) {
-      const accrued   = Math.round(calcAccrued(emp.vacation_allowance) * 10) / 10
+      const accrued   = Math.round(calcAccrued(emp) * 10) / 10
       const remaining = Math.max(0, Math.round((accrued - vacUsed) * 10) / 10)
       return { accrued, remaining, annual: emp.vacation_allowance, isAccrual: true }
     }
@@ -252,6 +258,25 @@ export default function EmployeeSearch() {
                   <p className="text-sm text-gray-600 mt-1 font-medium">
                     {(selected.companies as any)?.name} · {selected.team} · {selected.manager_name || '매니저 없음'}
                   </p>
+
+                  {/* 수습 기간 */}
+                  {selected.probation_start && (() => {
+                    const t = todayIso()
+                    const on = selected.probation_start <= t && (!selected.probation_end || selected.probation_end >= t)
+                    return (
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-gray-500">수습 기간</span>
+                        <span className="text-xs font-medium text-gray-700">
+                          {fmtDateLong(selected.probation_start)}
+                          {selected.probation_end ? ` ~ ${fmtDateLong(selected.probation_end)}` : ' ~ 미설정'}
+                        </span>
+                        {on
+                          ? <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-semibold">수습중</span>
+                          : <span className="text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">완료</span>
+                        }
+                      </div>
+                    )
+                  })()}
 
                   {/* 입사일 / 퇴사일 편집 */}
                   <div className="flex gap-4 mt-2">

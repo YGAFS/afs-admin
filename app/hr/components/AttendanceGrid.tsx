@@ -14,6 +14,7 @@ type Employee  = {
   vacation_allowance: number; position: string; sort_order: number
   is_exempt: boolean; uses_accrual: boolean
   start_date?: string; end_date?: string
+  probation_start?: string; probation_end?: string
 }
 type LeaveCell = { code: LeaveCode; hours?: number }
 type YS        = { vacTaken: number; sick: number; wfh: number }
@@ -48,15 +49,20 @@ const CODE_OPTIONS: { code: LeaveCode; label: string; needsHours?: boolean }[] =
 const DOW = ['일','월','화','수','목','금','토']
 const TEAM_ORDER = ['Team Sales','Team Accounting','Team Operations','Department 1','Department 2','Department 3']
 
-function calcAccrued(annual: number) {
+function calcAccrued(emp: Employee): number {
   const today = new Date()
-  const soy   = new Date(today.getFullYear(), 0, 1)
-  return Math.min(((today.getTime() - soy.getTime()) / 86400000 / 365) * annual, annual)
+  if (emp.probation_end) {
+    const pe = new Date(emp.probation_end)
+    if (pe > today) return 0
+    return Math.min(((today.getTime() - pe.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
+  }
+  const soy = new Date(today.getFullYear(), 0, 1)
+  return Math.min(((today.getTime() - soy.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
 }
 function vacDisplay(emp: Employee, taken: number) {
   if (emp.is_exempt) return null
   if (emp.uses_accrual) {
-    const acc  = Math.round(calcAccrued(emp.vacation_allowance) * 10) / 10
+    const acc  = Math.round(calcAccrued(emp) * 10) / 10
     const left = Math.max(0, Math.round((acc - taken) * 10) / 10)
     return { text: `${left}/${acc}`, alert: left <= 1 }
   }
@@ -105,6 +111,11 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   const [dateModal,    setDateModal]    = useState<DateModal | null>(null)
   const [dateValue,    setDateValue]    = useState('')
   const [addingToTeam, setAddingToTeam] = useState<string | null>(null)
+  const [probModal,     setProbModal]     = useState<{ emp: Employee } | null>(null)
+  const [probStartMode, setProbStartMode] = useState<'hire' | 'custom'>('hire')
+  const [probStartVal,  setProbStartVal]  = useState('')
+  const [probEndMode,   setProbEndMode]   = useState<'90d' | 'custom'>('90d')
+  const [probEndVal,    setProbEndVal]    = useState('')
   const [newEmp,       setNewEmp]       = useState({ name: '', position: '', start_date: '', vacation_allowance: 10, uses_accrual: true })
   const dropRef  = useRef<HTMLDivElement>(null)
   const menuRef  = useRef<HTMLDivElement>(null)
@@ -133,7 +144,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
 
   async function load() {
     const { data: emps } = await supabase.from('employees')
-      .select('id,name,team,manager_name,vacation_allowance,position,sort_order,is_exempt,uses_accrual,start_date,end_date')
+      .select('id,name,team,manager_name,vacation_allowance,position,sort_order,is_exempt,uses_accrual,start_date,end_date,probation_start,probation_end')
       .eq('company_id', companyId)
       .or(`is_active.eq.true,end_date.gte.${firstDayStr}`)
       .or(`start_date.is.null,start_date.lte.${lastDayStr}`)
@@ -294,6 +305,15 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                             {isTerminated && emp.end_date && (
                               <div className="text-xs text-red-400">{fmtDate(emp.end_date)} 퇴사</div>
                             )}
+                            {!isTerminated && !isUpcoming && emp.probation_start && (() => {
+                              const t = todayIso()
+                              const on = emp.probation_start <= t && (!emp.probation_end || emp.probation_end >= t)
+                              return on ? (
+                                <div className="text-xs text-orange-500">
+                                  수습중{emp.probation_end ? ` (~${fmtDate(emp.probation_end)})` : ''}
+                                </div>
+                              ) : null
+                            })()}
                           </div>
                           {/* ⋮ — always shown on hover, for all employees */}
                           <button
@@ -422,6 +442,25 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
           <button onClick={() => openDateModal('start_date')}
             className="w-full text-left px-3 py-2 text-xs text-blue-600 hover:bg-blue-50">
             입사일 수정{managingEmp.start_date ? ` (${fmtDate(managingEmp.start_date)})` : ''}
+          </button>
+          <button onClick={() => {
+            const emp = managingEmp
+            setProbStartMode(emp.start_date ? 'hire' : 'custom')
+            setProbStartVal(emp.probation_start ?? emp.start_date ?? '')
+            if (emp.probation_end) {
+              setProbEndMode('custom'); setProbEndVal(emp.probation_end)
+            } else if (emp.start_date) {
+              setProbEndMode('90d')
+              const d = new Date(emp.start_date); d.setDate(d.getDate() + 90)
+              setProbEndVal(d.toISOString().split('T')[0])
+            } else {
+              setProbEndMode('custom'); setProbEndVal('')
+            }
+            setProbModal({ emp })
+            setManagingEmp(null); setMenuPos(null)
+          }}
+            className="w-full text-left px-3 py-2 text-xs text-orange-600 hover:bg-orange-50">
+            수습 기간 설정{managingEmp.probation_start ? ' ✓' : ''}
           </button>
           {managingEmp.end_date ? (
             <>
@@ -559,6 +598,99 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
           </div>
         </div>
       )}
+
+      {/* 수습 기간 설정 모달 */}
+      {probModal && (() => {
+        const emp = probModal.emp
+        const saveProb = async () => {
+          const finalStart = probStartMode === 'hire' ? (emp.start_date ?? null) : (probStartVal || null)
+          const finalEnd   = probEndVal || null
+          await supabase.from('employees').update({ probation_start: finalStart, probation_end: finalEnd }).eq('id', emp.id)
+          setEmployees(prev => prev.map(e =>
+            e.id === emp.id ? { ...e, probation_start: finalStart ?? undefined, probation_end: finalEnd ?? undefined } : e
+          ))
+          setProbModal(null)
+        }
+        const deleteProb = async () => {
+          await supabase.from('employees').update({ probation_start: null, probation_end: null }).eq('id', emp.id)
+          setEmployees(prev => prev.map(e =>
+            e.id === emp.id ? { ...e, probation_start: undefined, probation_end: undefined } : e
+          ))
+          setProbModal(null)
+        }
+        return (
+          <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
+               onClick={e => { if (e.target === e.currentTarget) setProbModal(null) }}>
+            <div className="bg-white rounded-xl p-6 w-80 shadow-xl space-y-4" onClick={e => e.stopPropagation()}>
+              <h3 className="font-semibold text-gray-900">수습 기간 — {emp.name}</h3>
+
+              {/* 시작일 */}
+              <div className="space-y-1.5">
+                <p className="text-xs text-gray-500 font-medium">수습 시작일</p>
+                <div className="flex gap-2">
+                  <button
+                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probStartMode === 'hire' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    onClick={() => {
+                      setProbStartMode('hire')
+                      if (probEndMode === '90d' && emp.start_date) {
+                        const d = new Date(emp.start_date); d.setDate(d.getDate() + 90)
+                        setProbEndVal(d.toISOString().split('T')[0])
+                      }
+                    }}>입사일</button>
+                  <button
+                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probStartMode === 'custom' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    onClick={() => setProbStartMode('custom')}>직접 입력</button>
+                </div>
+                {probStartMode === 'hire'
+                  ? <p className="text-xs text-gray-400">입사일: {emp.start_date ?? '미설정'}</p>
+                  : <input type="date" value={probStartVal}
+                      onChange={e => {
+                        setProbStartVal(e.target.value)
+                        if (probEndMode === '90d' && e.target.value) {
+                          const d = new Date(e.target.value); d.setDate(d.getDate() + 90)
+                          setProbEndVal(d.toISOString().split('T')[0])
+                        }
+                      }}
+                      className="w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                }
+              </div>
+
+              {/* 종료일 */}
+              <div className="space-y-1.5">
+                <p className="text-xs text-gray-500 font-medium">수습 종료일</p>
+                <div className="flex gap-2">
+                  <button
+                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probEndMode === '90d' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    onClick={() => {
+                      setProbEndMode('90d')
+                      const ref = probStartMode === 'hire' ? emp.start_date : probStartVal
+                      if (ref) { const d = new Date(ref); d.setDate(d.getDate() + 90); setProbEndVal(d.toISOString().split('T')[0]) }
+                    }}>+90일</button>
+                  <button
+                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probEndMode === 'custom' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    onClick={() => setProbEndMode('custom')}>직접 입력</button>
+                </div>
+                <input type="date" value={probEndVal}
+                  readOnly={probEndMode === '90d'}
+                  onChange={e => { if (probEndMode === 'custom') setProbEndVal(e.target.value) }}
+                  className={`w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${probEndMode === '90d' ? 'bg-gray-50 text-gray-500' : ''}`} />
+              </div>
+
+              {/* 버튼 */}
+              <div className="flex gap-2 pt-1">
+                <button onClick={saveProb}
+                  className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700">저장</button>
+                <button onClick={() => setProbModal(null)}
+                  className="px-4 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">취소</button>
+                {emp.probation_start && (
+                  <button onClick={deleteProb}
+                    className="px-4 border border-red-200 text-red-600 rounded-lg py-2 text-sm hover:bg-red-50">삭제</button>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {saving && (
         <div className="fixed bottom-4 right-4 bg-gray-800 text-white text-xs px-3 py-2 rounded-lg shadow">저장 중...</div>
