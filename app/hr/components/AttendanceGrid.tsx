@@ -272,7 +272,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                 )
               })}
               <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-20 whitespace-nowrap font-semibold">잔여연차</th>
-              <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-14 font-semibold">병가</th>
+              <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-20 whitespace-nowrap font-semibold">잔여병가</th>
               <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-12 font-semibold">재택</th>
             </tr>
           </thead>
@@ -411,10 +411,15 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                           : vacInfo ? <span className={`text-xs font-semibold ${vacInfo.alert ? 'text-red-600' : 'text-green-700'}`}>{vacInfo.text}</span>
                           : <span className="text-xs text-gray-300">—</span>}
                       </td>
-                      <td className="border border-gray-300 text-center">
-                        <span className={`text-xs font-medium ${totalSick > 8 ? 'text-red-600 font-bold' : totalSick > 5 ? 'text-orange-500' : totalSick > 0 ? 'text-gray-700' : 'text-gray-300'}`}>
-                          {totalSick > 0 ? totalSick : '—'}
-                        </span>
+                      <td className="border border-gray-300 text-center px-1">
+                        {totalSick > 0 ? (() => {
+                          const left = Math.max(0, Math.round((5 - totalSick) * 10) / 10)
+                          return (
+                            <span className={`text-xs font-semibold ${left === 0 ? 'text-red-600' : left <= 2 ? 'text-orange-500' : 'text-gray-700'}`}>
+                              {left}/5
+                            </span>
+                          )
+                        })() : <span className="text-xs text-gray-300">—</span>}
                       </td>
                       <td className="border border-gray-300 text-center">
                         <span className={`text-xs ${(empYS?.wfh ?? 0) > 0 ? 'text-blue-500' : 'text-gray-300'}`}>
