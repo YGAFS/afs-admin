@@ -83,6 +83,7 @@ export default function EmployeeSearch() {
   const [probEndMode,  setProbEndMode]  = useState<'90d'|'custom'>('90d')
   const [probEndVal,   setProbEndVal]   = useState('')
   const [statsYear,    setStatsYear]    = useState(new Date().getFullYear())
+  const [carryover,    setCarryover]    = useState(0)
 
   useEffect(() => {
     supabase.from('companies').select('id,name').order('name')
@@ -102,9 +103,12 @@ export default function EmployeeSearch() {
   }, [query, compFilter, showInactive])
 
   async function loadStats(emp: Employee, year: number) {
-    const { data } = await supabase.from('leave_entries')
-      .select('date,leave_code').eq('employee_id', emp.id)
-      .gte('date', `${year}-01-01`).lte('date', `${year}-12-31`)
+    const [{ data }, { data: prevData }] = await Promise.all([
+      supabase.from('leave_entries').select('date,leave_code').eq('employee_id', emp.id)
+        .gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
+      supabase.from('leave_entries').select('leave_code').eq('employee_id', emp.id)
+        .gte('date', `${year-1}-01-01`).lte('date', `${year-1}-12-31`),
+    ])
     const s: Summary = { vac: 0, sick: 0, wfh: 0, toil: 0, other: 0 }
     const m: Monthly = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i+1, { vac:0, sick:0, wfh:0, toil:0, other:0 }]))
     for (const e of (data ?? [])) {
@@ -116,6 +120,13 @@ export default function EmployeeSearch() {
       else if (['T','T1','T2','T3'].includes(e.leave_code)) { const td = ['T1','T2'].includes(e.leave_code) ? 0.5 : 1; s.toil += td; m[mo].toil += td }
       else                                                  { s.other += d; m[mo].other += d }
     }
+    // 전년도 잔여 연차 이월 계산 (최대 5일)
+    let prevVacTaken = 0
+    for (const e of (prevData ?? []))
+      if (['L','L1','L2','L3'].includes(e.leave_code))
+        prevVacTaken += ['L1','L2'].includes(e.leave_code) ? 0.5 : 1
+    const prevAccrued = calcAccrued(emp, year - 1)
+    setCarryover(Math.min(5, Math.max(0, prevAccrued - prevVacTaken)))
     setSum(s); setMo(m)
   }
 
@@ -184,14 +195,14 @@ export default function EmployeeSearch() {
     q.then(({ data }) => setEmps((data as Employee[]) ?? []))
   }
 
-  function getVacStats(emp: Employee, vacUsed: number, year: number) {
+  function getVacStats(emp: Employee, vacUsed: number, year: number, co: number) {
     if (emp.is_exempt) return null
     if (emp.uses_accrual) {
-      const accrued   = Math.round(calcAccrued(emp, year) * 10) / 10
+      const accrued   = Math.round((calcAccrued(emp, year) + co) * 10) / 10
       const remaining = Math.max(0, Math.round((accrued - vacUsed) * 10) / 10)
-      return { accrued, remaining, annual: emp.vacation_allowance, isAccrual: true }
+      return { accrued, remaining, annual: emp.vacation_allowance, isAccrual: true, carryover: co }
     }
-    return { accrued: emp.vacation_allowance, remaining: emp.vacation_allowance - vacUsed, annual: emp.vacation_allowance, isAccrual: false }
+    return { accrued: emp.vacation_allowance, remaining: emp.vacation_allowance - vacUsed, annual: emp.vacation_allowance, isAccrual: false, carryover: 0 }
   }
 
   return (
@@ -259,7 +270,7 @@ export default function EmployeeSearch() {
 
         {/* 상세 패널 */}
         {selected && summary ? (() => {
-          const vacStats   = getVacStats(selected, summary.vac, statsYear)
+          const vacStats   = getVacStats(selected, summary.vac, statsYear, carryover)
           const paidSick   = Math.min(summary.sick, 5)
           const unpaidSick = Math.max(0, summary.sick - 5)
           const sickAlert  = summary.sick > 8
@@ -414,7 +425,10 @@ export default function EmployeeSearch() {
                     </div>
                   </div>
                   {vacStats.isAccrual && (
-                    <div className="text-xs text-green-600 font-medium mt-1">매월 {(vacStats.annual/12).toFixed(2)}일 적립 · 사전 사용 불가</div>
+                    <div className="text-xs text-green-600 font-medium mt-1">
+                      매월 {(vacStats.annual/12).toFixed(2)}일 적립 · 사전 사용 불가
+                      {vacStats.carryover > 0 && <span className="ml-2 text-blue-600">· 전년 이월 {vacStats.carryover}일 포함</span>}
+                    </div>
                   )}
                 </div>
               ) : (

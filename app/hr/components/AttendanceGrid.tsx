@@ -65,10 +65,10 @@ function calcAccrued(emp: Employee, refYear: number, refMonth: number): number {
   const soy = new Date(calcTo.getFullYear(), 0, 1)
   return Math.min(((calcTo.getTime() - soy.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
 }
-function vacDisplay(emp: Employee, taken: number, year: number, month: number) {
+function vacDisplay(emp: Employee, taken: number, year: number, month: number, carryover: number) {
   if (emp.is_exempt) return null
   if (emp.uses_accrual) {
-    const acc  = Math.round(calcAccrued(emp, year, month) * 10) / 10
+    const acc  = Math.round((calcAccrued(emp, year, month) + carryover) * 10) / 10
     const left = Math.max(0, Math.round((acc - taken) * 10) / 10)
     return { text: `${left}/${acc}`, alert: left <= 1 }
   }
@@ -107,6 +107,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   const [employees,    setEmployees]    = useState<Employee[]>([])
   const [leaveMap,     setLeaveMap]     = useState<Record<string, LeaveCell>>({})
   const [ys,           setYS]           = useState<Record<string, YS>>({})
+  const [carryovers,   setCarryovers]   = useState<Record<string, number>>({})
   const [editing,      setEditing]      = useState<{ empId: string; day: number } | null>(null)
   const [pendingCode,  setPendingCode]  = useState<LeaveCode | null>(null)
   const [pendingHours, setPendingHours] = useState('')
@@ -161,11 +162,13 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     if (!emps?.length) return
 
     const ids = emps.map(e => e.id)
-    const [{ data: me }, { data: ye }] = await Promise.all([
+    const [{ data: me }, { data: ye }, { data: prevYe }] = await Promise.all([
       supabase.from('leave_entries').select('employee_id,date,leave_code,hours')
         .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
       supabase.from('leave_entries').select('employee_id,leave_code')
         .in('employee_id', ids).gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
+      supabase.from('leave_entries').select('employee_id,leave_code')
+        .in('employee_id', ids).gte('date', `${year-1}-01-01`).lte('date', `${year-1}-12-31`),
     ])
 
     const lm: Record<string, LeaveCell> = {}
@@ -183,6 +186,21 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       else if (e.leave_code === 'W')                        ysMap[e.employee_id].wfh      += 1
     }
     setYS(ysMap)
+
+    // 전년도 연차 사용량 → 이월 계산 (최대 5일)
+    const prevVac: Record<string, number> = {}
+    for (const emp of emps) prevVac[emp.id] = 0
+    for (const e of (prevYe ?? [])) {
+      if (!(e.employee_id in prevVac)) continue
+      if (['L','L1','L2','L3'].includes(e.leave_code))
+        prevVac[e.employee_id] += ['L1','L2'].includes(e.leave_code) ? 0.5 : 1
+    }
+    const coMap: Record<string, number> = {}
+    for (const emp of emps) {
+      const prevAccrued = calcAccrued(emp, year - 1, 12)
+      coMap[emp.id] = Math.min(5, Math.max(0, prevAccrued - prevVac[emp.id]))
+    }
+    setCarryovers(coMap)
   }
 
   async function setCode(empId: string, day: number, code: LeaveCode | null, hours?: number) {
@@ -294,7 +312,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                   const isUpcoming    = !!(startDateObj && startDateObj > today)
                   const isTerminated  = !!emp.end_date
                   const empYS         = ys[emp.id]
-                  const vacInfo       = vacDisplay(emp, empYS?.vacTaken ?? 0, year, month)
+                  const vacInfo       = vacDisplay(emp, empYS?.vacTaken ?? 0, year, month, carryovers[emp.id] ?? 0)
                   const totalSick     = empYS?.sick ?? 0
                   const rowBg         = isUpcoming ? 'bg-blue-50/40' : isTerminated ? 'bg-red-50/30' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'
 
