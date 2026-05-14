@@ -11,7 +11,7 @@ const supabase = createClient(
 type LeaveCode = 'L'|'L1'|'L2'|'L3'|'S'|'S1'|'S2'|'S3'|'W'|'T'|'T1'|'T2'|'T3'|'B'
 type Employee  = {
   id: string; name: string; team: string; manager_name: string
-  vacation_allowance: number; position: string; sort_order: number
+  vacation_allowance: number; position: string | null; sort_order: number
   is_exempt: boolean; uses_accrual: boolean
   start_date?: string; end_date?: string
   probation_start?: string; probation_end?: string
@@ -657,7 +657,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                 onClick={async () => {
                   await supabase.from('employees').update({ position: posValue || null }).eq('id', posModal.emp.id)
                   setEmployees(prev => prev.map(e =>
-                    e.id === posModal.emp.id ? { ...e, position: posValue || undefined } : e
+                    e.id === posModal.emp.id ? { ...e, position: posValue || null } : e
                   ))
                   setPosModal(null)
                 }}

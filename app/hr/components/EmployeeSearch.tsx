@@ -14,7 +14,7 @@ type Employee = {
   is_exempt: boolean; uses_accrual: boolean; is_active: boolean
   start_date?: string; end_date?: string
   probation_start?: string; probation_end?: string
-  companies: { id: string; name: string }
+  companies: { id: string; name: string } | { id: string; name: string }[]
 }
 type Summary = { vac: number; sick: number; wfh: number; toil: number; other: number }
 type Monthly = Record<number, Summary>
