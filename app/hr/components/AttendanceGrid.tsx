@@ -49,20 +49,24 @@ const CODE_OPTIONS: { code: LeaveCode; label: string; needsHours?: boolean }[] =
 const DOW = ['일','월','화','수','목','금','토']
 const TEAM_ORDER = ['Team Sales','Team Accounting','Team Operations','Department 1','Department 2','Department 3']
 
-function calcAccrued(emp: Employee): number {
-  const today = new Date()
+// refDate: 뷰 월 말일 기준으로 적립 계산 (미래 월이면 오늘로 클램프)
+function calcAccrued(emp: Employee, refYear: number, refMonth: number): number {
+  const today   = new Date()
+  const monthEnd = new Date(refYear, refMonth, 0) // 해당 월 말일
+  const calcTo  = monthEnd < today ? monthEnd : today
+
   if (emp.probation_end) {
     const pe = new Date(emp.probation_end)
-    if (pe > today) return 0
-    return Math.min(((today.getTime() - pe.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
+    if (pe > calcTo) return 0   // 뷰 월 기준으로 아직 수습 중
+    return Math.min(((calcTo.getTime() - pe.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
   }
-  const soy = new Date(today.getFullYear(), 0, 1)
-  return Math.min(((today.getTime() - soy.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
+  const soy = new Date(calcTo.getFullYear(), 0, 1)
+  return Math.min(((calcTo.getTime() - soy.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
 }
-function vacDisplay(emp: Employee, taken: number) {
+function vacDisplay(emp: Employee, taken: number, year: number, month: number) {
   if (emp.is_exempt) return null
   if (emp.uses_accrual) {
-    const acc  = Math.round(calcAccrued(emp) * 10) / 10
+    const acc  = Math.round(calcAccrued(emp, year, month) * 10) / 10
     const left = Math.max(0, Math.round((acc - taken) * 10) / 10)
     return { text: `${left}/${acc}`, alert: left <= 1 }
   }
@@ -288,7 +292,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                   const isUpcoming    = !!(startDateObj && startDateObj > today)
                   const isTerminated  = !!emp.end_date
                   const empYS         = ys[emp.id]
-                  const vacInfo       = vacDisplay(emp, empYS?.vacTaken ?? 0)
+                  const vacInfo       = vacDisplay(emp, empYS?.vacTaken ?? 0, year, month)
                   const totalSick     = empYS?.sick ?? 0
                   const rowBg         = isUpcoming ? 'bg-blue-50/40' : isTerminated ? 'bg-red-50/30' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'
 
