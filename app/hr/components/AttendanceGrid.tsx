@@ -177,7 +177,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       if (!ysMap[e.employee_id]) continue
       const d = ['L1','L2','S1','S2'].includes(e.leave_code) ? 0.5 : 1
       if      (['L','L1','L2','L3'].includes(e.leave_code)) ysMap[e.employee_id].vacTaken += d
-      else if (['S','S1','S2','S3'].includes(e.leave_code)) { ysMap[e.employee_id].vacTaken += d; ysMap[e.employee_id].sick += d }
+      else if (['S','S1','S2','S3'].includes(e.leave_code)) ysMap[e.employee_id].sick     += d
       else if (e.leave_code === 'W')                        ysMap[e.employee_id].wfh      += 1
     }
     setYS(ysMap)

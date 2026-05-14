@@ -22,15 +22,16 @@ type Monthly = Record<number, Summary>
 const MO = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
 
 function calcDays(code: string) { return ['L1','L2','S1','S2'].includes(code) ? 0.5 : 1 }
-function calcAccrued(emp: { vacation_allowance: number; probation_end?: string }): number {
-  const today = new Date()
+function calcAccrued(emp: { vacation_allowance: number; probation_end?: string }, year: number): number {
+  const today   = new Date()
+  const calcTo  = year < today.getFullYear() ? new Date(year, 11, 31) : today
   if (emp.probation_end) {
     const pe = new Date(emp.probation_end)
-    if (pe > today) return 0
-    return Math.min(((today.getTime() - pe.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
+    if (pe > calcTo) return 0
+    return Math.min(((calcTo.getTime() - pe.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
   }
-  const soy = new Date(today.getFullYear(), 0, 1)
-  return Math.min(((today.getTime() - soy.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
+  const soy = new Date(year, 0, 1)
+  return Math.min(((calcTo.getTime() - soy.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
 }
 function todayIso() {
   const d = new Date()
@@ -79,6 +80,7 @@ export default function EmployeeSearch() {
   const [probStartVal, setProbStartVal] = useState('')
   const [probEndMode,  setProbEndMode]  = useState<'90d'|'custom'>('90d')
   const [probEndVal,   setProbEndVal]   = useState('')
+  const [statsYear,    setStatsYear]    = useState(new Date().getFullYear())
 
   useEffect(() => {
     supabase.from('companies').select('id,name').order('name')
@@ -97,13 +99,10 @@ export default function EmployeeSearch() {
     q.then(({ data }) => { setEmps((data as Employee[]) ?? []); setSel(null) })
   }, [query, compFilter, showInactive])
 
-  async function select(emp: Employee) {
-    setSel(emp)
-    const year = new Date().getFullYear()
+  async function loadStats(emp: Employee, year: number) {
     const { data } = await supabase.from('leave_entries')
       .select('date,leave_code').eq('employee_id', emp.id)
       .gte('date', `${year}-01-01`).lte('date', `${year}-12-31`)
-
     const s: Summary = { vac: 0, sick: 0, wfh: 0, toil: 0, other: 0 }
     const m: Monthly = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i+1, { vac:0, sick:0, wfh:0, toil:0, other:0 }]))
     for (const e of (data ?? [])) {
@@ -116,6 +115,17 @@ export default function EmployeeSearch() {
       else                                                  { s.other += d; m[mo].other += d }
     }
     setSum(s); setMo(m)
+  }
+
+  async function select(emp: Employee) {
+    setSel(emp)
+    await loadStats(emp, statsYear)
+  }
+
+  async function changeYear(y: number) {
+    if (!selected) return
+    setStatsYear(y)
+    await loadStats(selected, y)
   }
 
   async function saveDateEdit() {
@@ -172,10 +182,10 @@ export default function EmployeeSearch() {
     q.then(({ data }) => setEmps((data as Employee[]) ?? []))
   }
 
-  function getVacStats(emp: Employee, vacUsed: number) {
+  function getVacStats(emp: Employee, vacUsed: number, year: number) {
     if (emp.is_exempt) return null
     if (emp.uses_accrual) {
-      const accrued   = Math.round(calcAccrued(emp) * 10) / 10
+      const accrued   = Math.round(calcAccrued(emp, year) * 10) / 10
       const remaining = Math.max(0, Math.round((accrued - vacUsed) * 10) / 10)
       return { accrued, remaining, annual: emp.vacation_allowance, isAccrual: true }
     }
@@ -247,7 +257,7 @@ export default function EmployeeSearch() {
 
         {/* 상세 패널 */}
         {selected && summary ? (() => {
-          const vacStats   = getVacStats(selected, summary.vac)
+          const vacStats   = getVacStats(selected, summary.vac, statsYear)
           const paidSick   = Math.min(summary.sick, 5)
           const unpaidSick = Math.max(0, summary.sick - 5)
           const sickAlert  = summary.sick > 8
@@ -446,9 +456,22 @@ export default function EmployeeSearch() {
 
               {/* 월별 */}
               <div className="border-2 border-gray-200 rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 bg-gray-100 border-b border-gray-200">
+                  <span className="text-xs font-bold text-gray-700">월별 현황</span>
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => changeYear(statsYear - 1)}
+                      className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 text-gray-500 text-xs font-bold transition-colors">◀</button>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${statsYear === new Date().getFullYear() ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'}`}>
+                      {statsYear}년
+                    </span>
+                    <button onClick={() => changeYear(statsYear + 1)}
+                      disabled={statsYear >= new Date().getFullYear()}
+                      className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 text-gray-500 text-xs font-bold transition-colors disabled:opacity-30 disabled:cursor-not-allowed">▶</button>
+                  </div>
+                </div>
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="bg-gray-100 border-b border-gray-200">
+                    <tr className="bg-gray-50 border-b border-gray-200">
                       <th className="text-left px-3 py-2 text-gray-600 font-bold w-14">타입</th>
                       {MO.map(m => <th key={m} className="text-center px-1 py-2 text-gray-600 font-semibold min-w-8">{m}</th>)}
                     </tr>
