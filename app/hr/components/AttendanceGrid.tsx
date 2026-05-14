@@ -111,6 +111,8 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   const [dateModal,    setDateModal]    = useState<DateModal | null>(null)
   const [dateValue,    setDateValue]    = useState('')
   const [addingToTeam, setAddingToTeam] = useState<string | null>(null)
+  const [posModal,      setPosModal]      = useState<{ emp: Employee } | null>(null)
+  const [posValue,      setPosValue]      = useState('')
   const [probModal,     setProbModal]     = useState<{ emp: Employee } | null>(null)
   const [probStartMode, setProbStartMode] = useState<'hire' | 'custom'>('hire')
   const [probStartVal,  setProbStartVal]  = useState('')
@@ -444,6 +446,14 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
             입사일 수정{managingEmp.start_date ? ` (${fmtDate(managingEmp.start_date)})` : ''}
           </button>
           <button onClick={() => {
+            setPosValue(managingEmp.position ?? '')
+            setPosModal({ emp: managingEmp })
+            setManagingEmp(null); setMenuPos(null)
+          }}
+            className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
+            직급 수정{managingEmp.position ? ` (${managingEmp.position})` : ''}
+          </button>
+          <button onClick={() => {
             const emp = managingEmp
             setProbStartMode(emp.start_date ? 'hire' : 'custom')
             setProbStartVal(emp.probation_start ?? emp.start_date ?? '')
@@ -593,6 +603,37 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
               <button onClick={handleAddEmployee} disabled={!newEmp.name.trim()}
                 className="flex-1 bg-blue-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium">추가</button>
               <button onClick={() => setAddingToTeam(null)}
+                className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 직급 수정 모달 */}
+      {posModal && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
+             onClick={e => { if (e.target === e.currentTarget) setPosModal(null) }}>
+          <div className="bg-white rounded-xl p-6 w-72 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-gray-900 mb-1">직급 수정</h3>
+            <p className="text-sm text-gray-500 mb-3">{posModal.emp.name}</p>
+            <input
+              type="text" value={posValue} autoFocus
+              onChange={e => setPosValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') document.getElementById('pos-save')?.click() }}
+              placeholder="예) Manager, Driver, Coordinator"
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4"
+            />
+            <div className="flex gap-2">
+              <button id="pos-save"
+                onClick={async () => {
+                  await supabase.from('employees').update({ position: posValue || null }).eq('id', posModal.emp.id)
+                  setEmployees(prev => prev.map(e =>
+                    e.id === posModal.emp.id ? { ...e, position: posValue || undefined } : e
+                  ))
+                  setPosModal(null)
+                }}
+                className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700">저장</button>
+              <button onClick={() => setPosModal(null)}
                 className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">취소</button>
             </div>
           </div>

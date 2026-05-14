@@ -72,6 +72,8 @@ export default function EmployeeSearch() {
   const [termDate,     setTermDate]     = useState('')
   const [addModal,     setAddModal]     = useState(false)
   const [newEmp,       setNewEmp]       = useState<NewEmpForm>(BLANK_FORM)
+  const [posEdit,      setPosEdit]      = useState(false)
+  const [posValue,     setPosValue]     = useState('')
 
   useEffect(() => {
     supabase.from('companies').select('id,name').order('name')
@@ -248,8 +250,33 @@ export default function EmployeeSearch() {
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-xl font-bold text-gray-900">{selected.name}</h3>
-                    {selected.position && (
-                      <span className="text-sm text-gray-600 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded font-medium">{selected.position}</span>
+                    {posEdit ? (
+                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <input autoFocus type="text" value={posValue}
+                          onChange={e => setPosValue(e.target.value)}
+                          onKeyDown={async e => {
+                            if (e.key === 'Enter') {
+                              await supabase.from('employees').update({ position: posValue || null }).eq('id', selected.id)
+                              setEmps(prev => prev.map(em => em.id === selected.id ? { ...em, position: posValue } : em))
+                              setSel(s => s ? { ...s, position: posValue } : s)
+                              setPosEdit(false)
+                            } else if (e.key === 'Escape') setPosEdit(false)
+                          }}
+                          className="text-sm border border-blue-400 rounded px-2 py-0.5 w-36 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        <button onClick={async () => {
+                          await supabase.from('employees').update({ position: posValue || null }).eq('id', selected.id)
+                          setEmps(prev => prev.map(em => em.id === selected.id ? { ...em, position: posValue } : em))
+                          setSel(s => s ? { ...s, position: posValue } : s)
+                          setPosEdit(false)
+                        }} className="text-xs text-white bg-blue-600 px-2 py-0.5 rounded hover:bg-blue-700">저장</button>
+                        <button onClick={() => setPosEdit(false)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setPosValue(selected.position ?? ''); setPosEdit(true) }}
+                        className="text-sm text-gray-600 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded font-medium hover:border-blue-400 hover:bg-blue-50 transition-colors group">
+                        {selected.position || <span className="text-gray-400 text-xs">+ 직급 추가</span>}
+                        <span className="ml-1 text-gray-300 group-hover:text-blue-400 text-xs">✎</span>
+                      </button>
                     )}
                     {!selected.is_active && (
                       <span className="text-xs bg-red-100 border border-red-200 text-red-600 px-2 py-0.5 rounded font-semibold">퇴사</span>
