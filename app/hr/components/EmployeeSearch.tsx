@@ -74,6 +74,11 @@ export default function EmployeeSearch() {
   const [newEmp,       setNewEmp]       = useState<NewEmpForm>(BLANK_FORM)
   const [posEdit,      setPosEdit]      = useState(false)
   const [posValue,     setPosValue]     = useState('')
+  const [probModal,    setProbModal]    = useState(false)
+  const [probStartMode,setProbStartMode]= useState<'hire'|'custom'>('hire')
+  const [probStartVal, setProbStartVal] = useState('')
+  const [probEndMode,  setProbEndMode]  = useState<'90d'|'custom'>('90d')
+  const [probEndVal,   setProbEndVal]   = useState('')
 
   useEffect(() => {
     supabase.from('companies').select('id,name').order('name')
@@ -194,17 +199,21 @@ export default function EmployeeSearch() {
         </button>
       </div>
 
-      {/* 재직/퇴사 토글 */}
-      <div className="flex gap-2 mb-4">
-        <button onClick={() => setShowInactive(false)}
-          className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-            !showInactive ? 'bg-blue-600 text-white border-blue-600' : 'text-gray-600 border-gray-300 hover:border-gray-400 bg-white'
+      {/* 재직 / 퇴사자 탭 */}
+      <div className="flex border-b-2 border-gray-200 mb-4">
+        <button onClick={() => { setShowInactive(false); setSel(null) }}
+          className={`px-5 py-2.5 text-sm font-bold border-b-2 -mb-0.5 transition-colors ${
+            !showInactive
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
           }`}>
           재직중
         </button>
-        <button onClick={() => setShowInactive(true)}
-          className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-            showInactive ? 'bg-red-500 text-white border-red-500' : 'text-gray-600 border-gray-300 hover:border-gray-400 bg-white'
+        <button onClick={() => { setShowInactive(true); setSel(null) }}
+          className={`px-5 py-2.5 text-sm font-bold border-b-2 -mb-0.5 transition-colors ${
+            showInactive
+              ? 'border-red-500 text-red-500'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
           }`}>
           퇴사자
         </button>
@@ -287,20 +296,44 @@ export default function EmployeeSearch() {
                   </p>
 
                   {/* 수습 기간 */}
-                  {selected.probation_start && (() => {
-                    const t = todayIso()
-                    const on = selected.probation_start <= t && (!selected.probation_end || selected.probation_end >= t)
+                  {(() => {
+                    const t  = todayIso()
+                    const on = !!(selected.probation_start &&
+                      selected.probation_start <= t &&
+                      (!selected.probation_end || selected.probation_end >= t))
+                    const openProbEdit = () => {
+                      setProbStartMode(selected.start_date ? 'hire' : 'custom')
+                      setProbStartVal(selected.probation_start ?? selected.start_date ?? '')
+                      if (selected.probation_end) {
+                        setProbEndMode('custom'); setProbEndVal(selected.probation_end)
+                      } else if (selected.start_date) {
+                        setProbEndMode('90d')
+                        const d = new Date(selected.start_date); d.setDate(d.getDate() + 90)
+                        setProbEndVal(d.toISOString().split('T')[0])
+                      } else {
+                        setProbEndMode('custom'); setProbEndVal('')
+                      }
+                      setProbModal(true)
+                    }
                     return (
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-gray-500">수습 기간</span>
-                        <span className="text-xs font-medium text-gray-700">
-                          {fmtDateLong(selected.probation_start)}
-                          {selected.probation_end ? ` ~ ${fmtDateLong(selected.probation_end)}` : ' ~ 미설정'}
-                        </span>
-                        {on
-                          ? <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-semibold">수습중</span>
-                          : <span className="text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">완료</span>
-                        }
+                        <span className="text-xs text-gray-500 font-medium">수습</span>
+                        {selected.probation_start ? (
+                          <>
+                            <span className="text-xs font-medium text-gray-700">
+                              {fmtDateLong(selected.probation_start)}
+                              {selected.probation_end ? ` ~ ${fmtDateLong(selected.probation_end)}` : ' ~ 미설정'}
+                            </span>
+                            {on
+                              ? <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-semibold">수습중</span>
+                              : <span className="text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">완료</span>
+                            }
+                          </>
+                        ) : (
+                          <span className="text-xs text-gray-300">미설정</span>
+                        )}
+                        <button onClick={openProbEdit}
+                          className="text-gray-300 hover:text-blue-500 text-xs transition-colors">✎</button>
                       </div>
                     )
                   })()}
@@ -590,6 +623,90 @@ export default function EmployeeSearch() {
           </div>
         </div>
       )}
+
+      {/* 수습 기간 편집 모달 */}
+      {probModal && selected && (() => {
+        const saveProb = async () => {
+          const finalStart = probStartMode === 'hire' ? (selected.start_date ?? null) : (probStartVal || null)
+          const finalEnd   = probEndVal || null
+          await supabase.from('employees').update({ probation_start: finalStart, probation_end: finalEnd }).eq('id', selected.id)
+          const updated = { ...selected, probation_start: finalStart ?? undefined, probation_end: finalEnd ?? undefined }
+          setSel(updated)
+          setEmps(p => p.map(e => e.id === selected.id ? updated : e))
+          setProbModal(false)
+        }
+        const deleteProb = async () => {
+          await supabase.from('employees').update({ probation_start: null, probation_end: null }).eq('id', selected.id)
+          const updated = { ...selected, probation_start: undefined, probation_end: undefined }
+          setSel(updated)
+          setEmps(p => p.map(e => e.id === selected.id ? updated : e))
+          setProbModal(false)
+        }
+        return (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
+               onClick={e => { if (e.target === e.currentTarget) setProbModal(false) }}>
+            <div className="bg-white rounded-2xl p-6 w-80 shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+              <h3 className="font-bold text-gray-900">수습 기간 — {selected.name}</h3>
+
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-gray-600">수습 시작일</p>
+                <div className="flex gap-2">
+                  <button className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probStartMode==='hire'?'bg-blue-600 text-white border-blue-600':'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    onClick={() => {
+                      setProbStartMode('hire')
+                      if (probEndMode==='90d' && selected.start_date) {
+                        const d=new Date(selected.start_date); d.setDate(d.getDate()+90)
+                        setProbEndVal(d.toISOString().split('T')[0])
+                      }
+                    }}>입사일</button>
+                  <button className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probStartMode==='custom'?'bg-blue-600 text-white border-blue-600':'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    onClick={() => setProbStartMode('custom')}>직접 입력</button>
+                </div>
+                {probStartMode==='hire'
+                  ? <p className="text-xs text-gray-400">입사일: {selected.start_date ?? '미설정'}</p>
+                  : <input type="date" value={probStartVal}
+                      onChange={e => {
+                        setProbStartVal(e.target.value)
+                        if (probEndMode==='90d' && e.target.value) {
+                          const d=new Date(e.target.value); d.setDate(d.getDate()+90)
+                          setProbEndVal(d.toISOString().split('T')[0])
+                        }
+                      }}
+                      className="w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                }
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-gray-600">수습 종료일</p>
+                <div className="flex gap-2">
+                  <button className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probEndMode==='90d'?'bg-blue-600 text-white border-blue-600':'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    onClick={() => {
+                      setProbEndMode('90d')
+                      const ref = probStartMode==='hire' ? selected.start_date : probStartVal
+                      if (ref) { const d=new Date(ref); d.setDate(d.getDate()+90); setProbEndVal(d.toISOString().split('T')[0]) }
+                    }}>+90일</button>
+                  <button className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probEndMode==='custom'?'bg-blue-600 text-white border-blue-600':'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    onClick={() => setProbEndMode('custom')}>직접 입력</button>
+                </div>
+                <input type="date" value={probEndVal} readOnly={probEndMode==='90d'}
+                  onChange={e => { if (probEndMode==='custom') setProbEndVal(e.target.value) }}
+                  className={`w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${probEndMode==='90d'?'bg-gray-50 text-gray-500':''}`} />
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button onClick={saveProb}
+                  className="flex-1 bg-blue-600 text-white rounded-xl py-2 text-sm font-bold hover:bg-blue-700">저장</button>
+                <button onClick={() => setProbModal(false)}
+                  className="px-4 border-2 border-gray-200 rounded-xl py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50">취소</button>
+                {selected.probation_start && (
+                  <button onClick={deleteProb}
+                    className="px-4 border-2 border-red-200 text-red-600 rounded-xl py-2 text-sm font-semibold hover:bg-red-50">삭제</button>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* 퇴사 처리 모달 */}
       {termModal && selected && (
