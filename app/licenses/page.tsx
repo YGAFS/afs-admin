@@ -578,9 +578,9 @@ export default function LicensesPage() {
       supabase.from('licenses')
         .select('id,account_id,display_name,email_address,alias,account_type,license_plan,monthly_cost_cad,status,company,employee_id,created_date,notes,employees(name)')
         .order('company'),
-      // * 사용: billing_day 등 신규 컬럼이 없어도 쿼리가 깨지지 않음
+      // employees!employee_id: FK 명시로 다중 관계 ambiguity 해결
       supabase.from('subscriptions')
-        .select('*,employees(name)')
+        .select('*,employees!employee_id(name)')
         .order('vendor'),
       supabase.from('employees').select('id,name').order('name'),
     ])
@@ -592,7 +592,7 @@ export default function LicensesPage() {
     const seMap: Record<string, SubEmployee[]> = {}
     const { data: seRows, error: seErr } = await supabase
       .from('subscription_employees')
-      .select('subscription_id,employee_id,employees(name)')
+      .select('subscription_id,employee_id,employees!employee_id(name)')
     if (seErr) console.warn('[subscription_employees]', seErr.message)
     ;(seRows as SubEmpRow[] ?? []).forEach(row => {
       if (!seMap[row.subscription_id]) seMap[row.subscription_id] = []
