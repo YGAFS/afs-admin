@@ -5,8 +5,8 @@ import { usePathname } from 'next/navigation'
 
 const NAV = [
   { href: '/hr',       label: 'HR 근태 캘린더', icon: '📅' },
-  { href: '/licenses', label: 'Email Sub',      icon: '📧' },
-  { href: '/assets',   label: 'Asset',          icon: '💻' },
+  { href: '/licenses', label: '구독 관리',      icon: '📋' },
+  { href: '/assets',   label: 'IT 자산',        icon: '💻' },
   { href: '/supplies', label: 'Coffee Order',   icon: '☕' },
   { href: '/admin',    label: 'Admin',          icon: '⚙️' },
 ]
