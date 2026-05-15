@@ -27,6 +27,7 @@ type License = {
 }
 
 type SubEmployee = { employee_id: string; employees: { name: string } | null }
+type SubEmpRow = { subscription_id: string; employee_id: string; employees: { name: string } | null }
 
 type Subscription = {
   id: string
@@ -559,17 +560,41 @@ export default function LicensesPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: lic }, { data: sub }, { data: emp }] = await Promise.all([
+    const [
+      { data: lic, error: licErr },
+      { data: sub, error: subErr },
+      { data: emp },
+      { data: seRows },
+    ] = await Promise.all([
       supabase.from('licenses')
         .select('id,account_id,display_name,email_address,alias,account_type,license_plan,monthly_cost_cad,status,company,employee_id,created_date,notes,employees(name)')
         .order('company'),
+      // subscription_employees는 별도 쿼리로 분리 (중첩 employees join 충돌 방지)
       supabase.from('subscriptions')
-        .select('id,sub_id,company,vendor,product,plan_name,billing_cycle,cost_cad,renewal_date,billing_day,employee_id,owner,status,notes,employees(name),subscription_employees(employee_id,employees(name))')
+        .select('id,sub_id,company,vendor,product,plan_name,billing_cycle,cost_cad,renewal_date,billing_day,employee_id,owner,status,notes,employees(name)')
         .order('vendor'),
       supabase.from('employees').select('id,name').order('name'),
+      supabase.from('subscription_employees')
+        .select('subscription_id,employee_id,employees(name)'),
     ])
+
+    if (licErr) console.error('licenses query error:', licErr)
+    if (subErr) console.error('subscriptions query error:', subErr)
+
+    // subscription_employees를 각 구독에 병합
+    const seMap: Record<string, SubEmployee[]> = {}
+    ;(seRows as SubEmpRow[] ?? []).forEach(row => {
+      if (!seMap[row.subscription_id]) seMap[row.subscription_id] = []
+      seMap[row.subscription_id].push({ employee_id: row.employee_id, employees: row.employees })
+    })
+
+    const subsWithEmployees: Subscription[] = (sub ?? []).map((s: Subscription) => ({
+      ...s,
+      subscription_employees: seMap[s.id] ?? [],
+    }))
+
     setLicenses((lic as License[]) ?? [])
-    setSubscriptions((sub as Subscription[]) ?? [])
+    setSubscriptions(subsWithEmployees)
     setEmployees((emp as Employee[]) ?? [])
     setLoading(false)
   }, [])
