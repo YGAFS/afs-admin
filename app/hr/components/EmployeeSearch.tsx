@@ -29,6 +29,11 @@ type Asset = {
   brand?: string; model?: string; serial_number?: string
   purchase_date?: string; purchase_price?: number; condition: string; notes?: string
 }
+type Subscription = {
+  id: string; vendor: string | null; product: string | null; plan_name: string | null
+  cost_cad: number; billing_cycle: string | null; status: string
+  linked_count: number
+}
 
 const MO = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
 
@@ -104,6 +109,7 @@ export default function EmployeeSearch() {
   const [carryover,    setCarryover]    = useState(0)
   const [licenses,     setLicenses]     = useState<License[]>([])
   const [assets,       setAssets]       = useState<Asset[]>([])
+  const [subscriptions,setSubs]         = useState<Subscription[]>([])
 
   useEffect(() => {
     supabase.from('companies').select('id,name').order('name')
@@ -152,11 +158,34 @@ export default function EmployeeSearch() {
 
   async function select(emp: Employee) {
     setSel(emp)
-    setLicenses([]); setAssets([])
+    setLicenses([]); setAssets([]); setSubs([])
     await Promise.all([
       loadStats(emp, statsYear),
       supabase.from('licenses').select('id,account_id,account_type,display_name,email_address,alias,license_plan,monthly_cost_cad,status,notes').eq('employee_id', emp.id).then(({ data }) => setLicenses(data ?? [])),
       supabase.from('assets').select('id,asset_id,category,item_name,brand,model,serial_number,purchase_date,purchase_price,condition,notes').eq('employee_id', emp.id).then(({ data }) => setAssets(data ?? [])),
+      // subscription_employees 조인으로 이 직원이 속한 구독 조회
+      supabase.from('subscription_employees')
+        .select('subscriptions(id,vendor,product,plan_name,cost_cad,billing_cycle,status), subscription_id')
+        .eq('employee_id', emp.id)
+        .then(async ({ data: seRows }) => {
+          if (!seRows?.length) { setSubs([]); return }
+          // 각 구독의 총 사용자 수 조회 (인당 비용 계산용)
+          const subIds = seRows.map(r => r.subscription_id)
+          const { data: counts } = await supabase.from('subscription_employees')
+            .select('subscription_id').in('subscription_id', subIds)
+          const countMap: Record<string, number> = {}
+          for (const r of (counts ?? [])) {
+            countMap[r.subscription_id] = (countMap[r.subscription_id] ?? 0) + 1
+          }
+          const subs: Subscription[] = seRows
+            .map(r => {
+              const s = r.subscriptions as any
+              if (!s) return null
+              return { ...s, linked_count: countMap[r.subscription_id] ?? 1 }
+            })
+            .filter(Boolean) as Subscription[]
+          setSubs(subs)
+        }),
     ])
   }
 
@@ -606,14 +635,19 @@ export default function EmployeeSearch() {
                 </table>
               </div>
               {/* 월 유지 비용 + 이메일 + 자산 */}
-              {(licenses.length > 0 || assets.length > 0) && (() => {
+              {(licenses.length > 0 || assets.length > 0 || subscriptions.length > 0) && (() => {
                 const individualCost = licenses.filter(l => l.account_type === 'Individual').reduce((s, l) => s + (l.monthly_cost_cad ?? 0), 0)
+                const subMonthlyCost = subscriptions.reduce((s, sub) => {
+                  const monthly = sub.billing_cycle === 'Annual' ? sub.cost_cad / 12 : sub.cost_cad
+                  return s + monthly / sub.linked_count
+                }, 0)
+                const totalCost = individualCost + subMonthlyCost
                 return (
                   <div className="mt-3 space-y-3">
                     {/* 월 비용 요약 */}
                     <div className="border-2 border-indigo-100 bg-indigo-50 rounded-xl px-4 py-3 flex items-center justify-between">
                       <span className="text-sm font-bold text-indigo-800">월 유지 비용 (라이선스)</span>
-                      <span className="text-xl font-bold text-indigo-900">${individualCost.toFixed(2)} <span className="text-sm font-semibold text-indigo-600">CAD/월</span></span>
+                      <span className="text-xl font-bold text-indigo-900">${totalCost.toFixed(2)} <span className="text-sm font-semibold text-indigo-600">CAD/월</span></span>
                     </div>
 
                     {/* 이메일 계정 */}
@@ -654,6 +688,33 @@ export default function EmployeeSearch() {
                             </span>
                           </div>
                         ))}
+                      </div>
+                    )}
+
+                    {/* 기타 구독 */}
+                    {subscriptions.length > 0 && (
+                      <div className="border-2 border-violet-100 rounded-xl overflow-hidden">
+                        <div className="px-3 py-2 bg-violet-50 text-xs font-bold text-violet-700">📋 기타 구독</div>
+                        {subscriptions.map(sub => {
+                          const monthly = sub.billing_cycle === 'Annual' ? sub.cost_cad / 12 : sub.cost_cad
+                          const perPerson = monthly / sub.linked_count
+                          return (
+                            <div key={sub.id} className="px-3 py-2.5 border-t border-violet-100 flex items-center justify-between">
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium text-gray-800">
+                                  {sub.vendor}{sub.product ? ` — ${sub.product}` : ''}
+                                </div>
+                                <div className="text-xs text-gray-400">
+                                  {sub.plan_name ?? sub.billing_cycle ?? ''}
+                                  {sub.linked_count > 1 && ` · ${sub.linked_count}명 공유`}
+                                </div>
+                              </div>
+                              <span className="text-xs font-semibold text-violet-600 flex-shrink-0 ml-2">
+                                ${perPerson.toFixed(2)}/월
+                              </span>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
