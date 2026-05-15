@@ -14,6 +14,7 @@ type Employee = {
   is_exempt: boolean; uses_accrual: boolean; is_active: boolean
   start_date?: string; end_date?: string
   probation_start?: string; probation_end?: string
+  employment_type?: string
   companies: { id: string; name: string } | { id: string; name: string }[]
 }
 type Summary = { vac: number; sick: number; wfh: number; toil: number; other: number }
@@ -61,12 +62,14 @@ type NewEmpForm = {
   company_id: string; name: string; team: string; position: string
   start_date: string; is_active: boolean; end_date: string
   vacation_allowance: number; uses_accrual: boolean; is_exempt: boolean
+  employment_type: string
 }
 
 const BLANK_FORM: NewEmpForm = {
   company_id: '', name: '', team: '', position: '',
   start_date: '', is_active: true, end_date: '',
   vacation_allowance: 10, uses_accrual: true, is_exempt: false,
+  employment_type: 'office',
 }
 
 export default function EmployeeSearch() {
@@ -107,7 +110,7 @@ export default function EmployeeSearch() {
 
   useEffect(() => {
     let q = supabase.from('employees')
-      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,companies(id,name)')
+      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
       .eq('is_active', !showInactive).order('name')
     if (query)                q = q.ilike('name', `%${query}%`)
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
@@ -236,6 +239,7 @@ export default function EmployeeSearch() {
       vacation_allowance: newEmp.vacation_allowance,
       uses_accrual:      newEmp.uses_accrual,
       is_exempt:         newEmp.is_exempt,
+      employment_type:   newEmp.employment_type,
       sort_order:        99,
     })
     setAddModal(false)
@@ -243,7 +247,7 @@ export default function EmployeeSearch() {
     setSaving(false)
     // refresh list
     let q = supabase.from('employees')
-      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,companies(id,name)')
+      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
       .eq('is_active', !showInactive).order('name')
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
     q.then(({ data }) => setEmps((data as Employee[]) ?? []))
@@ -311,6 +315,12 @@ export default function EmployeeSearch() {
                 <span className="text-sm font-semibold text-gray-900">{emp.name}</span>
                 {emp.is_exempt && (
                   <span className="text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-medium">임원</span>
+                )}
+                {emp.employment_type === 'remote' && (
+                  <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded font-medium">Remote</span>
+                )}
+                {emp.employment_type === 'contractor' && (
+                  <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-medium">IC</span>
                 )}
                 {emp.is_active && emp.start_date && new Date(emp.start_date) > new Date() && (
                   <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">입사예정</span>
@@ -702,6 +712,26 @@ export default function EmployeeSearch() {
                 </div>
               )}
 
+              <div>
+                <label className="text-xs font-semibold text-gray-600 mb-1 block">근무 유형</label>
+                <div className="flex gap-2">
+                  {([
+                    { val: 'office',     label: '사무실' },
+                    { val: 'remote',     label: 'Remote' },
+                    { val: 'contractor', label: 'IC/외주' },
+                  ] as const).map(opt => (
+                    <button key={opt.val} type="button"
+                      onClick={() => setNewEmp(p => ({ ...p, employment_type: opt.val }))}
+                      className={`flex-1 py-1.5 text-xs rounded-lg border-2 font-semibold transition-colors ${
+                        newEmp.employment_type === opt.val
+                          ? 'bg-blue-600 border-blue-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-600 hover:border-blue-300'
+                      }`}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="flex gap-3 items-end pt-1">
                 <div className="flex-1">
                   <label className="text-xs font-semibold text-gray-600 mb-1 block">연간 연차 (일)</label>
