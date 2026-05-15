@@ -26,6 +26,8 @@ type License = {
   employees: { name: string } | null
 }
 
+type SubEmployee = { employee_id: string; employees: { name: string } | null }
+
 type Subscription = {
   id: string
   sub_id: string | null
@@ -36,11 +38,13 @@ type Subscription = {
   billing_cycle: string | null
   cost_cad: number
   renewal_date: string | null
+  billing_day: number | null
   employee_id: string | null
   owner: string | null
   status: string
   notes: string | null
   employees: { name: string } | null
+  subscription_employees: SubEmployee[]
 }
 
 type Employee = { id: string; name: string }
@@ -51,6 +55,36 @@ const COMPANIES = ['AFS', 'TNT', 'ZFS']
 const STATUS_OPTIONS = ['Active', 'Inactive']
 const ACCOUNT_TYPES = ['Individual', 'Shared']
 const BILLING_CYCLES = ['Monthly', 'Annual', 'One-time']
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** 매월 N일 기준으로 오늘 이후의 다음 결제일 */
+function nextBillingDate(day: number): string {
+  const today = new Date()
+  let year = today.getFullYear()
+  let month = today.getMonth()
+  const candidate = new Date(year, month, day)
+  if (candidate <= today) {
+    month += 1
+    if (month > 11) { month = 0; year += 1 }
+  }
+  return new Date(year, month, day).toISOString().split('T')[0]
+}
+
+function isRenewingSoon(sub: Subscription): boolean {
+  const dateStr = sub.billing_day ? nextBillingDate(sub.billing_day) : sub.renewal_date
+  if (!dateStr) return false
+  const diff = (new Date(dateStr).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+  return diff >= 0 && diff <= 30
+}
+
+function linkedCount(sub: Subscription): number {
+  return sub.subscription_employees?.length || 1
+}
+
+function costPerPerson(sub: Subscription): number {
+  return (sub.cost_cad ?? 0) / linkedCount(sub)
+}
 
 // ── Shared UI ─────────────────────────────────────────────────────────────────
 
@@ -216,14 +250,14 @@ function LicenseModal({ initial, employees, onClose, onSave }: {
 
 type SubForm = {
   sub_id: string; company: string; vendor: string; product: string; plan_name: string
-  billing_cycle: string; cost_cad: string; renewal_date: string
-  employee_id: string; owner: string; status: string; notes: string
+  billing_cycle: string; cost_cad: string; billing_day: string; renewal_date: string
+  employee_ids: string[]; owner: string; status: string; notes: string
 }
 
 const emptySubForm: SubForm = {
   sub_id: '', company: '', vendor: '', product: '', plan_name: '',
-  billing_cycle: 'Annual', cost_cad: '0', renewal_date: '',
-  employee_id: '', owner: '', status: 'Active', notes: '',
+  billing_cycle: 'Annual', cost_cad: '0', billing_day: '', renewal_date: '',
+  employee_ids: [], owner: '', status: 'Active', notes: '',
 }
 
 function SubModal({ initial, employees, onClose, onSave }: {
@@ -237,8 +271,9 @@ function SubModal({ initial, employees, onClose, onSave }: {
     plan_name: initial.plan_name ?? '',
     billing_cycle: initial.billing_cycle ?? 'Annual',
     cost_cad: String(initial.cost_cad ?? 0),
+    billing_day: initial.billing_day ? String(initial.billing_day) : '',
     renewal_date: initial.renewal_date ?? '',
-    employee_id: initial.employee_id ?? '',
+    employee_ids: (initial.subscription_employees ?? []).map(se => se.employee_id),
     owner: initial.owner ?? '',
     status: initial.status ?? 'Active',
     notes: initial.notes ?? '',
@@ -246,13 +281,29 @@ function SubModal({ initial, employees, onClose, onSave }: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const set = (k: keyof SubForm) =>
+  const set = (k: keyof Omit<SubForm, 'employee_ids'>) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm(p => ({ ...p, [k]: e.target.value }))
+
+  function toggleEmployee(id: string) {
+    setForm(p => ({
+      ...p,
+      employee_ids: p.employee_ids.includes(id)
+        ? p.employee_ids.filter(x => x !== id)
+        : [...p.employee_ids, id],
+    }))
+  }
+
+  const cost = parseFloat(form.cost_cad) || 0
+  const perPerson = form.employee_ids.length > 1 ? cost / form.employee_ids.length : null
+
+  const billingDayNum = parseInt(form.billing_day)
+  const nextDate = billingDayNum >= 1 && billingDayNum <= 31 ? nextBillingDate(billingDayNum) : null
 
   async function handleSubmit() {
     if (!form.vendor.trim() && !form.product.trim()) { setError('Vendor 또는 Product를 입력하세요.'); return }
     setSaving(true)
+
     const payload = {
       sub_id: form.sub_id || null,
       company: form.company || null,
@@ -260,18 +311,34 @@ function SubModal({ initial, employees, onClose, onSave }: {
       product: form.product || null,
       plan_name: form.plan_name || null,
       billing_cycle: form.billing_cycle || null,
-      cost_cad: parseFloat(form.cost_cad) || 0,
-      renewal_date: form.renewal_date || null,
-      employee_id: form.employee_id || null,
+      cost_cad: cost,
+      billing_day: billingDayNum >= 1 && billingDayNum <= 31 ? billingDayNum : null,
+      renewal_date: !form.billing_day && form.renewal_date ? form.renewal_date : null,
       owner: form.owner || null,
       status: form.status,
       notes: form.notes || null,
     }
-    const { error: err } = initial
-      ? await supabase.from('subscriptions').update(payload).eq('id', initial.id)
-      : await supabase.from('subscriptions').insert(payload)
+
+    let subId: string
+    if (initial) {
+      const { error: err } = await supabase.from('subscriptions').update(payload).eq('id', initial.id)
+      if (err) { setSaving(false); setError(err.message); return }
+      subId = initial.id
+    } else {
+      const { data, error: err } = await supabase.from('subscriptions').insert(payload).select('id').single()
+      if (err || !data) { setSaving(false); setError(err?.message ?? 'insert 실패'); return }
+      subId = data.id
+    }
+
+    // 조인 테이블 갱신
+    await supabase.from('subscription_employees').delete().eq('subscription_id', subId)
+    if (form.employee_ids.length > 0) {
+      await supabase.from('subscription_employees').insert(
+        form.employee_ids.map(eid => ({ subscription_id: subId, employee_id: eid }))
+      )
+    }
+
     setSaving(false)
-    if (err) { setError(err.message); return }
     onSave()
   }
 
@@ -294,21 +361,63 @@ function SubModal({ initial, employees, onClose, onSave }: {
           </select>
         </Field>
         <Field label="Cost (CAD)"><input className={inputCls} type="number" min="0" step="0.01" value={form.cost_cad} onChange={set('cost_cad')} /></Field>
-        <Field label="Renewal Date"><input className={inputCls} type="date" value={form.renewal_date} onChange={set('renewal_date')} /></Field>
-        <Field label="Owner"><input className={inputCls} value={form.owner} onChange={set('owner')} /></Field>
+
+        {/* 결제일 */}
+        <div className="col-span-2 grid grid-cols-2 gap-x-3">
+          <Field label="매월 결제일 (1~31)">
+            <input
+              className={inputCls}
+              type="number" min="1" max="31"
+              placeholder="예: 23 → 매월 23일"
+              value={form.billing_day}
+              onChange={set('billing_day')}
+            />
+            {nextDate && (
+              <p className="text-xs text-blue-600 mt-1">다음 결제일: {nextDate}</p>
+            )}
+          </Field>
+          <Field label="수동 갱신일 (결제일 없을 때)">
+            <input
+              className={`${inputCls} ${form.billing_day ? 'opacity-40' : ''}`}
+              type="date"
+              value={form.billing_day ? '' : form.renewal_date}
+              onChange={set('renewal_date')}
+              disabled={!!form.billing_day}
+            />
+          </Field>
+        </div>
+
+        <Field label="Owner (담당자)"><input className={inputCls} value={form.owner} onChange={set('owner')} /></Field>
         <Field label="Status">
           <select className={selectCls} value={form.status} onChange={set('status')}>
             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </Field>
-        <Field label="Linked Employee">
-          <select className={selectCls} value={form.employee_id} onChange={set('employee_id')}>
-            <option value="">없음</option>
-            {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
-        </Field>
         <Field label="Sub ID (선택)"><input className={inputCls} value={form.sub_id} onChange={set('sub_id')} placeholder="자동 생성 가능" /></Field>
       </div>
+
+      {/* 다중 직원 연결 */}
+      <Field label="Linked Employees (비용 분할)">
+        <div className="border rounded-lg p-2 max-h-36 overflow-y-auto space-y-0.5 bg-gray-50">
+          {employees.map(e => (
+            <label key={e.id} className="flex items-center gap-2 cursor-pointer hover:bg-white px-2 py-1 rounded transition-colors">
+              <input
+                type="checkbox"
+                className="rounded"
+                checked={form.employee_ids.includes(e.id)}
+                onChange={() => toggleEmployee(e.id)}
+              />
+              <span className="text-sm text-gray-700">{e.name}</span>
+            </label>
+          ))}
+        </div>
+        {perPerson !== null && (
+          <p className="text-xs text-violet-600 mt-1.5 font-medium">
+            {form.employee_ids.length}명 공유 → 인당 ${perPerson.toFixed(2)} CAD
+          </p>
+        )}
+      </Field>
+
       <Field label="Notes"><textarea className={inputCls} rows={2} value={form.notes} onChange={set('notes')} /></Field>
       <div className="flex justify-end gap-2 mt-4">
         <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">취소</button>
@@ -332,7 +441,7 @@ function StatCard({ label, value, sub, colorClass }: { label: string; value: str
   )
 }
 
-function BarList({ items }: { items: { label: string; value: number; display: string }[] }) {
+function BarList({ items, barColor }: { items: { label: string; value: number; display: string }[]; barColor: string }) {
   const max = Math.max(...items.map(i => i.value), 1)
   return (
     <div className="space-y-2">
@@ -341,7 +450,7 @@ function BarList({ items }: { items: { label: string; value: number; display: st
           <div className="flex-1 text-xs text-gray-600 truncate">{item.label}</div>
           <div className="text-xs font-medium text-gray-800 w-14 text-right shrink-0">{item.display}</div>
           <div className="w-20 bg-gray-100 rounded-full h-1.5 overflow-hidden shrink-0">
-            <div className="bg-current h-full rounded-full" style={{ width: `${(item.value / max) * 100}%` }} />
+            <div className={`${barColor} h-full rounded-full`} style={{ width: `${(item.value / max) * 100}%` }} />
           </div>
         </div>
       ))}
@@ -380,13 +489,7 @@ function Dashboard({ licenses, subscriptions, company }: {
     byVendor[v] = (byVendor[v] ?? 0) + (s.billing_cycle === 'Annual' ? cost / 12 : cost)
   })
 
-  // 갱신 임박 (30일 이내)
-  const today = new Date()
-  const soon = activeSub.filter(s => {
-    if (!s.renewal_date) return false
-    const diff = (new Date(s.renewal_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-    return diff >= 0 && diff <= 30
-  })
+  const soon = activeSub.filter(isRenewingSoon)
 
   return (
     <div className="space-y-5">
@@ -400,15 +503,11 @@ function Dashboard({ licenses, subscriptions, company }: {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl shadow p-5">
           <h3 className="font-semibold text-gray-700 text-sm mb-3">M365 플랜별 활성 계정 수</h3>
-          <div className="text-blue-400">
-            <BarList items={Object.entries(byPlan).sort((a,b)=>b[1]-a[1]).map(([label, value]) => ({ label, value, display: `${value}개` }))} />
-          </div>
+          <BarList barColor="bg-blue-400" items={Object.entries(byPlan).sort((a,b)=>b[1]-a[1]).map(([label, value]) => ({ label, value, display: `${value}개` }))} />
         </div>
         <div className="bg-white rounded-xl shadow p-5">
           <h3 className="font-semibold text-gray-700 text-sm mb-3">구독 서비스별 월 비용</h3>
-          <div className="text-violet-400">
-            <BarList items={Object.entries(byVendor).sort((a,b)=>b[1]-a[1]).map(([label, value]) => ({ label, value, display: `$${value.toFixed(0)}` }))} />
-          </div>
+          <BarList barColor="bg-violet-400" items={Object.entries(byVendor).sort((a,b)=>b[1]-a[1]).map(([label, value]) => ({ label, value, display: `$${value.toFixed(0)}` }))} />
         </div>
       </div>
 
@@ -416,12 +515,15 @@ function Dashboard({ licenses, subscriptions, company }: {
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
           <h3 className="font-semibold text-amber-800 text-sm mb-2">⚠ 30일 내 갱신 예정</h3>
           <div className="space-y-1">
-            {soon.map(s => (
-              <div key={s.id} className="flex justify-between text-xs text-amber-700">
-                <span>{s.vendor} — {s.product}</span>
-                <span>{s.renewal_date} · ${(s.cost_cad ?? 0).toFixed(2)} CAD</span>
-              </div>
-            ))}
+            {soon.map(s => {
+              const dateStr = s.billing_day ? nextBillingDate(s.billing_day) : s.renewal_date
+              return (
+                <div key={s.id} className="flex justify-between text-xs text-amber-700">
+                  <span>{s.vendor} — {s.product}</span>
+                  <span>{dateStr} · ${(s.cost_cad ?? 0).toFixed(2)} CAD</span>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -460,7 +562,7 @@ export default function LicensesPage() {
         .select('id,account_id,display_name,email_address,alias,account_type,license_plan,monthly_cost_cad,status,company,employee_id,created_date,notes,employees(name)')
         .order('company'),
       supabase.from('subscriptions')
-        .select('id,sub_id,company,vendor,product,plan_name,billing_cycle,cost_cad,renewal_date,employee_id,owner,status,notes,employees(name)')
+        .select('id,sub_id,company,vendor,product,plan_name,billing_cycle,cost_cad,renewal_date,billing_day,employee_id,owner,status,notes,employees(name),subscription_employees(employee_id,employees(name))')
         .order('vendor'),
       supabase.from('employees').select('id,name').order('name'),
     ])
@@ -474,11 +576,8 @@ export default function LicensesPage() {
 
   async function handleDelete() {
     if (!deleteTarget) return
-    if (deleteTarget.type === 'license') {
-      await supabase.from('licenses').delete().eq('id', deleteTarget.id)
-    } else {
-      await supabase.from('subscriptions').delete().eq('id', deleteTarget.id)
-    }
+    await supabase.from(deleteTarget.type === 'license' ? 'licenses' : 'subscriptions')
+      .delete().eq('id', deleteTarget.id)
     setDeleteTarget(null)
     load()
   }
@@ -486,15 +585,13 @@ export default function LicensesPage() {
   const filtLic = licenses.filter(l => {
     const matchCo = !company || l.company === company
     const q = licSearch.toLowerCase()
-    const matchQ = !q || [l.display_name, l.email_address, l.account_id, l.employees?.name].some(v => v?.toLowerCase().includes(q))
-    return matchCo && matchQ
+    return matchCo && (!q || [l.display_name, l.email_address, l.account_id, l.employees?.name].some(v => v?.toLowerCase().includes(q)))
   })
 
   const filtSub = subscriptions.filter(s => {
     const matchCo = !company || s.company === company
     const q = subSearch.toLowerCase()
-    const matchQ = !q || [s.vendor, s.product, s.plan_name, s.owner].some(v => v?.toLowerCase().includes(q))
-    return matchCo && matchQ
+    return matchCo && (!q || [s.vendor, s.product, s.plan_name, s.owner].some(v => v?.toLowerCase().includes(q)))
   })
 
   const companyTabs = [{ label: '전체', value: '' }, ...COMPANIES.map(c => ({ label: c, value: c }))]
@@ -511,33 +608,23 @@ export default function LicensesPage() {
         <p className="text-sm text-gray-500 mt-0.5">M365 계정 및 기타 구독 서비스 관리</p>
       </div>
 
-      {/* Company filter */}
       <div className="flex gap-1.5 mb-4 flex-wrap">
         {companyTabs.map(tab => (
-          <button
-            key={tab.value}
-            onClick={() => setCompany(tab.value)}
+          <button key={tab.value} onClick={() => setCompany(tab.value)}
             className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
               company === tab.value ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
+            }`}>
             {tab.label}
           </button>
         ))}
       </div>
 
-      {/* View tabs */}
       <div className="flex border-b border-gray-200 mb-5">
         {viewTabs.map(tab => (
-          <button
-            key={tab.value}
-            onClick={() => setView(tab.value)}
+          <button key={tab.value} onClick={() => setView(tab.value)}
             className={`px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              view === tab.value
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
+              view === tab.value ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
             {tab.label}
           </button>
         ))}
@@ -554,16 +641,10 @@ export default function LicensesPage() {
           {view === 'licenses' && (
             <div>
               <div className="flex items-center justify-between mb-3">
-                <input
-                  className="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                  placeholder="이름 / 이메일 검색…"
-                  value={licSearch}
-                  onChange={e => setLicSearch(e.target.value)}
-                />
-                <button
-                  onClick={() => setLicModal({ open: true })}
-                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
-                >
+                <input className="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  placeholder="이름 / 이메일 검색…" value={licSearch} onChange={e => setLicSearch(e.target.value)} />
+                <button onClick={() => setLicModal({ open: true })}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
                   + 계정 추가
                 </button>
               </div>
@@ -589,9 +670,7 @@ export default function LicensesPage() {
                         <td className="px-4 py-2 font-mono text-xs text-gray-500">{r.account_id}</td>
                         <td className="px-4 py-2 font-medium text-gray-800">{r.display_name ?? '—'}</td>
                         <td className="px-4 py-2 text-gray-600 text-xs">{r.email_address ?? '—'}</td>
-                        <td className="px-4 py-2">
-                          <Badge label={r.account_type} color={accountTypeColor(r.account_type)} />
-                        </td>
+                        <td className="px-4 py-2"><Badge label={r.account_type} color={accountTypeColor(r.account_type)} /></td>
                         <td className="px-4 py-2 text-gray-600 text-xs">{r.license_plan ?? '—'}</td>
                         <td className="px-4 py-2 text-gray-600">{r.company ?? '—'}</td>
                         <td className="px-4 py-2 text-gray-600">{r.employees?.name ?? <span className="text-gray-300">미연결</span>}</td>
@@ -617,16 +696,10 @@ export default function LicensesPage() {
           {view === 'subscriptions' && (
             <div>
               <div className="flex items-center justify-between mb-3">
-                <input
-                  className="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                  placeholder="Vendor / Product 검색…"
-                  value={subSearch}
-                  onChange={e => setSubSearch(e.target.value)}
-                />
-                <button
-                  onClick={() => setSubModal({ open: true })}
-                  className="px-4 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700"
-                >
+                <input className="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  placeholder="Vendor / Product 검색…" value={subSearch} onChange={e => setSubSearch(e.target.value)} />
+                <button onClick={() => setSubModal({ open: true })}
+                  className="px-4 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700">
                   + 구독 추가
                 </button>
               </div>
@@ -638,36 +711,56 @@ export default function LicensesPage() {
                       <th className="px-4 py-3 text-left">Product</th>
                       <th className="px-4 py-3 text-left">Plan</th>
                       <th className="px-4 py-3 text-left">Billing</th>
+                      <th className="px-4 py-3 text-left">결제일</th>
                       <th className="px-4 py-3 text-right">비용 (CAD)</th>
-                      <th className="px-4 py-3 text-left">갱신일</th>
                       <th className="px-4 py-3 text-left">Company</th>
                       <th className="px-4 py-3 text-left">Owner</th>
+                      <th className="px-4 py-3 text-left">사용자</th>
                       <th className="px-4 py-3 text-left">Status</th>
                       <th className="px-4 py-3 text-left">관리</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {filtSub.map(r => {
-                      const isRenewingSoon = (() => {
-                        if (!r.renewal_date) return false
-                        const diff = (new Date(r.renewal_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-                        return diff >= 0 && diff <= 30
-                      })()
+                      const soon = isRenewingSoon(r)
+                      const linked = r.subscription_employees ?? []
+                      const count = linked.length
+                      const dateStr = r.billing_day
+                        ? `매월 ${r.billing_day}일`
+                        : (r.renewal_date ?? '—')
+                      const nextDate = r.billing_day ? nextBillingDate(r.billing_day) : null
                       return (
-                        <tr key={r.id} className={`hover:bg-gray-50 ${isRenewingSoon ? 'bg-amber-50' : ''}`}>
+                        <tr key={r.id} className={`hover:bg-gray-50 ${soon ? 'bg-amber-50' : ''}`}>
                           <td className="px-4 py-2 font-medium text-gray-800">{r.vendor ?? '—'}</td>
                           <td className="px-4 py-2 text-gray-700">{r.product ?? '—'}</td>
                           <td className="px-4 py-2 text-gray-500 text-xs">{r.plan_name ?? '—'}</td>
                           <td className="px-4 py-2 text-gray-500 text-xs">{r.billing_cycle ?? '—'}</td>
-                          <td className="px-4 py-2 text-right font-medium">${(r.cost_cad ?? 0).toFixed(2)}</td>
                           <td className="px-4 py-2 text-xs">
-                            <span className={isRenewingSoon ? 'text-amber-600 font-semibold' : 'text-gray-500'}>
-                              {r.renewal_date ?? '—'}
-                              {isRenewingSoon && ' ⚠'}
+                            <span className={soon ? 'text-amber-600 font-semibold' : 'text-gray-500'}>
+                              {dateStr}{soon && ' ⚠'}
                             </span>
+                            {nextDate && <span className="block text-gray-400 text-xs">다음: {nextDate}</span>}
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            <span className="font-medium">${(r.cost_cad ?? 0).toFixed(2)}</span>
+                            {count > 1 && (
+                              <span className="block text-xs text-violet-500">인당 ${costPerPerson(r).toFixed(2)}</span>
+                            )}
                           </td>
                           <td className="px-4 py-2 text-gray-600">{r.company ?? '—'}</td>
-                          <td className="px-4 py-2 text-gray-600">{r.owner ?? r.employees?.name ?? '—'}</td>
+                          <td className="px-4 py-2 text-gray-600">{r.owner ?? '—'}</td>
+                          <td className="px-4 py-2 text-xs text-gray-600">
+                            {count === 0
+                              ? <span className="text-gray-300">없음</span>
+                              : count === 1
+                                ? linked[0].employees?.name ?? '—'
+                                : (
+                                  <span title={linked.map(se => se.employees?.name ?? '?').join(', ')}>
+                                    {linked[0].employees?.name} 외 {count - 1}명
+                                  </span>
+                                )
+                            }
+                          </td>
                           <td className="px-4 py-2"><Badge label={r.status} color={statusColor(r.status)} /></td>
                           <td className="px-4 py-2">
                             <div className="flex gap-2">
@@ -688,20 +781,14 @@ export default function LicensesPage() {
       )}
 
       {licModal.open && (
-        <LicenseModal
-          initial={licModal.item}
-          employees={employees}
+        <LicenseModal initial={licModal.item} employees={employees}
           onClose={() => setLicModal({ open: false })}
-          onSave={() => { setLicModal({ open: false }); load() }}
-        />
+          onSave={() => { setLicModal({ open: false }); load() }} />
       )}
       {subModal.open && (
-        <SubModal
-          initial={subModal.item}
-          employees={employees}
+        <SubModal initial={subModal.item} employees={employees}
           onClose={() => setSubModal({ open: false })}
-          onSave={() => { setSubModal({ open: false }); load() }}
-        />
+          onSave={() => { setSubModal({ open: false }); load() }} />
       )}
       {deleteTarget && (
         <DeleteDialog onCancel={() => setDeleteTarget(null)} onConfirm={handleDelete} />
