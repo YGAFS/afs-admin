@@ -88,6 +88,7 @@ export default function EmployeeSearch() {
   const [termDate,     setTermDate]     = useState('')
   const [addModal,     setAddModal]     = useState(false)
   const [addError,     setAddError]     = useState('')
+  const [deleteConfirm,setDeleteConfirm]= useState(false)
   const [newEmp,       setNewEmp]       = useState<NewEmpForm>(BLANK_FORM)
   const [posEdit,      setPosEdit]      = useState(false)
   const [posValue,     setPosValue]     = useState('')
@@ -224,6 +225,14 @@ export default function EmployeeSearch() {
     await supabase.from('employees').update({ is_active: true, end_date: null }).eq('id', selected.id)
     setEmps(p => p.filter(e => e.id !== selected.id))
     setSel(null); setSaving(false)
+  }
+
+  async function handleDeleteEmployee() {
+    if (!selected) return
+    setSaving(true)
+    await supabase.from('employees').delete().eq('id', selected.id)
+    setEmps(p => p.filter(e => e.id !== selected.id))
+    setSel(null); setDeleteConfirm(false); setSaving(false)
   }
 
   async function handleAddEmployee() {
@@ -472,6 +481,10 @@ export default function EmployeeSearch() {
                   <button onClick={exportEmployee}
                     className="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                     ↓ Export CSV
+                  </button>
+                  <button onClick={() => setDeleteConfirm(true)}
+                    className="px-3 py-1.5 text-xs text-gray-400 border border-gray-200 rounded-lg hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors">
+                    직원 삭제
                   </button>
                 </div>
               </div>
@@ -898,6 +911,32 @@ export default function EmployeeSearch() {
           </div>
         )
       })()}
+
+      {/* 직원 삭제 확인 모달 */}
+      {deleteConfirm && selected && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
+          onClick={() => setDeleteConfirm(false)}>
+          <div className="bg-white rounded-2xl p-6 w-80 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-gray-900 mb-1">직원 삭제</h3>
+            <p className="text-sm text-gray-600 mb-1">
+              <strong className="text-gray-900">{selected.name}</strong>을(를) 영구 삭제합니다.
+            </p>
+            <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2 mb-4">
+              근태 기록, 연결된 라이선스·자산 데이터가 모두 삭제됩니다. 되돌릴 수 없습니다.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={handleDeleteEmployee} disabled={saving}
+                className="flex-1 bg-red-600 disabled:bg-gray-300 text-white rounded-xl py-2.5 text-sm font-bold">
+                삭제
+              </button>
+              <button onClick={() => setDeleteConfirm(false)}
+                className="flex-1 border-2 border-gray-200 rounded-xl py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50">
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 퇴사 처리 모달 */}
       {termModal && selected && (
