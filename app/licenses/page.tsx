@@ -307,7 +307,8 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
     if (!form.vendor.trim() && !form.product.trim()) { setError('Vendor 또는 Product를 입력하세요.'); return }
     setSaving(true)
 
-    const payload = {
+    // billing_day 컬럼이 아직 없는 경우를 대비해 분리
+    const basePayload = {
       sub_id: form.sub_id || null,
       company: form.company || null,
       vendor: form.vendor || null,
@@ -315,23 +316,31 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
       plan_name: form.plan_name || null,
       billing_cycle: form.billing_cycle || null,
       cost_cad: cost,
-      billing_day: billingDayNum >= 1 && billingDayNum <= 31 ? billingDayNum : null,
       renewal_date: !form.billing_day && form.renewal_date ? form.renewal_date : null,
       owner: form.owner || null,
       status: form.status,
       notes: form.notes || null,
     }
+    const billingDayVal = billingDayNum >= 1 && billingDayNum <= 31 ? billingDayNum : null
 
-    let subId: string
-    if (initial) {
-      const { error: err } = await supabase.from('subscriptions').update(payload).eq('id', initial.id)
-      if (err) { setSaving(false); setError(err.message); return }
-      subId = initial.id
-    } else {
-      const { data, error: err } = await supabase.from('subscriptions').insert(payload).select('id').single()
-      if (err || !data) { setSaving(false); setError(err?.message ?? 'insert 실패'); return }
-      subId = data.id
+    async function tryUpsert(includeBillingDay: boolean) {
+      const payload = includeBillingDay ? { ...basePayload, billing_day: billingDayVal } : basePayload
+      if (initial) {
+        return supabase.from('subscriptions').update(payload).eq('id', initial.id).select('id').single()
+      } else {
+        return supabase.from('subscriptions').insert(payload).select('id').single()
+      }
     }
+
+    let result = await tryUpsert(true)
+    if (result.error?.message?.includes('billing_day')) {
+      // 마이그레이션 미실행 - billing_day 없이 재시도
+      result = await tryUpsert(false)
+    }
+    if (result.error || !result.data) {
+      setSaving(false); setError(result.error?.message ?? '저장 실패'); return
+    }
+    const subId: string = result.data.id
 
     // 조인 테이블 갱신
     await supabase.from('subscription_employees').delete().eq('subscription_id', subId)
@@ -560,29 +569,31 @@ export default function LicensesPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
+
     const [
       { data: lic, error: licErr },
       { data: sub, error: subErr },
       { data: emp },
-      { data: seRows },
     ] = await Promise.all([
       supabase.from('licenses')
         .select('id,account_id,display_name,email_address,alias,account_type,license_plan,monthly_cost_cad,status,company,employee_id,created_date,notes,employees(name)')
         .order('company'),
-      // subscription_employees는 별도 쿼리로 분리 (중첩 employees join 충돌 방지)
+      // * 사용: billing_day 등 신규 컬럼이 없어도 쿼리가 깨지지 않음
       supabase.from('subscriptions')
-        .select('id,sub_id,company,vendor,product,plan_name,billing_cycle,cost_cad,renewal_date,billing_day,employee_id,owner,status,notes,employees(name)')
+        .select('*,employees(name)')
         .order('vendor'),
       supabase.from('employees').select('id,name').order('name'),
-      supabase.from('subscription_employees')
-        .select('subscription_id,employee_id,employees(name)'),
     ])
 
-    if (licErr) console.error('licenses query error:', licErr)
-    if (subErr) console.error('subscriptions query error:', subErr)
+    if (licErr) console.error('[licenses]', licErr.message)
+    if (subErr) console.error('[subscriptions]', subErr.message)
 
-    // subscription_employees를 각 구독에 병합
+    // subscription_employees는 별도 쿼리 (테이블 없어도 graceful)
     const seMap: Record<string, SubEmployee[]> = {}
+    const { data: seRows, error: seErr } = await supabase
+      .from('subscription_employees')
+      .select('subscription_id,employee_id,employees(name)')
+    if (seErr) console.warn('[subscription_employees]', seErr.message)
     ;(seRows as SubEmpRow[] ?? []).forEach(row => {
       if (!seMap[row.subscription_id]) seMap[row.subscription_id] = []
       seMap[row.subscription_id].push({ employee_id: row.employee_id, employees: row.employees })
