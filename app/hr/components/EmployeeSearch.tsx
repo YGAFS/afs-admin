@@ -33,18 +33,21 @@ type Asset = {
 const MO = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
 
 function calcDays(code: string) { return ['L1','L2','S1','S2'].includes(code) ? 0.5 : 1 }
-function calcAccrued(emp: { vacation_allowance: number; probation_end?: string }, year: number): number {
-  const today   = new Date()
-  const calcTo  = year < today.getFullYear() ? new Date(year, 11, 31) : today
+function calcAccrued(emp: { vacation_allowance: number; probation_end?: string; start_date?: string }, year: number): number {
+  const today  = new Date()
+  const calcTo = year < today.getFullYear() ? new Date(year, 11, 31) : today
+  // 입사 전 연도면 적립 없음
+  if (emp.start_date && new Date(emp.start_date) > calcTo) return 0
   if (emp.probation_end) {
     const pe = new Date(emp.probation_end)
     if (pe > calcTo) return 0
-    // 수습이 전년도에 종료됐으면 해당 연도 1월 1일부터 새로 적립
     const accrualStart = pe.getFullYear() < year ? new Date(year, 0, 1) : pe
     return Math.min(((calcTo.getTime() - accrualStart.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
   }
-  const soy = new Date(year, 0, 1)
-  return Math.min(((calcTo.getTime() - soy.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
+  // 입사일이 해당 연도 중간이면 입사일부터 계산
+  const soy          = new Date(year, 0, 1)
+  const accrualStart = emp.start_date && new Date(emp.start_date) > soy ? new Date(emp.start_date) : soy
+  return Math.min(((calcTo.getTime() - accrualStart.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
 }
 function todayIso() {
   const d = new Date()

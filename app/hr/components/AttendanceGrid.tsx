@@ -51,19 +51,20 @@ const TEAM_ORDER = ['Team Sales','Team Accounting','Team Operations','Department
 
 // refDate: 뷰 월 말일 기준으로 적립 계산 (미래 월이면 오늘로 클램프)
 function calcAccrued(emp: Employee, refYear: number, refMonth: number): number {
-  const today   = new Date()
-  const monthEnd = new Date(refYear, refMonth, 0) // 해당 월 말일
-  const calcTo  = monthEnd < today ? monthEnd : today
-
+  const today    = new Date()
+  const monthEnd = new Date(refYear, refMonth, 0)
+  const calcTo   = monthEnd < today ? monthEnd : today
+  // 입사 전 연도면 적립 없음
+  if (emp.start_date && new Date(emp.start_date) > calcTo) return 0
   if (emp.probation_end) {
     const pe = new Date(emp.probation_end)
-    if (pe > calcTo) return 0   // 뷰 월 기준으로 아직 수습 중
-    // 수습이 전년도에 종료됐으면 해당 연도 1월 1일부터 새로 적립
+    if (pe > calcTo) return 0
     const accrualStart = pe.getFullYear() < refYear ? new Date(refYear, 0, 1) : pe
     return Math.min(((calcTo.getTime() - accrualStart.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
   }
-  const soy = new Date(calcTo.getFullYear(), 0, 1)
-  return Math.min(((calcTo.getTime() - soy.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
+  const soy          = new Date(refYear, 0, 1)
+  const accrualStart = emp.start_date && new Date(emp.start_date) > soy ? new Date(emp.start_date) : soy
+  return Math.min(((calcTo.getTime() - accrualStart.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
 }
 function vacDisplay(emp: Employee, taken: number, year: number, month: number, carryover: number) {
   if (emp.is_exempt) return null
