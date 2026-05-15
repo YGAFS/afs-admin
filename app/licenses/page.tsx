@@ -155,21 +155,22 @@ const emptyLicenseForm: LicenseForm = {
   status: 'Active', company: '', employee_id: '', notes: '',
 }
 
-function LicenseModal({ initial, employees, onClose, onSave }: {
-  initial?: License; employees: Employee[]; onClose: () => void; onSave: () => void
+function LicenseModal({ initial, clone, employees, onClose, onSave }: {
+  initial?: License; clone?: License; employees: Employee[]; onClose: () => void; onSave: () => void
 }) {
-  const [form, setForm] = useState<LicenseForm>(initial ? {
-    account_id: initial.account_id ?? '',
-    display_name: initial.display_name ?? '',
-    email_address: initial.email_address ?? '',
-    alias: initial.alias ?? '',
-    account_type: initial.account_type ?? 'Individual',
-    license_plan: initial.license_plan ?? '',
-    monthly_cost_cad: String(initial.monthly_cost_cad ?? 0),
-    status: initial.status ?? 'Active',
-    company: initial.company ?? '',
-    employee_id: initial.employee_id ?? '',
-    notes: initial.notes ?? '',
+  const src = initial ?? clone
+  const [form, setForm] = useState<LicenseForm>(src ? {
+    account_id: initial ? (src.account_id ?? '') : '',  // 복제 시 ID는 비움
+    display_name: src.display_name ?? '',
+    email_address: initial ? (src.email_address ?? '') : '',  // 복제 시 이메일도 비움
+    alias: src.alias ?? '',
+    account_type: src.account_type ?? 'Individual',
+    license_plan: src.license_plan ?? '',
+    monthly_cost_cad: String(src.monthly_cost_cad ?? 0),
+    status: src.status ?? 'Active',
+    company: src.company ?? '',
+    employee_id: src.employee_id ?? '',
+    notes: src.notes ?? '',
   } : emptyLicenseForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -203,7 +204,7 @@ function LicenseModal({ initial, employees, onClose, onSave }: {
   }
 
   return (
-    <Modal title={initial ? 'M365 계정 편집' : 'M365 계정 추가'} onClose={onClose}>
+    <Modal title={initial ? 'M365 계정 편집' : clone ? 'M365 계정 복제' : 'M365 계정 추가'} onClose={onClose}>
       {error && <p className="text-red-500 text-xs mb-3 bg-red-50 p-2 rounded">{error}</p>}
       <div className="grid grid-cols-2 gap-x-3">
         <Field label="Account ID *"><input className={inputCls} value={form.account_id} onChange={set('account_id')} placeholder="A-001" /></Field>
@@ -260,23 +261,24 @@ const emptySubForm: SubForm = {
   employee_ids: [], owner: '', status: 'Active', notes: '',
 }
 
-function SubModal({ initial, employees, onClose, onSave }: {
-  initial?: Subscription; employees: Employee[]; onClose: () => void; onSave: () => void
+function SubModal({ initial, clone, employees, onClose, onSave }: {
+  initial?: Subscription; clone?: Subscription; employees: Employee[]; onClose: () => void; onSave: () => void
 }) {
-  const [form, setForm] = useState<SubForm>(initial ? {
-    sub_id: initial.sub_id ?? '',
-    company: initial.company ?? '',
-    vendor: initial.vendor ?? '',
-    product: initial.product ?? '',
-    plan_name: initial.plan_name ?? '',
-    billing_cycle: initial.billing_cycle ?? 'Annual',
-    cost_cad: String(initial.cost_cad ?? 0),
-    billing_day: initial.billing_day ? String(initial.billing_day) : '',
-    renewal_date: initial.renewal_date ?? '',
-    employee_ids: (initial.subscription_employees ?? []).map(se => se.employee_id),
-    owner: initial.owner ?? '',
-    status: initial.status ?? 'Active',
-    notes: initial.notes ?? '',
+  const src = initial ?? clone
+  const [form, setForm] = useState<SubForm>(src ? {
+    sub_id: '',  // 항상 비움 (복제/신규 모두 새 ID)
+    company: src.company ?? '',
+    vendor: src.vendor ?? '',
+    product: src.product ?? '',
+    plan_name: src.plan_name ?? '',
+    billing_cycle: src.billing_cycle ?? 'Annual',
+    cost_cad: String(src.cost_cad ?? 0),
+    billing_day: src.billing_day ? String(src.billing_day) : '',
+    renewal_date: src.renewal_date ?? '',
+    employee_ids: (src.subscription_employees ?? []).map(se => se.employee_id),
+    owner: src.owner ?? '',
+    status: src.status ?? 'Active',
+    notes: src.notes ?? '',
   } : emptySubForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -343,7 +345,7 @@ function SubModal({ initial, employees, onClose, onSave }: {
   }
 
   return (
-    <Modal title={initial ? '구독 편집' : '구독 추가'} onClose={onClose}>
+    <Modal title={initial ? '구독 편집' : clone ? '구독 복제' : '구독 추가'} onClose={onClose}>
       {error && <p className="text-red-500 text-xs mb-3 bg-red-50 p-2 rounded">{error}</p>}
       <div className="grid grid-cols-2 gap-x-3">
         <Field label="Vendor *"><input className={inputCls} value={form.vendor} onChange={set('vendor')} placeholder="Adobe, Loadlink…" /></Field>
@@ -551,8 +553,8 @@ export default function LicensesPage() {
   const [view, setView] = useState<ViewTab>('dashboard')
   const [licSearch, setLicSearch] = useState('')
   const [subSearch, setSubSearch] = useState('')
-  const [licModal, setLicModal] = useState<{ open: boolean; item?: License }>({ open: false })
-  const [subModal, setSubModal] = useState<{ open: boolean; item?: Subscription }>({ open: false })
+  const [licModal, setLicModal] = useState<{ open: boolean; item?: License; clone?: License }>({ open: false })
+  const [subModal, setSubModal] = useState<{ open: boolean; item?: Subscription; clone?: Subscription }>({ open: false })
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'license' | 'subscription'; id: string } | null>(null)
 
   const load = useCallback(async () => {
@@ -681,6 +683,7 @@ export default function LicensesPage() {
                         <td className="px-4 py-2">
                           <div className="flex gap-2">
                             <button onClick={() => setLicModal({ open: true, item: r })} className="text-xs text-blue-500 hover:underline">편집</button>
+                            <button onClick={() => setLicModal({ open: true, clone: r })} className="text-xs text-gray-400 hover:underline">복제</button>
                             <button onClick={() => setDeleteTarget({ type: 'license', id: r.id })} className="text-xs text-red-400 hover:underline">삭제</button>
                           </div>
                         </td>
@@ -765,6 +768,7 @@ export default function LicensesPage() {
                           <td className="px-4 py-2">
                             <div className="flex gap-2">
                               <button onClick={() => setSubModal({ open: true, item: r })} className="text-xs text-blue-500 hover:underline">편집</button>
+                              <button onClick={() => setSubModal({ open: true, clone: r })} className="text-xs text-gray-400 hover:underline">복제</button>
                               <button onClick={() => setDeleteTarget({ type: 'subscription', id: r.id })} className="text-xs text-red-400 hover:underline">삭제</button>
                             </div>
                           </td>
@@ -781,12 +785,12 @@ export default function LicensesPage() {
       )}
 
       {licModal.open && (
-        <LicenseModal initial={licModal.item} employees={employees}
+        <LicenseModal initial={licModal.item} clone={licModal.clone} employees={employees}
           onClose={() => setLicModal({ open: false })}
           onSave={() => { setLicModal({ open: false }); load() }} />
       )}
       {subModal.open && (
-        <SubModal initial={subModal.item} employees={employees}
+        <SubModal initial={subModal.item} clone={subModal.clone} employees={employees}
           onClose={() => setSubModal({ open: false })}
           onSave={() => { setSubModal({ open: false }); load() }} />
       )}

@@ -112,25 +112,26 @@ const emptyAssetForm: AssetForm = {
   condition: 'In Use', location: '', employee_id: '', notes: '',
 }
 
-function AssetModal({ initial, employees, onClose, onSave }: {
-  initial?: Asset; employees: Employee[]; onClose: () => void; onSave: () => void
+function AssetModal({ initial, clone, employees, onClose, onSave }: {
+  initial?: Asset; clone?: Asset; employees: Employee[]; onClose: () => void; onSave: () => void
 }) {
-  const [form, setForm] = useState<AssetForm>(initial ? {
-    asset_id: initial.asset_id ?? '',
-    company: initial.company ?? '',
-    category: initial.category ?? '',
-    item_name: initial.item_name ?? '',
-    brand: initial.brand ?? '',
-    model: initial.model ?? '',
-    serial_number: initial.serial_number ?? '',
-    purchase_date: initial.purchase_date ?? '',
-    purchase_price: initial.purchase_price != null ? String(initial.purchase_price) : '',
-    vendor: initial.vendor ?? '',
-    warranty_end: initial.warranty_end ?? '',
-    condition: initial.condition ?? 'In Use',
-    location: initial.location ?? '',
-    employee_id: initial.employee_id ?? '',
-    notes: initial.notes ?? '',
+  const src = initial ?? clone
+  const [form, setForm] = useState<AssetForm>(src ? {
+    asset_id: initial ? (src.asset_id ?? '') : '',  // 복제 시 ID 비움
+    company: src.company ?? '',
+    category: src.category ?? '',
+    item_name: src.item_name ?? '',
+    brand: src.brand ?? '',
+    model: src.model ?? '',
+    serial_number: initial ? (src.serial_number ?? '') : '',  // 복제 시 시리얼 비움
+    purchase_date: src.purchase_date ?? '',
+    purchase_price: src.purchase_price != null ? String(src.purchase_price) : '',
+    vendor: src.vendor ?? '',
+    warranty_end: src.warranty_end ?? '',
+    condition: src.condition ?? 'In Use',
+    location: src.location ?? '',
+    employee_id: src.employee_id ?? '',
+    notes: src.notes ?? '',
   } : emptyAssetForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -169,7 +170,7 @@ function AssetModal({ initial, employees, onClose, onSave }: {
   }
 
   return (
-    <Modal title={initial ? '자산 편집' : '자산 추가'} onClose={onClose}>
+    <Modal title={initial ? '자산 편집' : clone ? '자산 복제' : '자산 추가'} onClose={onClose}>
       {error && <p className="text-red-500 text-xs mb-3 bg-red-50 p-2 rounded">{error}</p>}
       <div className="grid grid-cols-2 gap-x-3">
         <Field label="Asset ID *"><input className={inputCls} value={form.asset_id} onChange={set('asset_id')} placeholder="IT-001" /></Field>
@@ -335,7 +336,7 @@ export default function AssetsPage() {
   const [view, setView] = useState<ViewTab>('dashboard')
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
-  const [modal, setModal] = useState<{ open: boolean; item?: Asset }>({ open: false })
+  const [modal, setModal] = useState<{ open: boolean; item?: Asset; clone?: Asset }>({ open: false })
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -491,6 +492,7 @@ export default function AssetsPage() {
                           <td className="px-4 py-2">
                             <div className="flex gap-2">
                               <button onClick={() => setModal({ open: true, item: r })} className="text-xs text-blue-500 hover:underline">편집</button>
+                              <button onClick={() => setModal({ open: true, clone: r })} className="text-xs text-gray-400 hover:underline">복제</button>
                               <button onClick={() => setDeleteTarget(r.id)} className="text-xs text-red-400 hover:underline">삭제</button>
                             </div>
                           </td>
@@ -509,6 +511,7 @@ export default function AssetsPage() {
       {modal.open && (
         <AssetModal
           initial={modal.item}
+          clone={modal.clone}
           employees={employees}
           onClose={() => setModal({ open: false })}
           onSave={() => { setModal({ open: false }); load() }}
