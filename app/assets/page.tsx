@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { useLocale } from '@/app/providers'
+import { t } from '@/lib/i18n'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -82,14 +84,15 @@ const inputCls = 'w-full border rounded-lg px-3 py-2 text-sm focus:outline-none 
 const selectCls = 'w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white'
 
 function DeleteDialog({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+  const { locale } = useLocale()
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl p-6 w-80">
-        <p className="text-gray-800 font-medium mb-1">정말 삭제하시겠습니까?</p>
-        <p className="text-gray-500 text-sm mb-5">이 작업은 되돌릴 수 없습니다.</p>
+        <p className="text-gray-800 font-medium mb-1">{t('common.delete_confirm', locale)}</p>
+        <p className="text-gray-500 text-sm mb-5">{t('common.delete_warning', locale)}</p>
         <div className="flex justify-end gap-2">
-          <button onClick={onCancel} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">취소</button>
-          <button onClick={onConfirm} className="px-4 py-2 text-sm rounded-lg bg-red-500 text-white hover:bg-red-600">삭제</button>
+          <button onClick={onCancel} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">{t('common.cancel', locale)}</button>
+          <button onClick={onConfirm} className="px-4 py-2 text-sm rounded-lg bg-red-500 text-white hover:bg-red-600">{t('common.delete', locale)}</button>
         </div>
       </div>
     </div>
@@ -115,15 +118,16 @@ const emptyAssetForm: AssetForm = {
 function AssetModal({ initial, clone, employees, onClose, onSave }: {
   initial?: Asset; clone?: Asset; employees: Employee[]; onClose: () => void; onSave: () => void
 }) {
+  const { locale } = useLocale()
   const src = initial ?? clone
   const [form, setForm] = useState<AssetForm>(src ? {
-    asset_id: initial ? (src.asset_id ?? '') : '',  // 복제 시 ID 비움
+    asset_id: initial ? (src.asset_id ?? '') : '',
     company: src.company ?? '',
     category: src.category ?? '',
     item_name: src.item_name ?? '',
     brand: src.brand ?? '',
     model: src.model ?? '',
-    serial_number: initial ? (src.serial_number ?? '') : '',  // 복제 시 시리얼 비움
+    serial_number: initial ? (src.serial_number ?? '') : '',
     purchase_date: src.purchase_date ?? '',
     purchase_price: src.purchase_price != null ? String(src.purchase_price) : '',
     vendor: src.vendor ?? '',
@@ -141,8 +145,8 @@ function AssetModal({ initial, clone, employees, onClose, onSave }: {
       setForm(p => ({ ...p, [k]: e.target.value }))
 
   async function handleSubmit() {
-    if (!form.asset_id.trim()) { setError('Asset ID는 필수입니다.'); return }
-    if (!form.item_name.trim()) { setError('Item Name은 필수입니다.'); return }
+    if (!form.asset_id.trim()) { setError(t('assets.form.asset_id_req', locale)); return }
+    if (!form.item_name.trim()) { setError(t('assets.form.item_name_req', locale)); return }
     setSaving(true)
     const payload = {
       asset_id: form.asset_id.trim(),
@@ -169,21 +173,27 @@ function AssetModal({ initial, clone, employees, onClose, onSave }: {
     onSave()
   }
 
+  const title = initial
+    ? t('assets.modal.edit', locale)
+    : clone
+      ? t('assets.modal.clone', locale)
+      : t('assets.modal.add', locale)
+
   return (
-    <Modal title={initial ? '자산 편집' : clone ? '자산 복제' : '자산 추가'} onClose={onClose}>
+    <Modal title={title} onClose={onClose}>
       {error && <p className="text-red-500 text-xs mb-3 bg-red-50 p-2 rounded">{error}</p>}
       <div className="grid grid-cols-2 gap-x-3">
         <Field label="Asset ID *"><input className={inputCls} value={form.asset_id} onChange={set('asset_id')} placeholder="IT-001" /></Field>
         <Field label="Company">
           <select className={selectCls} value={form.company} onChange={set('company')}>
-            <option value="">선택</option>
+            <option value="">{t('common.select', locale)}</option>
             {COMPANIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
         <Field label="Item Name *"><input className={inputCls} value={form.item_name} onChange={set('item_name')} /></Field>
         <Field label="Category">
           <select className={selectCls} value={form.category} onChange={set('category')}>
-            <option value="">선택</option>
+            <option value="">{t('common.select', locale)}</option>
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
@@ -202,16 +212,16 @@ function AssetModal({ initial, clone, employees, onClose, onSave }: {
         <Field label="Location"><input className={inputCls} value={form.location} onChange={set('location')} /></Field>
         <Field label="Assigned To">
           <select className={selectCls} value={form.employee_id} onChange={set('employee_id')}>
-            <option value="">미배정</option>
+            <option value="">{t('common.unassigned', locale)}</option>
             {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </Field>
       </div>
       <Field label="Notes"><textarea className={inputCls} rows={2} value={form.notes} onChange={set('notes')} /></Field>
       <div className="flex justify-end gap-2 mt-4">
-        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">취소</button>
+        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">{t('common.cancel', locale)}</button>
         <button onClick={handleSubmit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
-          {saving ? '저장 중…' : '저장'}
+          {saving ? t('common.saving', locale) : t('common.save', locale)}
         </button>
       </div>
     </Modal>
@@ -221,6 +231,7 @@ function AssetModal({ initial, clone, employees, onClose, onSave }: {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 function Dashboard({ assets, company }: { assets: Asset[]; company: string }) {
+  const { locale } = useLocale()
   const filt = company ? assets.filter(a => a.company === company) : assets
 
   const byCond: Record<string, number> = {}
@@ -231,7 +242,6 @@ function Dashboard({ assets, company }: { assets: Asset[]; company: string }) {
 
   const totalValue = filt.reduce((s, a) => s + (a.purchase_price ?? 0), 0)
 
-  // 보증 만료 임박 (60일 이내)
   const today = new Date()
   const warrantyExpiring = filt
     .filter(a => a.condition === 'In Use' && a.warranty_end)
@@ -248,22 +258,22 @@ function Dashboard({ assets, company }: { assets: Asset[]; company: string }) {
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl shadow p-5 border-t-4 border-blue-500">
-          <p className="text-xs text-gray-500 mb-1">전체 자산</p>
-          <p className="text-2xl font-bold text-gray-800">{filt.length}<span className="text-sm font-normal text-gray-400 ml-1">건</span></p>
-          <p className="text-xs text-gray-400 mt-1">{company || '전체 회사'}</p>
+          <p className="text-xs text-gray-500 mb-1">{t('assets.stat.total', locale)}</p>
+          <p className="text-2xl font-bold text-gray-800">{filt.length}<span className="text-sm font-normal text-gray-400 ml-1">{t('common.items', locale)}</span></p>
+          <p className="text-xs text-gray-400 mt-1">{company || t('assets.stat.all_companies', locale)}</p>
         </div>
         <div className="bg-white rounded-xl shadow p-5 border-t-4 border-green-500">
-          <p className="text-xs text-gray-500 mb-1">사용 중</p>
-          <p className="text-2xl font-bold text-green-700">{byCond['In Use'] ?? 0}<span className="text-sm font-normal text-gray-400 ml-1">건</span></p>
+          <p className="text-xs text-gray-500 mb-1">{t('assets.stat.in_use', locale)}</p>
+          <p className="text-2xl font-bold text-green-700">{byCond['In Use'] ?? 0}<span className="text-sm font-normal text-gray-400 ml-1">{t('common.items', locale)}</span></p>
           <p className="text-xs text-gray-400 mt-1">In Use</p>
         </div>
         <div className="bg-white rounded-xl shadow p-5 border-t-4 border-yellow-500">
-          <p className="text-xs text-gray-500 mb-1">보관 중</p>
-          <p className="text-2xl font-bold text-yellow-600">{byCond['Storage'] ?? 0}<span className="text-sm font-normal text-gray-400 ml-1">건</span></p>
+          <p className="text-xs text-gray-500 mb-1">{t('assets.stat.storage', locale)}</p>
+          <p className="text-2xl font-bold text-yellow-600">{byCond['Storage'] ?? 0}<span className="text-sm font-normal text-gray-400 ml-1">{t('common.items', locale)}</span></p>
           <p className="text-xs text-gray-400 mt-1">Storage</p>
         </div>
         <div className="bg-white rounded-xl shadow p-5 border-t-4 border-gray-400">
-          <p className="text-xs text-gray-500 mb-1">총 자산 가치</p>
+          <p className="text-xs text-gray-500 mb-1">{t('assets.stat.total_value', locale)}</p>
           <p className="text-2xl font-bold text-gray-700">${totalValue.toLocaleString()}</p>
           <p className="text-xs text-gray-400 mt-1">CAD</p>
         </div>
@@ -271,7 +281,7 @@ function Dashboard({ assets, company }: { assets: Asset[]; company: string }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl shadow p-5">
-          <h3 className="font-semibold text-gray-700 text-sm mb-3">카테고리별 분포</h3>
+          <h3 className="font-semibold text-gray-700 text-sm mb-3">{t('assets.chart.by_category', locale)}</h3>
           <div className="space-y-2">
             {Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([cat, count]) => (
               <div key={cat} className="flex items-center gap-2">
@@ -282,12 +292,12 @@ function Dashboard({ assets, company }: { assets: Asset[]; company: string }) {
                 </div>
               </div>
             ))}
-            {Object.keys(byCat).length === 0 && <p className="text-gray-400 text-sm">데이터 없음</p>}
+            {Object.keys(byCat).length === 0 && <p className="text-gray-400 text-sm">{t('common.no_data', locale)}</p>}
           </div>
         </div>
 
         <div className="bg-white rounded-xl shadow p-5">
-          <h3 className="font-semibold text-gray-700 text-sm mb-3">상태별 분포</h3>
+          <h3 className="font-semibold text-gray-700 text-sm mb-3">{t('assets.chart.by_condition', locale)}</h3>
           <div className="space-y-2">
             {CONDITIONS.map(cond => {
               const count = byCond[cond] ?? 0
@@ -309,12 +319,12 @@ function Dashboard({ assets, company }: { assets: Asset[]; company: string }) {
 
       {warrantyExpiring.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <h3 className="font-semibold text-amber-800 text-sm mb-2">⚠ 60일 내 보증 만료 예정</h3>
+          <h3 className="font-semibold text-amber-800 text-sm mb-2">{t('assets.warranty_alert', locale)}</h3>
           <div className="space-y-1">
             {warrantyExpiring.map(a => (
               <div key={a.id} className="flex justify-between text-xs text-amber-700">
                 <span>{a.item_name} ({a.asset_id})</span>
-                <span>만료: {a.warranty_end} · {a.employees?.name ?? '미배정'}</span>
+                <span>{t('assets.warranty_expires', locale)} {a.warranty_end} · {a.employees?.name ?? t('common.unassigned', locale)}</span>
               </div>
             ))}
           </div>
@@ -329,6 +339,7 @@ function Dashboard({ assets, company }: { assets: Asset[]; company: string }) {
 type ViewTab = 'dashboard' | 'list'
 
 export default function AssetsPage() {
+  const { locale } = useLocale()
   const [assets, setAssets] = useState<Asset[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
@@ -372,16 +383,23 @@ export default function AssetsPage() {
     return matchCo && matchCat && matchQ
   })
 
-  const companyTabs = [{ label: '전체', value: '' }, ...COMPANIES.map(c => ({ label: c, value: c }))]
+  const companyTabs = [
+    { label: t('assets.all_companies', locale), value: '' },
+    ...COMPANIES.map(c => ({ label: c, value: c })),
+  ]
+
+  const viewTabs: { labelKey: string; value: ViewTab }[] = [
+    { labelKey: 'assets.tab.dashboard', value: 'dashboard' },
+    { labelKey: 'assets.tab.list',      value: 'list' },
+  ]
 
   return (
     <div className="p-6">
       <div className="mb-4">
-        <h1 className="text-xl font-bold text-gray-800">IT 자산 관리</h1>
-        <p className="text-sm text-gray-500 mt-0.5">하드웨어 및 장비 자산 목록</p>
+        <h1 className="text-xl font-bold text-gray-800">{t('assets.title', locale)}</h1>
+        <p className="text-sm text-gray-500 mt-0.5">{t('assets.subtitle', locale)}</p>
       </div>
 
-      {/* Company filter */}
       <div className="flex gap-1.5 mb-4 flex-wrap">
         {companyTabs.map(tab => (
           <button
@@ -396,9 +414,8 @@ export default function AssetsPage() {
         ))}
       </div>
 
-      {/* View tabs */}
       <div className="flex border-b border-gray-200 mb-5">
-        {([{ label: '대시보드', value: 'dashboard' }, { label: '전체 목록', value: 'list' }] as { label: string; value: ViewTab }[]).map(tab => (
+        {viewTabs.map(tab => (
           <button
             key={tab.value}
             onClick={() => setView(tab.value)}
@@ -406,7 +423,7 @@ export default function AssetsPage() {
               view === tab.value ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            {tab.label}
+            {t(tab.labelKey, locale)}
           </button>
         ))}
       </div>
@@ -426,12 +443,12 @@ export default function AssetsPage() {
                     value={catFilter}
                     onChange={e => setCatFilter(e.target.value)}
                   >
-                    <option value="">전체 카테고리</option>
+                    <option value="">{t('assets.all_categories', locale)}</option>
                     {cats.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                   <input
                     className="border rounded-lg px-3 py-2 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    placeholder="이름 / 모델 검색…"
+                    placeholder={t('assets.search_placeholder', locale)}
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                   />
@@ -440,7 +457,7 @@ export default function AssetsPage() {
                   onClick={() => setModal({ open: true })}
                   className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
                 >
-                  + 자산 추가
+                  {t('assets.add', locale)}
                 </button>
               </div>
               <div className="bg-white rounded-xl shadow overflow-x-auto">
@@ -453,12 +470,12 @@ export default function AssetsPage() {
                       <th className="px-4 py-3 text-left">Brand / Model</th>
                       <th className="px-4 py-3 text-left">Serial</th>
                       <th className="px-4 py-3 text-left">Company</th>
-                      <th className="px-4 py-3 text-left">배정 직원</th>
-                      <th className="px-4 py-3 text-left">구입일</th>
-                      <th className="px-4 py-3 text-right">구입가</th>
-                      <th className="px-4 py-3 text-left">보증 만료</th>
-                      <th className="px-4 py-3 text-left">상태</th>
-                      <th className="px-4 py-3 text-left">관리</th>
+                      <th className="px-4 py-3 text-left">{t('assets.col.assigned_to', locale)}</th>
+                      <th className="px-4 py-3 text-left">{t('assets.col.purchase_date', locale)}</th>
+                      <th className="px-4 py-3 text-right">{t('assets.col.purchase_price', locale)}</th>
+                      <th className="px-4 py-3 text-left">{t('assets.col.warranty', locale)}</th>
+                      <th className="px-4 py-3 text-left">{t('assets.col.condition', locale)}</th>
+                      <th className="px-4 py-3 text-left">{t('assets.col.actions', locale)}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -476,7 +493,7 @@ export default function AssetsPage() {
                           <td className="px-4 py-2 text-gray-600">{[r.brand, r.model].filter(Boolean).join(' / ') || '—'}</td>
                           <td className="px-4 py-2 font-mono text-xs text-gray-500">{r.serial_number ?? '—'}</td>
                           <td className="px-4 py-2 text-gray-600">{r.company ?? '—'}</td>
-                          <td className="px-4 py-2 text-gray-600">{r.employees?.name ?? <span className="text-gray-300">미배정</span>}</td>
+                          <td className="px-4 py-2 text-gray-600">{r.employees?.name ?? <span className="text-gray-300">{t('common.unassigned', locale)}</span>}</td>
                           <td className="px-4 py-2 text-gray-500 text-xs">{r.purchase_date ?? '—'}</td>
                           <td className="px-4 py-2 text-right text-gray-600">
                             {r.purchase_price != null ? `$${r.purchase_price.toLocaleString()}` : '—'}
@@ -491,9 +508,9 @@ export default function AssetsPage() {
                           </td>
                           <td className="px-4 py-2">
                             <div className="flex gap-2">
-                              <button onClick={() => setModal({ open: true, item: r })} className="text-xs text-blue-500 hover:underline">편집</button>
-                              <button onClick={() => setModal({ open: true, clone: r })} className="text-xs text-gray-400 hover:underline">복제</button>
-                              <button onClick={() => setDeleteTarget(r.id)} className="text-xs text-red-400 hover:underline">삭제</button>
+                              <button onClick={() => setModal({ open: true, item: r })} className="text-xs text-blue-500 hover:underline">{t('common.edit', locale)}</button>
+                              <button onClick={() => setModal({ open: true, clone: r })} className="text-xs text-gray-400 hover:underline">{t('common.clone', locale)}</button>
+                              <button onClick={() => setDeleteTarget(r.id)} className="text-xs text-red-400 hover:underline">{t('common.delete', locale)}</button>
                             </div>
                           </td>
                         </tr>
@@ -501,7 +518,7 @@ export default function AssetsPage() {
                     })}
                   </tbody>
                 </table>
-                {filtered.length === 0 && <p className="text-center text-gray-400 py-8 text-sm">결과 없음</p>}
+                {filtered.length === 0 && <p className="text-center text-gray-400 py-8 text-sm">{t('common.no_results', locale)}</p>}
               </div>
             </div>
           )}

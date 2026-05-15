@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { useLocale } from '@/app/providers'
+import { t } from '@/lib/i18n'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,6 +14,7 @@ type Stats = { total: number; absent: number; wfh: number; highVac: number }
 
 export default function HrSummaryCards() {
   const [stats, setStats] = useState<Stats>({ total: 0, absent: 0, wfh: 0, highVac: 0 })
+  const { locale } = useLocale()
 
   useEffect(() => {
     async function load() {
@@ -58,38 +61,40 @@ export default function HrSummaryCards() {
     load()
   }, [])
 
+  const unit = t('hr.cards.unit', locale)
+
   const cards = [
     {
-      label: '전체 직원',
+      label: t('hr.cards.total', locale),
       value: stats.total,
-      unit: '명',
+      unit,
       bg: 'bg-blue-50',
       border: 'border-blue-200',
       numColor: 'text-blue-700',
       labelColor: 'text-blue-600',
     },
     {
-      label: '오늘 부재',
+      label: t('hr.cards.absent', locale),
       value: stats.absent,
-      unit: '명',
+      unit,
       bg: 'bg-red-50',
       border: 'border-red-200',
       numColor: 'text-red-600',
       labelColor: 'text-red-500',
     },
     {
-      label: '오늘 재택',
+      label: t('hr.cards.wfh', locale),
       value: stats.wfh,
-      unit: '명',
+      unit,
       bg: 'bg-purple-50',
       border: 'border-purple-200',
       numColor: 'text-purple-700',
       labelColor: 'text-purple-500',
     },
     {
-      label: '연차 18일+ 사용',
+      label: t('hr.cards.high_vac', locale),
       value: stats.highVac,
-      unit: '명',
+      unit,
       bg: 'bg-amber-50',
       border: 'border-amber-200',
       numColor: 'text-amber-700',

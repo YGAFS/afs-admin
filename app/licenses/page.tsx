@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { useLocale } from '@/app/providers'
+import { t } from '@/lib/i18n'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -59,7 +61,6 @@ const BILLING_CYCLES = ['Monthly', 'Annual', 'One-time']
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** 매월 N일 기준으로 오늘 이후의 다음 결제일 */
 function nextBillingDate(day: number): string {
   const today = new Date()
   let year = today.getFullYear()
@@ -97,8 +98,8 @@ function statusColor(s: string) {
   return s === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
 }
 
-function accountTypeColor(t: string) {
-  return t === 'Shared' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+function accountTypeColor(tp: string) {
+  return tp === 'Shared' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -128,14 +129,15 @@ const inputCls = 'w-full border rounded-lg px-3 py-2 text-sm focus:outline-none 
 const selectCls = 'w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white'
 
 function DeleteDialog({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+  const { locale } = useLocale()
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl p-6 w-80">
-        <p className="text-gray-800 font-medium mb-1">정말 삭제하시겠습니까?</p>
-        <p className="text-gray-500 text-sm mb-5">이 작업은 되돌릴 수 없습니다.</p>
+        <p className="text-gray-800 font-medium mb-1">{t('common.delete_confirm', locale)}</p>
+        <p className="text-gray-500 text-sm mb-5">{t('common.delete_warning', locale)}</p>
         <div className="flex justify-end gap-2">
-          <button onClick={onCancel} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">취소</button>
-          <button onClick={onConfirm} className="px-4 py-2 text-sm rounded-lg bg-red-500 text-white hover:bg-red-600">삭제</button>
+          <button onClick={onCancel} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">{t('common.cancel', locale)}</button>
+          <button onClick={onConfirm} className="px-4 py-2 text-sm rounded-lg bg-red-500 text-white hover:bg-red-600">{t('common.delete', locale)}</button>
         </div>
       </div>
     </div>
@@ -159,11 +161,12 @@ const emptyLicenseForm: LicenseForm = {
 function LicenseModal({ initial, clone, employees, onClose, onSave }: {
   initial?: License; clone?: License; employees: Employee[]; onClose: () => void; onSave: () => void
 }) {
+  const { locale } = useLocale()
   const src = initial ?? clone
   const [form, setForm] = useState<LicenseForm>(src ? {
-    account_id: initial ? (src.account_id ?? '') : '',  // 복제 시 ID는 비움
+    account_id: initial ? (src.account_id ?? '') : '',
     display_name: src.display_name ?? '',
-    email_address: initial ? (src.email_address ?? '') : '',  // 복제 시 이메일도 비움
+    email_address: initial ? (src.email_address ?? '') : '',
     alias: src.alias ?? '',
     account_type: src.account_type ?? 'Individual',
     license_plan: src.license_plan ?? '',
@@ -181,7 +184,7 @@ function LicenseModal({ initial, clone, employees, onClose, onSave }: {
       setForm(p => ({ ...p, [k]: e.target.value }))
 
   async function handleSubmit() {
-    if (!form.account_id.trim()) { setError('Account ID는 필수입니다.'); return }
+    if (!form.account_id.trim()) { setError(t('licenses.form.account_id_req', locale)); return }
     setSaving(true)
     const payload = {
       account_id: form.account_id.trim(),
@@ -204,14 +207,20 @@ function LicenseModal({ initial, clone, employees, onClose, onSave }: {
     onSave()
   }
 
+  const title = initial
+    ? t('licenses.modal.edit_account', locale)
+    : clone
+      ? t('licenses.modal.clone_account', locale)
+      : t('licenses.modal.add_account', locale)
+
   return (
-    <Modal title={initial ? 'M365 계정 편집' : clone ? 'M365 계정 복제' : 'M365 계정 추가'} onClose={onClose}>
+    <Modal title={title} onClose={onClose}>
       {error && <p className="text-red-500 text-xs mb-3 bg-red-50 p-2 rounded">{error}</p>}
       <div className="grid grid-cols-2 gap-x-3">
         <Field label="Account ID *"><input className={inputCls} value={form.account_id} onChange={set('account_id')} placeholder="A-001" /></Field>
         <Field label="Company">
           <select className={selectCls} value={form.company} onChange={set('company')}>
-            <option value="">선택</option>
+            <option value="">{t('common.select', locale)}</option>
             {COMPANIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
@@ -220,7 +229,7 @@ function LicenseModal({ initial, clone, employees, onClose, onSave }: {
         <Field label="Alias"><input className={inputCls} value={form.alias} onChange={set('alias')} /></Field>
         <Field label="Account Type">
           <select className={selectCls} value={form.account_type} onChange={set('account_type')}>
-            {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            {ACCOUNT_TYPES.map(tp => <option key={tp} value={tp}>{tp}</option>)}
           </select>
         </Field>
         <Field label="License Plan"><input className={inputCls} value={form.license_plan} onChange={set('license_plan')} placeholder="Microsoft 365 Business Basic" /></Field>
@@ -232,16 +241,16 @@ function LicenseModal({ initial, clone, employees, onClose, onSave }: {
         </Field>
         <Field label="Linked Employee">
           <select className={selectCls} value={form.employee_id} onChange={set('employee_id')}>
-            <option value="">미연결</option>
+            <option value="">{t('common.unlinked', locale)}</option>
             {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </Field>
       </div>
       <Field label="Notes"><textarea className={inputCls} rows={2} value={form.notes} onChange={set('notes')} /></Field>
       <div className="flex justify-end gap-2 mt-4">
-        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">취소</button>
+        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">{t('common.cancel', locale)}</button>
         <button onClick={handleSubmit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
-          {saving ? '저장 중…' : '저장'}
+          {saving ? t('common.saving', locale) : t('common.save', locale)}
         </button>
       </div>
     </Modal>
@@ -265,9 +274,10 @@ const emptySubForm: SubForm = {
 function SubModal({ initial, clone, employees, onClose, onSave }: {
   initial?: Subscription; clone?: Subscription; employees: Employee[]; onClose: () => void; onSave: () => void
 }) {
+  const { locale } = useLocale()
   const src = initial ?? clone
   const [form, setForm] = useState<SubForm>(src ? {
-    sub_id: '',  // 항상 비움 (복제/신규 모두 새 ID)
+    sub_id: '',
     company: src.company ?? '',
     vendor: src.vendor ?? '',
     product: src.product ?? '',
@@ -309,10 +319,9 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
   const nextDate = billingDayNum >= 1 && billingDayNum <= 31 ? nextBillingDate(billingDayNum) : null
 
   async function handleSubmit() {
-    if (!form.vendor.trim() && !form.product.trim()) { setError('Vendor 또는 Product를 입력하세요.'); return }
+    if (!form.vendor.trim() && !form.product.trim()) { setError(t('licenses.form.vendor_or_product', locale)); return }
     setSaving(true)
 
-    // billing_day 컬럼이 아직 없는 경우를 대비해 분리
     const basePayload = {
       sub_id: form.sub_id || null,
       company: form.company || null,
@@ -339,32 +348,36 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
 
     let result = await tryUpsert(true)
     if (result.error?.message?.includes('billing_day')) {
-      // 마이그레이션 미실행 - billing_day 없이 재시도
       result = await tryUpsert(false)
     }
     if (result.error || !result.data) {
-      setSaving(false); setError(result.error?.message ?? '저장 실패'); return
+      setSaving(false); setError(result.error?.message ?? t('licenses.form.save_failed', locale)); return
     }
     const subId: string = result.data.id
 
-    // 조인 테이블 갱신
     const { error: delErr } = await supabase
       .from('subscription_employees').delete().eq('subscription_id', subId)
-    if (delErr) { setSaving(false); setError(`직원 연결 초기화 실패: ${delErr.message}`); return }
+    if (delErr) { setSaving(false); setError(`${t('licenses.form.link_reset_failed', locale)} ${delErr.message}`); return }
 
     if (form.employee_ids.length > 0) {
       const { error: insErr } = await supabase.from('subscription_employees').insert(
         form.employee_ids.map(eid => ({ subscription_id: subId, employee_id: eid }))
       )
-      if (insErr) { setSaving(false); setError(`직원 연결 저장 실패: ${insErr.message}`); return }
+      if (insErr) { setSaving(false); setError(`${t('licenses.form.link_save_failed', locale)} ${insErr.message}`); return }
     }
 
     setSaving(false)
     onSave()
   }
 
+  const title = initial
+    ? t('licenses.modal.edit_sub', locale)
+    : clone
+      ? t('licenses.modal.clone_sub', locale)
+      : t('licenses.modal.add_sub', locale)
+
   return (
-    <Modal title={initial ? '구독 편집' : clone ? '구독 복제' : '구독 추가'} onClose={onClose}>
+    <Modal title={title} onClose={onClose}>
       {error && <p className="text-red-500 text-xs mb-3 bg-red-50 p-2 rounded">{error}</p>}
       <div className="grid grid-cols-2 gap-x-3">
         <Field label="Vendor *"><input className={inputCls} value={form.vendor} onChange={set('vendor')} placeholder="Adobe, Loadlink…" /></Field>
@@ -372,7 +385,7 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
         <Field label="Plan Name"><input className={inputCls} value={form.plan_name} onChange={set('plan_name')} /></Field>
         <Field label="Company">
           <select className={selectCls} value={form.company} onChange={set('company')}>
-            <option value="">선택</option>
+            <option value="">{t('common.select', locale)}</option>
             {COMPANIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </Field>
@@ -383,21 +396,20 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
         </Field>
         <Field label="Cost (CAD)"><input className={inputCls} type="number" min="0" step="0.01" value={form.cost_cad} onChange={set('cost_cad')} /></Field>
 
-        {/* 결제일 */}
         <div className="col-span-2 grid grid-cols-2 gap-x-3">
-          <Field label="매월 결제일 (1~31)">
+          <Field label={t('licenses.form.billing_day', locale)}>
             <input
               className={inputCls}
               type="number" min="1" max="31"
-              placeholder="예: 23 → 매월 23일"
+              placeholder={t('licenses.form.billing_day_ph', locale)}
               value={form.billing_day}
               onChange={set('billing_day')}
             />
             {nextDate && (
-              <p className="text-xs text-blue-600 mt-1">다음 결제일: {nextDate}</p>
+              <p className="text-xs text-blue-600 mt-1">{t('licenses.form.next_billing', locale)} {nextDate}</p>
             )}
           </Field>
-          <Field label="수동 갱신일 (결제일 없을 때)">
+          <Field label={t('licenses.form.renewal_date', locale)}>
             <input
               className={`${inputCls} ${form.billing_day ? 'opacity-40' : ''}`}
               type="date"
@@ -408,25 +420,25 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
           </Field>
         </div>
 
-        <Field label="Owner (담당자)"><input className={inputCls} value={form.owner} onChange={set('owner')} /></Field>
+        <Field label={t('licenses.form.owner', locale)}><input className={inputCls} value={form.owner} onChange={set('owner')} /></Field>
         <Field label="Status">
           <select className={selectCls} value={form.status} onChange={set('status')}>
             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </Field>
-        <Field label="Sub ID (선택)"><input className={inputCls} value={form.sub_id} onChange={set('sub_id')} placeholder="자동 생성 가능" /></Field>
+        <Field label={t('licenses.form.sub_id', locale)}>
+          <input className={inputCls} value={form.sub_id} onChange={set('sub_id')} placeholder={t('licenses.form.sub_id_ph', locale)} />
+        </Field>
       </div>
 
-      {/* 다중 직원 연결 */}
-      <Field label="Linked Employees (비용 분할)">
+      <Field label={t('licenses.form.linked_employees', locale)}>
         <input
           className="w-full border rounded-lg px-3 py-1.5 text-sm mb-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300"
-          placeholder="이름 검색…"
+          placeholder={t('licenses.form.emp_search_ph', locale)}
           value={empSearch}
           onChange={e => setEmpSearch(e.target.value)}
         />
         <div className="border rounded-lg max-h-36 overflow-y-auto bg-gray-50">
-          {/* 선택된 직원 상단 고정 */}
           {form.employee_ids.length > 0 && (
             <>
               {employees.filter(e => form.employee_ids.includes(e.id)).map(e => (
@@ -438,7 +450,6 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
               <div className="border-t border-gray-200" />
             </>
           )}
-          {/* 필터된 미선택 직원 */}
           {filteredEmps.filter(e => !form.employee_ids.includes(e.id)).map(e => (
             <label key={e.id} className="flex items-center gap-2 cursor-pointer hover:bg-white px-2 py-1 transition-colors">
               <input type="checkbox" className="rounded" checked={false} onChange={() => toggleEmployee(e.id)} />
@@ -447,21 +458,21 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
           ))}
           {filteredEmps.filter(e => !form.employee_ids.includes(e.id)).length === 0 &&
            form.employee_ids.length === 0 && (
-            <p className="text-center text-gray-400 text-xs py-3">검색 결과 없음</p>
+            <p className="text-center text-gray-400 text-xs py-3">{t('licenses.form.no_emp_results', locale)}</p>
           )}
         </div>
         {perPerson !== null && (
           <p className="text-xs text-violet-600 mt-1.5 font-medium">
-            {form.employee_ids.length}명 공유 → 인당 ${perPerson.toFixed(2)} CAD
+            {form.employee_ids.length} {t('common.people', locale)} → ${perPerson.toFixed(2)} CAD / person
           </p>
         )}
       </Field>
 
       <Field label="Notes"><textarea className={inputCls} rows={2} value={form.notes} onChange={set('notes')} /></Field>
       <div className="flex justify-end gap-2 mt-4">
-        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">취소</button>
+        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">{t('common.cancel', locale)}</button>
         <button onClick={handleSubmit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">
-          {saving ? '저장 중…' : '저장'}
+          {saving ? t('common.saving', locale) : t('common.save', locale)}
         </button>
       </div>
     </Modal>
@@ -481,6 +492,7 @@ function StatCard({ label, value, sub, colorClass }: { label: string; value: str
 }
 
 function BarList({ items, barColor }: { items: { label: string; value: number; display: string }[]; barColor: string }) {
+  const { locale } = useLocale()
   const max = Math.max(...items.map(i => i.value), 1)
   return (
     <div className="space-y-2">
@@ -493,7 +505,7 @@ function BarList({ items, barColor }: { items: { label: string; value: number; d
           </div>
         </div>
       ))}
-      {items.length === 0 && <p className="text-gray-400 text-sm">데이터 없음</p>}
+      {items.length === 0 && <p className="text-gray-400 text-sm">{t('common.no_data', locale)}</p>}
     </div>
   )
 }
@@ -501,6 +513,7 @@ function BarList({ items, barColor }: { items: { label: string; value: number; d
 function Dashboard({ licenses, subscriptions, company }: {
   licenses: License[]; subscriptions: Subscription[]; company: string
 }) {
+  const { locale } = useLocale()
   const filtLic = company ? licenses.filter(l => l.company === company) : licenses
   const filtSub = company ? subscriptions.filter(s => s.company === company) : subscriptions
 
@@ -533,26 +546,26 @@ function Dashboard({ licenses, subscriptions, company }: {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="M365 활성 계정" value={String(activeLic.length)} sub={`전체 ${filtLic.length}개`} colorClass="border-blue-500" />
-        <StatCard label="M365 월 비용" value={`$${licCost.toFixed(0)}`} sub="CAD · Individual 합계" colorClass="border-indigo-500" />
-        <StatCard label="기타 구독" value={String(activeSub.length)} sub={`전체 ${filtSub.length}개`} colorClass="border-violet-500" />
-        <StatCard label="기타 구독 월 환산" value={`$${subCostMonthly.toFixed(0)}`} sub="CAD / 월" colorClass="border-purple-500" />
+        <StatCard label={t('licenses.stat.m365_active', locale)} value={String(activeLic.length)} sub={`${filtLic.length} total`} colorClass="border-blue-500" />
+        <StatCard label={t('licenses.stat.m365_cost', locale)} value={`$${licCost.toFixed(0)}`} sub={t('licenses.stat.m365_cost_sub', locale)} colorClass="border-indigo-500" />
+        <StatCard label={t('licenses.stat.subs_active', locale)} value={String(activeSub.length)} sub={`${filtSub.length} total`} colorClass="border-violet-500" />
+        <StatCard label={t('licenses.stat.subs_cost', locale)} value={`$${subCostMonthly.toFixed(0)}`} sub={t('licenses.stat.cad_month', locale)} colorClass="border-purple-500" />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl shadow p-5">
-          <h3 className="font-semibold text-gray-700 text-sm mb-3">M365 플랜별 활성 계정 수</h3>
-          <BarList barColor="bg-blue-400" items={Object.entries(byPlan).sort((a,b)=>b[1]-a[1]).map(([label, value]) => ({ label, value, display: `${value}개` }))} />
+          <h3 className="font-semibold text-gray-700 text-sm mb-3">{t('licenses.chart.m365_by_plan', locale)}</h3>
+          <BarList barColor="bg-blue-400" items={Object.entries(byPlan).sort((a,b)=>b[1]-a[1]).map(([label, value]) => ({ label, value, display: `${value}` }))} />
         </div>
         <div className="bg-white rounded-xl shadow p-5">
-          <h3 className="font-semibold text-gray-700 text-sm mb-3">구독 서비스별 월 비용</h3>
+          <h3 className="font-semibold text-gray-700 text-sm mb-3">{t('licenses.chart.sub_by_vendor', locale)}</h3>
           <BarList barColor="bg-violet-400" items={Object.entries(byVendor).sort((a,b)=>b[1]-a[1]).map(([label, value]) => ({ label, value, display: `$${value.toFixed(0)}` }))} />
         </div>
       </div>
 
       {soon.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <h3 className="font-semibold text-amber-800 text-sm mb-2">⚠ 30일 내 갱신 예정</h3>
+          <h3 className="font-semibold text-amber-800 text-sm mb-2">{t('licenses.renewal_alert', locale)}</h3>
           <div className="space-y-1">
             {soon.map(s => {
               const dateStr = s.billing_day ? nextBillingDate(s.billing_day) : s.renewal_date
@@ -568,9 +581,9 @@ function Dashboard({ licenses, subscriptions, company }: {
       )}
 
       <div className="bg-white rounded-xl shadow p-5 flex items-center justify-between">
-        <span className="text-sm font-semibold text-gray-700">전체 월 구독 비용 합계 (M365 + 기타)</span>
+        <span className="text-sm font-semibold text-gray-700">{t('licenses.total_monthly', locale)}</span>
         <span className="text-2xl font-bold text-gray-900">
-          ${(licCost + subCostMonthly).toFixed(2)} <span className="text-sm font-normal text-gray-400">CAD / 월</span>
+          ${(licCost + subCostMonthly).toFixed(2)} <span className="text-sm font-normal text-gray-400">{t('licenses.stat.cad_month', locale)}</span>
         </span>
       </div>
     </div>
@@ -582,6 +595,7 @@ function Dashboard({ licenses, subscriptions, company }: {
 type ViewTab = 'dashboard' | 'licenses' | 'subscriptions'
 
 export default function LicensesPage() {
+  const { locale } = useLocale()
   const [licenses, setLicenses] = useState<License[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -605,7 +619,6 @@ export default function LicensesPage() {
       supabase.from('licenses')
         .select('id,account_id,display_name,email_address,alias,account_type,license_plan,monthly_cost_cad,status,company,employee_id,created_date,notes,employees(name)')
         .order('company'),
-      // employees!employee_id: FK 명시로 다중 관계 ambiguity 해결
       supabase.from('subscriptions')
         .select('*,employees!employee_id(name)')
         .order('vendor'),
@@ -615,7 +628,6 @@ export default function LicensesPage() {
     if (licErr) console.error('[licenses]', licErr.message)
     if (subErr) console.error('[subscriptions]', subErr.message)
 
-    // subscription_employees는 별도 쿼리 (테이블 없어도 graceful)
     const seMap: Record<string, SubEmployee[]> = {}
     const { data: seRows, error: seErr } = await supabase
       .from('subscription_employees')
@@ -659,18 +671,21 @@ export default function LicensesPage() {
     return matchCo && (!q || [s.vendor, s.product, s.plan_name, s.owner].some(v => v?.toLowerCase().includes(q)))
   })
 
-  const companyTabs = [{ label: '전체', value: '' }, ...COMPANIES.map(c => ({ label: c, value: c }))]
-  const viewTabs: { label: string; value: ViewTab }[] = [
-    { label: '대시보드', value: 'dashboard' },
-    { label: 'M365 계정', value: 'licenses' },
-    { label: '기타 구독', value: 'subscriptions' },
+  const companyTabs = [
+    { label: t('common.all', locale), value: '' },
+    ...COMPANIES.map(c => ({ label: c, value: c })),
+  ]
+  const viewTabs: { labelKey: string; value: ViewTab }[] = [
+    { labelKey: 'licenses.tab.dashboard',     value: 'dashboard' },
+    { labelKey: 'licenses.tab.licenses',       value: 'licenses' },
+    { labelKey: 'licenses.tab.subscriptions',  value: 'subscriptions' },
   ]
 
   return (
     <div className="p-6">
       <div className="mb-4">
-        <h1 className="text-xl font-bold text-gray-800">구독 통합 관리</h1>
-        <p className="text-sm text-gray-500 mt-0.5">M365 계정 및 기타 구독 서비스 관리</p>
+        <h1 className="text-xl font-bold text-gray-800">{t('licenses.title', locale)}</h1>
+        <p className="text-sm text-gray-500 mt-0.5">{t('licenses.subtitle', locale)}</p>
       </div>
 
       <div className="flex gap-1.5 mb-4 flex-wrap">
@@ -690,7 +705,7 @@ export default function LicensesPage() {
             className={`px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
               view === tab.value ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}>
-            {tab.label}
+            {t(tab.labelKey, locale)}
           </button>
         ))}
       </div>
@@ -707,10 +722,10 @@ export default function LicensesPage() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <input className="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                  placeholder="이름 / 이메일 검색…" value={licSearch} onChange={e => setLicSearch(e.target.value)} />
+                  placeholder={t('licenses.search.license_ph', locale)} value={licSearch} onChange={e => setLicSearch(e.target.value)} />
                 <button onClick={() => setLicModal({ open: true })}
                   className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
-                  + 계정 추가
+                  {t('licenses.add_account', locale)}
                 </button>
               </div>
               <div className="bg-white rounded-xl shadow overflow-x-auto">
@@ -723,10 +738,10 @@ export default function LicensesPage() {
                       <th className="px-4 py-3 text-left">Type</th>
                       <th className="px-4 py-3 text-left">Plan</th>
                       <th className="px-4 py-3 text-left">Company</th>
-                      <th className="px-4 py-3 text-left">담당자</th>
-                      <th className="px-4 py-3 text-right">월 비용</th>
+                      <th className="px-4 py-3 text-left">{t('licenses.col.owner', locale)}</th>
+                      <th className="px-4 py-3 text-right">{t('licenses.col.monthly_cost', locale)}</th>
                       <th className="px-4 py-3 text-left">Status</th>
-                      <th className="px-4 py-3 text-left">관리</th>
+                      <th className="px-4 py-3 text-left">{t('licenses.col.actions', locale)}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -738,23 +753,23 @@ export default function LicensesPage() {
                         <td className="px-4 py-2"><Badge label={r.account_type} color={accountTypeColor(r.account_type)} /></td>
                         <td className="px-4 py-2 text-gray-600 text-xs">{r.license_plan ?? '—'}</td>
                         <td className="px-4 py-2 text-gray-600">{r.company ?? '—'}</td>
-                        <td className="px-4 py-2 text-gray-600">{r.employees?.name ?? <span className="text-gray-300">미연결</span>}</td>
+                        <td className="px-4 py-2 text-gray-600">{r.employees?.name ?? <span className="text-gray-300">{t('common.unlinked', locale)}</span>}</td>
                         <td className="px-4 py-2 text-right font-medium">
                           {r.account_type === 'Individual' ? `$${r.monthly_cost_cad.toFixed(2)}` : '—'}
                         </td>
                         <td className="px-4 py-2"><Badge label={r.status} color={statusColor(r.status)} /></td>
                         <td className="px-4 py-2">
                           <div className="flex gap-2">
-                            <button onClick={() => setLicModal({ open: true, item: r })} className="text-xs text-blue-500 hover:underline">편집</button>
-                            <button onClick={() => setLicModal({ open: true, clone: r })} className="text-xs text-gray-400 hover:underline">복제</button>
-                            <button onClick={() => setDeleteTarget({ type: 'license', id: r.id })} className="text-xs text-red-400 hover:underline">삭제</button>
+                            <button onClick={() => setLicModal({ open: true, item: r })} className="text-xs text-blue-500 hover:underline">{t('common.edit', locale)}</button>
+                            <button onClick={() => setLicModal({ open: true, clone: r })} className="text-xs text-gray-400 hover:underline">{t('common.clone', locale)}</button>
+                            <button onClick={() => setDeleteTarget({ type: 'license', id: r.id })} className="text-xs text-red-400 hover:underline">{t('common.delete', locale)}</button>
                           </div>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                {filtLic.length === 0 && <p className="text-center text-gray-400 py-8 text-sm">결과 없음</p>}
+                {filtLic.length === 0 && <p className="text-center text-gray-400 py-8 text-sm">{t('common.no_results', locale)}</p>}
               </div>
             </div>
           )}
@@ -763,10 +778,10 @@ export default function LicensesPage() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <input className="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                  placeholder="Vendor / Product 검색…" value={subSearch} onChange={e => setSubSearch(e.target.value)} />
+                  placeholder={t('licenses.search.sub_ph', locale)} value={subSearch} onChange={e => setSubSearch(e.target.value)} />
                 <button onClick={() => setSubModal({ open: true })}
                   className="px-4 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700">
-                  + 구독 추가
+                  {t('licenses.add_sub', locale)}
                 </button>
               </div>
               <div className="bg-white rounded-xl shadow overflow-x-auto">
@@ -777,13 +792,13 @@ export default function LicensesPage() {
                       <th className="px-4 py-3 text-left">Product</th>
                       <th className="px-4 py-3 text-left">Plan</th>
                       <th className="px-4 py-3 text-left">Billing</th>
-                      <th className="px-4 py-3 text-left">결제일</th>
-                      <th className="px-4 py-3 text-right">비용 (CAD)</th>
+                      <th className="px-4 py-3 text-left">{t('licenses.col.billing_date', locale)}</th>
+                      <th className="px-4 py-3 text-right">{t('licenses.col.cost_cad', locale)}</th>
                       <th className="px-4 py-3 text-left">Company</th>
                       <th className="px-4 py-3 text-left">Owner</th>
-                      <th className="px-4 py-3 text-left">사용자</th>
+                      <th className="px-4 py-3 text-left">{t('licenses.col.users', locale)}</th>
                       <th className="px-4 py-3 text-left">Status</th>
-                      <th className="px-4 py-3 text-left">관리</th>
+                      <th className="px-4 py-3 text-left">{t('licenses.col.actions', locale)}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -792,7 +807,7 @@ export default function LicensesPage() {
                       const linked = r.subscription_employees ?? []
                       const count = linked.length
                       const dateStr = r.billing_day
-                        ? `매월 ${r.billing_day}일`
+                        ? (locale === 'ko' ? `매월 ${r.billing_day}일` : `every ${r.billing_day}th`)
                         : (r.renewal_date ?? '—')
                       const nextDate = r.billing_day ? nextBillingDate(r.billing_day) : null
                       return (
@@ -805,24 +820,24 @@ export default function LicensesPage() {
                             <span className={soon ? 'text-amber-600 font-semibold' : 'text-gray-500'}>
                               {dateStr}{soon && ' ⚠'}
                             </span>
-                            {nextDate && <span className="block text-gray-400 text-xs">다음: {nextDate}</span>}
+                            {nextDate && <span className="block text-gray-400 text-xs">{t('licenses.next_billing_label', locale)} {nextDate}</span>}
                           </td>
                           <td className="px-4 py-2 text-right">
                             <span className="font-medium">${(r.cost_cad ?? 0).toFixed(2)}</span>
                             {count > 1 && (
-                              <span className="block text-xs text-violet-500">인당 ${costPerPerson(r).toFixed(2)}</span>
+                              <span className="block text-xs text-violet-500">${costPerPerson(r).toFixed(2)} / person</span>
                             )}
                           </td>
                           <td className="px-4 py-2 text-gray-600">{r.company ?? '—'}</td>
                           <td className="px-4 py-2 text-gray-600">{r.owner ?? '—'}</td>
                           <td className="px-4 py-2 text-xs text-gray-600">
                             {count === 0
-                              ? <span className="text-gray-300">없음</span>
+                              ? <span className="text-gray-300">{t('common.none', locale)}</span>
                               : count === 1
                                 ? linked[0].employees?.name ?? '—'
                                 : (
                                   <span title={linked.map(se => se.employees?.name ?? '?').join(', ')}>
-                                    {linked[0].employees?.name} 외 {count - 1}명
+                                    {linked[0].employees?.name} +{count - 1}
                                   </span>
                                 )
                             }
@@ -830,9 +845,9 @@ export default function LicensesPage() {
                           <td className="px-4 py-2"><Badge label={r.status} color={statusColor(r.status)} /></td>
                           <td className="px-4 py-2">
                             <div className="flex gap-2">
-                              <button onClick={() => setSubModal({ open: true, item: r })} className="text-xs text-blue-500 hover:underline">편집</button>
-                              <button onClick={() => setSubModal({ open: true, clone: r })} className="text-xs text-gray-400 hover:underline">복제</button>
-                              <button onClick={() => setDeleteTarget({ type: 'subscription', id: r.id })} className="text-xs text-red-400 hover:underline">삭제</button>
+                              <button onClick={() => setSubModal({ open: true, item: r })} className="text-xs text-blue-500 hover:underline">{t('common.edit', locale)}</button>
+                              <button onClick={() => setSubModal({ open: true, clone: r })} className="text-xs text-gray-400 hover:underline">{t('common.clone', locale)}</button>
+                              <button onClick={() => setDeleteTarget({ type: 'subscription', id: r.id })} className="text-xs text-red-400 hover:underline">{t('common.delete', locale)}</button>
                             </div>
                           </td>
                         </tr>
@@ -840,7 +855,7 @@ export default function LicensesPage() {
                     })}
                   </tbody>
                 </table>
-                {filtSub.length === 0 && <p className="text-center text-gray-400 py-8 text-sm">결과 없음</p>}
+                {filtSub.length === 0 && <p className="text-center text-gray-400 py-8 text-sm">{t('common.no_results', locale)}</p>}
               </div>
             </div>
           )}
