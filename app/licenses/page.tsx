@@ -283,6 +283,7 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
   } : emptySubForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [empSearch, setEmpSearch] = useState('')
 
   const set = (k: keyof Omit<SubForm, 'employee_ids'>) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -296,6 +297,10 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
         : [...p.employee_ids, id],
     }))
   }
+
+  const filteredEmps = empSearch.trim()
+    ? employees.filter(e => e.name.toLowerCase().includes(empSearch.toLowerCase()))
+    : employees
 
   const cost = parseFloat(form.cost_cad) || 0
   const perPerson = form.employee_ids.length > 1 ? cost / form.employee_ids.length : null
@@ -410,18 +415,36 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
 
       {/* 다중 직원 연결 */}
       <Field label="Linked Employees (비용 분할)">
-        <div className="border rounded-lg p-2 max-h-36 overflow-y-auto space-y-0.5 bg-gray-50">
-          {employees.map(e => (
-            <label key={e.id} className="flex items-center gap-2 cursor-pointer hover:bg-white px-2 py-1 rounded transition-colors">
-              <input
-                type="checkbox"
-                className="rounded"
-                checked={form.employee_ids.includes(e.id)}
-                onChange={() => toggleEmployee(e.id)}
-              />
+        <input
+          className="w-full border rounded-lg px-3 py-1.5 text-sm mb-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300"
+          placeholder="이름 검색…"
+          value={empSearch}
+          onChange={e => setEmpSearch(e.target.value)}
+        />
+        <div className="border rounded-lg max-h-36 overflow-y-auto bg-gray-50">
+          {/* 선택된 직원 상단 고정 */}
+          {form.employee_ids.length > 0 && (
+            <>
+              {employees.filter(e => form.employee_ids.includes(e.id)).map(e => (
+                <label key={e.id} className="flex items-center gap-2 cursor-pointer bg-violet-50 hover:bg-violet-100 px-2 py-1 transition-colors">
+                  <input type="checkbox" className="rounded accent-violet-600" checked onChange={() => toggleEmployee(e.id)} />
+                  <span className="text-sm font-medium text-violet-700">{e.name}</span>
+                </label>
+              ))}
+              <div className="border-t border-gray-200" />
+            </>
+          )}
+          {/* 필터된 미선택 직원 */}
+          {filteredEmps.filter(e => !form.employee_ids.includes(e.id)).map(e => (
+            <label key={e.id} className="flex items-center gap-2 cursor-pointer hover:bg-white px-2 py-1 transition-colors">
+              <input type="checkbox" className="rounded" checked={false} onChange={() => toggleEmployee(e.id)} />
               <span className="text-sm text-gray-700">{e.name}</span>
             </label>
           ))}
+          {filteredEmps.filter(e => !form.employee_ids.includes(e.id)).length === 0 &&
+           form.employee_ids.length === 0 && (
+            <p className="text-center text-gray-400 text-xs py-3">검색 결과 없음</p>
+          )}
         </div>
         {perPerson !== null && (
           <p className="text-xs text-violet-600 mt-1.5 font-medium">
@@ -582,7 +605,7 @@ export default function LicensesPage() {
       supabase.from('subscriptions')
         .select('*,employees!employee_id(name)')
         .order('vendor'),
-      supabase.from('employees').select('id,name').order('name'),
+      supabase.from('employees').select('id,name').eq('is_active', true).order('name'),
     ])
 
     if (licErr) console.error('[licenses]', licErr.message)
