@@ -368,7 +368,7 @@ function Dashboard({ licenses, subscriptions, company }: {
   }, 0)
 
   const byPlan: Record<string, number> = {}
-  activeLic.filter(l => l.account_type === 'Individual').forEach(l => {
+  activeLic.forEach(l => {
     const p = l.license_plan ?? 'Unknown'
     byPlan[p] = (byPlan[p] ?? 0) + 1
   })
@@ -399,7 +399,7 @@ function Dashboard({ licenses, subscriptions, company }: {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl shadow p-5">
-          <h3 className="font-semibold text-gray-700 text-sm mb-3">M365 플랜별 계정 수</h3>
+          <h3 className="font-semibold text-gray-700 text-sm mb-3">M365 플랜별 활성 계정 수</h3>
           <div className="text-blue-400">
             <BarList items={Object.entries(byPlan).sort((a,b)=>b[1]-a[1]).map(([label, value]) => ({ label, value, display: `${value}개` }))} />
           </div>
