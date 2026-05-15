@@ -348,11 +348,15 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
     const subId: string = result.data.id
 
     // 조인 테이블 갱신
-    await supabase.from('subscription_employees').delete().eq('subscription_id', subId)
+    const { error: delErr } = await supabase
+      .from('subscription_employees').delete().eq('subscription_id', subId)
+    if (delErr) { setSaving(false); setError(`직원 연결 초기화 실패: ${delErr.message}`); return }
+
     if (form.employee_ids.length > 0) {
-      await supabase.from('subscription_employees').insert(
+      const { error: insErr } = await supabase.from('subscription_employees').insert(
         form.employee_ids.map(eid => ({ subscription_id: subId, employee_id: eid }))
       )
+      if (insErr) { setSaving(false); setError(`직원 연결 저장 실패: ${insErr.message}`); return }
     }
 
     setSaving(false)
