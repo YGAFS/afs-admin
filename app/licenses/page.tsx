@@ -11,6 +11,8 @@ const supabase = createClient(
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type EmailPlan = { id: string; name: string; monthly_cost_cad: number }
+
 type License = {
   id: string
   account_id: string
@@ -60,6 +62,15 @@ const ACCOUNT_TYPES = ['Individual', 'Shared']
 const BILLING_CYCLES = ['Monthly', 'Annual', 'One-time']
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function computeNextAccountId(licenses: License[]): string {
+  const nums = licenses
+    .map(l => l.account_id?.match(/^A-(\d+)$/)?.[1])
+    .filter(Boolean)
+    .map(Number)
+  const max = nums.length > 0 ? Math.max(...nums) : 0
+  return `A-${String(max + 1).padStart(3, '0')}`
+}
 
 function nextBillingDate(day: number): string {
   const today = new Date()
@@ -144,6 +155,156 @@ function DeleteDialog({ onCancel, onConfirm }: { onCancel: () => void; onConfirm
   )
 }
 
+// ── Plan Manager Modal ────────────────────────────────────────────────────────
+
+function PlanManagerModal({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
+  const { locale } = useLocale()
+  const [plans, setPlans] = useState<EmailPlan[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ name: '', monthly_cost_cad: '' })
+  const [newForm, setNewForm] = useState({ name: '', monthly_cost_cad: '' })
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function loadPlans() {
+    const { data } = await supabase.from('email_plans').select('*').order('name')
+    setPlans((data as EmailPlan[]) ?? [])
+    setLoading(false)
+  }
+
+  useEffect(() => { loadPlans() }, [])
+
+  async function handleAdd() {
+    if (!newForm.name.trim()) { setError(t('licenses.plan.name_req', locale)); return }
+    setSaving(true)
+    const { error: err } = await supabase.from('email_plans').insert({
+      name: newForm.name.trim(),
+      monthly_cost_cad: parseFloat(newForm.monthly_cost_cad) || 0,
+    })
+    setSaving(false)
+    if (err) { setError(err.message); return }
+    setNewForm({ name: '', monthly_cost_cad: '' })
+    setError('')
+    await loadPlans()
+    onChanged()
+  }
+
+  async function handleSaveEdit(id: string) {
+    if (!editForm.name.trim()) { setError(t('licenses.plan.name_req', locale)); return }
+    setSaving(true)
+    const { error: err } = await supabase.from('email_plans').update({
+      name: editForm.name.trim(),
+      monthly_cost_cad: parseFloat(editForm.monthly_cost_cad) || 0,
+    }).eq('id', id)
+    setSaving(false)
+    if (err) { setError(err.message); return }
+    setEditId(null)
+    setError('')
+    await loadPlans()
+    onChanged()
+  }
+
+  async function handleDelete(id: string) {
+    await supabase.from('email_plans').delete().eq('id', id)
+    await loadPlans()
+    onChanged()
+  }
+
+  return (
+    <Modal title={t('licenses.plan.modal_title', locale)} onClose={onClose}>
+      {error && <p className="text-red-500 text-xs mb-3 bg-red-50 p-2 rounded">{error}</p>}
+      {loading ? (
+        <p className="text-gray-400 text-sm py-4 text-center">Loading…</p>
+      ) : (
+        <div className="space-y-1 mb-4">
+          {plans.length === 0 && (
+            <p className="text-gray-400 text-sm py-3 text-center">{t('licenses.plan.no_plans', locale)}</p>
+          )}
+          {plans.map(plan => (
+            <div key={plan.id} className="flex items-center gap-2 py-1.5 border-b last:border-0">
+              {editId === plan.id ? (
+                <>
+                  <input
+                    className={`${inputCls} flex-1`}
+                    value={editForm.name}
+                    onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
+                    placeholder={t('licenses.plan.name', locale)}
+                  />
+                  <input
+                    className={`${inputCls} w-28`}
+                    type="number" min="0" step="0.01"
+                    value={editForm.monthly_cost_cad}
+                    onChange={e => setEditForm(p => ({ ...p, monthly_cost_cad: e.target.value }))}
+                  />
+                  <button
+                    onClick={() => handleSaveEdit(plan.id)}
+                    disabled={saving}
+                    className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 shrink-0"
+                  >
+                    {t('licenses.plan.save', locale)}
+                  </button>
+                  <button
+                    onClick={() => setEditId(null)}
+                    className="px-3 py-1.5 text-xs border rounded-lg hover:bg-gray-50 shrink-0"
+                  >
+                    {t('common.cancel', locale)}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="flex-1 text-sm text-gray-800">{plan.name}</span>
+                  <span className="text-sm font-medium text-gray-600 w-24 text-right">${plan.monthly_cost_cad.toFixed(2)}</span>
+                  <button
+                    onClick={() => { setEditId(plan.id); setEditForm({ name: plan.name, monthly_cost_cad: String(plan.monthly_cost_cad) }) }}
+                    className="text-xs text-blue-500 hover:underline shrink-0"
+                  >
+                    {t('licenses.plan.edit', locale)}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(plan.id)}
+                    className="text-xs text-red-400 hover:underline shrink-0"
+                  >
+                    {t('common.delete', locale)}
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="border-t pt-3">
+        <p className="text-xs font-medium text-gray-500 mb-2">{t('licenses.plan.add', locale)}</p>
+        <div className="flex gap-2">
+          <input
+            className={`${inputCls} flex-1`}
+            placeholder={t('licenses.plan.name', locale)}
+            value={newForm.name}
+            onChange={e => setNewForm(p => ({ ...p, name: e.target.value }))}
+            onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
+          />
+          <input
+            className={`${inputCls} w-28`}
+            type="number" min="0" step="0.01"
+            placeholder="0.00"
+            value={newForm.monthly_cost_cad}
+            onChange={e => setNewForm(p => ({ ...p, monthly_cost_cad: e.target.value }))}
+            onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
+          />
+          <button
+            onClick={handleAdd}
+            disabled={saving}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 shrink-0"
+          >
+            {t('common.add', locale)}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // ── License Modal ─────────────────────────────────────────────────────────────
 
 type LicenseForm = {
@@ -158,8 +319,10 @@ const emptyLicenseForm: LicenseForm = {
   status: 'Active', company: '', employee_id: '', notes: '',
 }
 
-function LicenseModal({ initial, clone, employees, onClose, onSave }: {
-  initial?: License; clone?: License; employees: Employee[]; onClose: () => void; onSave: () => void
+function LicenseModal({ initial, clone, employees, emailPlans, nextAccountId, onClose, onSave }: {
+  initial?: License; clone?: License; employees: Employee[]
+  emailPlans: EmailPlan[]; nextAccountId: string
+  onClose: () => void; onSave: () => void
 }) {
   const { locale } = useLocale()
   const src = initial ?? clone
@@ -175,13 +338,23 @@ function LicenseModal({ initial, clone, employees, onClose, onSave }: {
     company: src.company ?? '',
     employee_id: src.employee_id ?? '',
     notes: src.notes ?? '',
-  } : emptyLicenseForm)
+  } : { ...emptyLicenseForm, account_id: nextAccountId })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const set = (k: keyof LicenseForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm(p => ({ ...p, [k]: e.target.value }))
+
+  function handlePlanChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const name = e.target.value
+    const plan = emailPlans.find(p => p.name === name)
+    setForm(prev => ({
+      ...prev,
+      license_plan: name,
+      monthly_cost_cad: plan ? String(plan.monthly_cost_cad) : prev.monthly_cost_cad,
+    }))
+  }
 
   async function handleSubmit() {
     if (!form.account_id.trim()) { setError(t('licenses.form.account_id_req', locale)); return }
@@ -217,7 +390,16 @@ function LicenseModal({ initial, clone, employees, onClose, onSave }: {
     <Modal title={title} onClose={onClose}>
       {error && <p className="text-red-500 text-xs mb-3 bg-red-50 p-2 rounded">{error}</p>}
       <div className="grid grid-cols-2 gap-x-3">
-        <Field label="Account ID *"><input className={inputCls} value={form.account_id} onChange={set('account_id')} placeholder="A-001" /></Field>
+        <Field label="Account ID *">
+          <div className="relative">
+            <input className={inputCls} value={form.account_id} onChange={set('account_id')} placeholder="A-001" />
+            {!initial && !clone && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-400 pointer-events-none">
+                {t('licenses.form.auto_id_note', locale)}
+              </span>
+            )}
+          </div>
+        </Field>
         <Field label="Company">
           <select className={selectCls} value={form.company} onChange={set('company')}>
             <option value="">{t('common.select', locale)}</option>
@@ -232,8 +414,30 @@ function LicenseModal({ initial, clone, employees, onClose, onSave }: {
             {ACCOUNT_TYPES.map(tp => <option key={tp} value={tp}>{tp}</option>)}
           </select>
         </Field>
-        <Field label="License Plan"><input className={inputCls} value={form.license_plan} onChange={set('license_plan')} placeholder="Microsoft 365 Business Basic" /></Field>
-        <Field label="Monthly Cost (CAD)"><input className={inputCls} type="number" min="0" step="0.01" value={form.monthly_cost_cad} onChange={set('monthly_cost_cad')} /></Field>
+        <Field label="License Plan">
+          <select className={selectCls} value={form.license_plan} onChange={handlePlanChange}>
+            <option value="">{t('licenses.form.plan_ph', locale)}</option>
+            {emailPlans.map(p => (
+              <option key={p.id} value={p.name}>{p.name}</option>
+            ))}
+            {form.license_plan && !emailPlans.find(p => p.name === form.license_plan) && (
+              <option value={form.license_plan}>{form.license_plan}</option>
+            )}
+          </select>
+        </Field>
+        <Field label="Monthly Cost (CAD)">
+          <input
+            className={inputCls}
+            type="number" min="0" step="0.01"
+            value={form.monthly_cost_cad}
+            onChange={set('monthly_cost_cad')}
+          />
+          {emailPlans.find(p => p.name === form.license_plan) && (
+            <p className="text-xs text-blue-500 mt-1">
+              ✓ {t('licenses.form.auto_id_note', locale)} (${emailPlans.find(p => p.name === form.license_plan)?.monthly_cost_cad.toFixed(2)} CAD)
+            </p>
+          )}
+        </Field>
         <Field label="Status">
           <select className={selectCls} value={form.status} onChange={set('status')}>
             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -599,6 +803,7 @@ export default function LicensesPage() {
   const [licenses, setLicenses] = useState<License[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [emailPlans, setEmailPlans] = useState<EmailPlan[]>([])
   const [loading, setLoading] = useState(true)
   const [company, setCompany] = useState('')
   const [view, setView] = useState<ViewTab>('dashboard')
@@ -606,6 +811,7 @@ export default function LicensesPage() {
   const [subSearch, setSubSearch] = useState('')
   const [licModal, setLicModal] = useState<{ open: boolean; item?: License; clone?: License }>({ open: false })
   const [subModal, setSubModal] = useState<{ open: boolean; item?: Subscription; clone?: Subscription }>({ open: false })
+  const [planManagerOpen, setPlanManagerOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'license' | 'subscription'; id: string } | null>(null)
 
   const load = useCallback(async () => {
@@ -615,6 +821,7 @@ export default function LicensesPage() {
       { data: lic, error: licErr },
       { data: sub, error: subErr },
       { data: emp },
+      { data: plans },
     ] = await Promise.all([
       supabase.from('licenses')
         .select('id,account_id,display_name,email_address,alias,account_type,license_plan,monthly_cost_cad,status,company,employee_id,created_date,notes,employees(name)')
@@ -623,6 +830,7 @@ export default function LicensesPage() {
         .select('*,employees!employee_id(name)')
         .order('vendor'),
       supabase.from('employees').select('id,name').eq('is_active', true).order('name'),
+      supabase.from('email_plans').select('*').order('name'),
     ])
 
     if (licErr) console.error('[licenses]', licErr.message)
@@ -646,6 +854,7 @@ export default function LicensesPage() {
     setLicenses((lic as License[]) ?? [])
     setSubscriptions(subsWithEmployees)
     setEmployees((emp as Employee[]) ?? [])
+    setEmailPlans((plans as EmailPlan[]) ?? [])
     setLoading(false)
   }, [])
 
@@ -723,10 +932,16 @@ export default function LicensesPage() {
               <div className="flex items-center justify-between mb-3">
                 <input className="border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-300"
                   placeholder={t('licenses.search.license_ph', locale)} value={licSearch} onChange={e => setLicSearch(e.target.value)} />
-                <button onClick={() => setLicModal({ open: true })}
-                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
-                  {t('licenses.add_account', locale)}
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => setPlanManagerOpen(true)}
+                    className="px-3 py-2 bg-gray-100 text-gray-600 text-sm rounded-lg hover:bg-gray-200">
+                    {t('licenses.plan.manage', locale)}
+                  </button>
+                  <button onClick={() => setLicModal({ open: true })}
+                    className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
+                    {t('licenses.add_account', locale)}
+                  </button>
+                </div>
               </div>
               <div className="bg-white rounded-xl shadow overflow-x-auto">
                 <table className="w-full text-sm min-w-max">
@@ -863,9 +1078,19 @@ export default function LicensesPage() {
       )}
 
       {licModal.open && (
-        <LicenseModal initial={licModal.item} clone={licModal.clone} employees={employees}
+        <LicenseModal
+          initial={licModal.item} clone={licModal.clone}
+          employees={employees} emailPlans={emailPlans}
+          nextAccountId={computeNextAccountId(licenses)}
           onClose={() => setLicModal({ open: false })}
-          onSave={() => { setLicModal({ open: false }); load() }} />
+          onSave={() => { setLicModal({ open: false }); load() }}
+        />
+      )}
+      {planManagerOpen && (
+        <PlanManagerModal
+          onClose={() => setPlanManagerOpen(false)}
+          onChanged={load}
+        />
       )}
       {subModal.open && (
         <SubModal initial={subModal.item} clone={subModal.clone} employees={employees}
