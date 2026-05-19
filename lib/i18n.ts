@@ -191,7 +191,10 @@ const translations: Record<Locale, Record<string, string>> = {
     'grid.code.S1': 'S1 — AM Half-Day Sick',
     'grid.code.S2': 'S2 — PM Half-Day Sick',
     'grid.code.S3': 'S3 — Hourly Sick',
-    'grid.code.W':  'W  — WFH',
+    'grid.code.W':  'W  — WFH (Full Day)',
+    'grid.code.W1': 'W1 — AM Half-Day WFH',
+    'grid.code.W2': 'W2 — PM Half-Day WFH',
+    'grid.code.W3': 'W3 — Hourly WFH',
     'grid.code.T':  'T  — Unpaid (Full Day)',
     'grid.code.T1': 'T1 — Unpaid AM Half',
     'grid.code.T2': 'T2 — Unpaid PM Half',
@@ -242,6 +245,11 @@ const translations: Record<Locale, Record<string, string>> = {
     'grid.prob_modal.plus90':   '+90 days',
     // Saving toast
     'grid.saving': 'Saving…',
+    // Cell notes
+    'grid.note.add':         '📝 Add Note',
+    'grid.note.edit':        '✏️ Edit Note',
+    'grid.note.delete':      '🗑 Delete Note',
+    'grid.note.placeholder': 'Enter a note…',
 
     // ── Employee Search ───────────────────────────────────────────────────────
     'emp.search_ph':        'Search name...',
@@ -518,7 +526,10 @@ const translations: Record<Locale, Record<string, string>> = {
     'grid.code.S1': 'S1 — 오전 반일 병가',
     'grid.code.S2': 'S2 — 오후 반일 병가',
     'grid.code.S3': 'S3 — 시간 병가',
-    'grid.code.W':  'W  — 재택근무',
+    'grid.code.W':  'W  — 재택 (전일)',
+    'grid.code.W1': 'W1 — 오전 반일 재택',
+    'grid.code.W2': 'W2 — 오후 반일 재택',
+    'grid.code.W3': 'W3 — 시간 재택',
     'grid.code.T':  'T  — Unpaid 전일',
     'grid.code.T1': 'T1 — Unpaid 오전 반일',
     'grid.code.T2': 'T2 — Unpaid 오후 반일',
@@ -560,6 +571,11 @@ const translations: Record<Locale, Record<string, string>> = {
     'grid.prob_modal.end':         '수습 종료일',
     'grid.prob_modal.plus90':      '+90일',
     'grid.saving': '저장 중...',
+    // Cell notes
+    'grid.note.add':         '📝 메모 추가',
+    'grid.note.edit':        '✏️ 메모 수정',
+    'grid.note.delete':      '🗑 메모 삭제',
+    'grid.note.placeholder': '메모를 입력하세요…',
 
     // ── Employee Search ───────────────────────────────────────────────────────
     'emp.search_ph':        '이름 검색...',

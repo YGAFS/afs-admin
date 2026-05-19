@@ -10,7 +10,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-type LeaveCode = 'L'|'L1'|'L2'|'L3'|'S'|'S1'|'S2'|'S3'|'W'|'T'|'T1'|'T2'|'T3'|'B'
+type LeaveCode = 'L'|'L1'|'L2'|'L3'|'S'|'S1'|'S2'|'S3'|'W'|'W1'|'W2'|'W3'|'T'|'T1'|'T2'|'T3'|'B'
 type Employee  = {
   id: string; name: string; team: string; manager_name: string
   vacation_allowance: number; position: string | null; sort_order: number
@@ -26,7 +26,9 @@ const CODE_COLOR: Record<string, string> = {
   L2: 'bg-green-100 text-green-700',  L3: 'bg-green-50  text-green-600',
   S:  'bg-red-200   text-red-800',    S1: 'bg-red-100   text-red-700',
   S2: 'bg-red-100   text-red-700',    S3: 'bg-red-50    text-red-600',
-  W:  'bg-blue-200  text-blue-800',   T:  'bg-gray-200  text-gray-700',
+  W:  'bg-blue-200  text-blue-800',   W1: 'bg-blue-100  text-blue-700',
+  W2: 'bg-blue-100  text-blue-700',   W3: 'bg-blue-50   text-blue-600',
+  T:  'bg-gray-200  text-gray-700',
   T1: 'bg-gray-100  text-gray-600',   T2: 'bg-gray-100  text-gray-600',
   T3: 'bg-gray-50   text-gray-500',   B:  'bg-gray-100  text-gray-500',
 }
@@ -34,7 +36,8 @@ const CODE_COLOR: Record<string, string> = {
 const CODE_OPTIONS: { code: LeaveCode; needsHours?: boolean }[] = [
   { code: 'L' }, { code: 'L1' }, { code: 'L2' }, { code: 'L3', needsHours: true },
   { code: 'S' }, { code: 'S1' }, { code: 'S2' }, { code: 'S3', needsHours: true },
-  { code: 'W' }, { code: 'T' }, { code: 'T1' }, { code: 'T2' }, { code: 'T3', needsHours: true },
+  { code: 'W' }, { code: 'W1' }, { code: 'W2' }, { code: 'W3', needsHours: true },
+  { code: 'T' }, { code: 'T1' }, { code: 'T2' }, { code: 'T3', needsHours: true },
   { code: 'B' },
 ]
 
@@ -113,8 +116,13 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   const [probEndMode,   setProbEndMode]   = useState<'90d' | 'custom'>('90d')
   const [probEndVal,    setProbEndVal]    = useState('')
   const [newEmp,       setNewEmp]       = useState({ name: '', position: '', start_date: '', vacation_allowance: 10, uses_accrual: true })
-  const dropRef  = useRef<HTMLDivElement>(null)
-  const menuRef  = useRef<HTMLDivElement>(null)
+  const [noteMap,   setNoteMap]   = useState<Record<string, string>>({})
+  const [noteCtx,   setNoteCtx]   = useState<{ empId: string; day: number; x: number; y: number } | null>(null)
+  const [noteModal, setNoteModal] = useState<{ empId: string; day: number; existing: string } | null>(null)
+  const [noteText,  setNoteText]  = useState('')
+  const dropRef    = useRef<HTMLDivElement>(null)
+  const menuRef    = useRef<HTMLDivElement>(null)
+  const noteCtxRef = useRef<HTMLDivElement>(null)
 
   const daysInMonth    = new Date(year, month, 0).getDate()
   const days           = Array.from({ length: daysInMonth }, (_, i) => i + 1)
@@ -130,6 +138,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setManagingEmp(null); setMenuPos(null)
       }
+      if (noteCtxRef.current && !noteCtxRef.current.contains(e.target as Node)) setNoteCtx(null)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -156,13 +165,15 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     if (!emps?.length) return
 
     const ids = emps.map(e => e.id)
-    const [{ data: me }, { data: ye }, { data: prevYe }] = await Promise.all([
+    const [{ data: me }, { data: ye }, { data: prevYe }, { data: notesRaw }] = await Promise.all([
       supabase.from('leave_entries').select('employee_id,date,leave_code,hours')
         .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
       supabase.from('leave_entries').select('employee_id,leave_code')
         .in('employee_id', ids).gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
       supabase.from('leave_entries').select('employee_id,leave_code')
         .in('employee_id', ids).gte('date', `${year-1}-01-01`).lte('date', `${year-1}-12-31`),
+      supabase.from('attendance_notes').select('employee_id,date,note')
+        .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
     ])
 
     const lm: Record<string, LeaveCell> = {}
@@ -170,14 +181,21 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       lm[`${e.employee_id}_${parseInt(e.date.split('-')[2], 10)}`] = { code: e.leave_code as LeaveCode, hours: e.hours ?? undefined }
     setLeaveMap(lm)
 
+    const nm: Record<string, string> = {}
+    for (const n of (notesRaw ?? []))
+      nm[`${n.employee_id}_${parseInt(n.date.split('-')[2], 10)}`] = n.note
+    setNoteMap(nm)
+
     const ysMap: Record<string, YS> = {}
     for (const emp of emps) ysMap[emp.id] = { vacTaken: 0, sick: 0, wfh: 0 }
     for (const e of (ye ?? [])) {
       if (!ysMap[e.employee_id]) continue
       const d = ['L1','L2','S1','S2'].includes(e.leave_code) ? 0.5 : 1
-      if      (['L','L1','L2','L3'].includes(e.leave_code)) ysMap[e.employee_id].vacTaken += d
-      else if (['S','S1','S2','S3'].includes(e.leave_code)) ysMap[e.employee_id].sick     += d
-      else if (e.leave_code === 'W')                        ysMap[e.employee_id].wfh      += 1
+      if      (['L','L1','L2','L3'].includes(e.leave_code))    ysMap[e.employee_id].vacTaken += d
+      else if (['S','S1','S2','S3'].includes(e.leave_code))    ysMap[e.employee_id].sick     += d
+      else if (e.leave_code === 'W')                           ysMap[e.employee_id].wfh      += 1
+      else if (['W1','W2'].includes(e.leave_code))             ysMap[e.employee_id].wfh      += 0.5
+      else if (e.leave_code === 'W3')                          ysMap[e.employee_id].wfh      += 0.5
     }
     setYS(ysMap)
 
@@ -210,6 +228,23 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     }
     setSaving(false); setEditing(null); setPendingCode(null); setPendingHours('')
     load()
+  }
+
+  async function saveNote(empId: string, day: number, note: string) {
+    const dateStr = `${year}-${pad(month)}-${pad(day)}`
+    const key = `${empId}_${day}`
+    await supabase.from('attendance_notes')
+      .upsert({ employee_id: empId, date: dateStr, note }, { onConflict: 'employee_id,date' })
+    setNoteMap(p => ({ ...p, [key]: note }))
+    setNoteModal(null)
+  }
+
+  async function deleteNote(empId: string, day: number) {
+    const dateStr = `${year}-${pad(month)}-${pad(day)}`
+    const key = `${empId}_${day}`
+    await supabase.from('attendance_notes').delete().eq('employee_id', empId).eq('date', dateStr)
+    setNoteMap(p => { const n = { ...p }; delete n[key]; return n })
+    setNoteCtx(null)
   }
 
   function openManageMenu(e: React.MouseEvent, emp: Employee) {
@@ -369,11 +404,33 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                                             : dow === 0 ? 'bg-red-50/50'
                                             : dow === 6 ? 'bg-sky-50/50' : ''
 
+                        const noteKey = `${emp.id}_${d}`
+                        const cellNote = noteMap[noteKey]
                         return (
                           <td key={d}
-                            className={`border border-gray-300 w-8 h-7 text-center relative select-none
-                              ${cellBg} ${blocked || code ? 'cursor-default' : 'hover:bg-blue-100/60 cursor-pointer'}`}
-                            onClick={() => !blocked && setEditing({ empId: emp.id, day: d })}>
+                            className={`border border-gray-300 w-8 h-7 text-center relative select-none group
+                              ${cellBg} ${blocked ? 'cursor-default' : 'hover:bg-blue-100/60 cursor-pointer'}`}
+                            onClick={() => !blocked && setEditing({ empId: emp.id, day: d })}
+                            onContextMenu={e => {
+                              if (blocked) return
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setEditing(null)
+                              setNoteCtx({ empId: emp.id, day: d, x: e.clientX, y: e.clientY })
+                            }}>
+                            {/* note tooltip */}
+                            {cellNote && (
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-50
+                                bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap
+                                pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity
+                                max-w-48 overflow-hidden text-ellipsis shadow-lg">
+                                {cellNote}
+                              </div>
+                            )}
+                            {/* note dot indicator */}
+                            {cellNote && !blocked && (
+                              <span className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-amber-400" />
+                            )}
                             {blocked ? (
                               <span className="text-gray-300 text-xs">—</span>
                             ) : code ? (
@@ -784,6 +841,78 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
           </div>
         )
       })()}
+
+      {/* Right-click note context menu */}
+      {noteCtx && (
+        <div ref={noteCtxRef}
+          style={{ position: 'fixed', top: noteCtx.y, left: noteCtx.x, zIndex: 9999 }}
+          className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-36">
+          {noteMap[`${noteCtx.empId}_${noteCtx.day}`] ? (
+            <>
+              <button
+                onClick={() => {
+                  const existing = noteMap[`${noteCtx.empId}_${noteCtx.day}`]
+                  setNoteText(existing)
+                  setNoteModal({ empId: noteCtx.empId, day: noteCtx.day, existing })
+                  setNoteCtx(null)
+                }}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">
+                {t('grid.note.edit', locale)}
+              </button>
+              <button
+                onClick={() => deleteNote(noteCtx.empId, noteCtx.day)}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-500">
+                {t('grid.note.delete', locale)}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => {
+                setNoteText('')
+                setNoteModal({ empId: noteCtx.empId, day: noteCtx.day, existing: '' })
+                setNoteCtx(null)
+              }}
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">
+              {t('grid.note.add', locale)}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Note edit modal */}
+      {noteModal && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
+          onClick={e => { if (e.target === e.currentTarget) setNoteModal(null) }}>
+          <div className="bg-white rounded-xl p-5 w-80 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-gray-900 mb-1 text-sm">
+              {noteModal.existing ? t('grid.note.edit', locale) : t('grid.note.add', locale)}
+            </h3>
+            <p className="text-xs text-gray-400 mb-3">
+              {employees.find(e => e.id === noteModal.empId)?.name} · {year}-{pad(month)}-{pad(noteModal.day)}
+            </p>
+            <textarea
+              autoFocus
+              rows={3}
+              value={noteText}
+              onChange={e => setNoteText(e.target.value)}
+              placeholder={t('grid.note.placeholder', locale)}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none mb-3"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => { if (noteText.trim()) saveNote(noteModal.empId, noteModal.day, noteText.trim()) }}
+                disabled={!noteText.trim()}
+                className="flex-1 bg-blue-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium">
+                {t('common.save', locale)}
+              </button>
+              <button onClick={() => setNoteModal(null)}
+                className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                {t('common.cancel', locale)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {saving && (
         <div className="fixed bottom-4 right-4 bg-gray-800 text-white text-xs px-3 py-2 rounded-lg shadow">
