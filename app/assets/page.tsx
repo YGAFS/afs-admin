@@ -19,6 +19,7 @@ type Asset = {
   item_name: string | null
   brand: string | null
   model: string | null
+  chipset: string | null
   serial_number: string | null
   purchase_date: string | null
   purchase_price: number | null
@@ -112,14 +113,14 @@ function DeleteDialog({ onCancel, onConfirm }: { onCancel: () => void; onConfirm
 
 type AssetForm = {
   asset_id: string; company: string; category: string; item_name: string
-  brand: string; model: string; serial_number: string; purchase_date: string
+  brand: string; model: string; chipset: string; serial_number: string; purchase_date: string
   purchase_price: string; vendor: string; warranty_end: string
   condition: string; location: string; employee_id: string; notes: string
 }
 
 const emptyAssetForm: AssetForm = {
   asset_id: '', company: '', category: '', item_name: '',
-  brand: '', model: '', serial_number: '', purchase_date: '',
+  brand: '', model: '', chipset: '', serial_number: '', purchase_date: '',
   purchase_price: '', vendor: '', warranty_end: '',
   condition: 'In Use', location: '', employee_id: '', notes: '',
 }
@@ -137,6 +138,7 @@ function AssetModal({ initial, clone, employees, nextAssetId, onClose, onSave }:
     item_name: src.item_name ?? '',
     brand: src.brand ?? '',
     model: src.model ?? '',
+    chipset: src.chipset ?? '',
     serial_number: initial ? (src.serial_number ?? '') : '',
     purchase_date: src.purchase_date ?? '',
     purchase_price: src.purchase_price != null ? String(src.purchase_price) : '',
@@ -165,6 +167,7 @@ function AssetModal({ initial, clone, employees, nextAssetId, onClose, onSave }:
       item_name: form.item_name.trim(),
       brand: form.brand || null,
       model: form.model || null,
+      chipset: form.chipset || null,
       serial_number: form.serial_number || null,
       purchase_date: form.purchase_date || null,
       purchase_price: form.purchase_price !== '' ? parseFloat(form.purchase_price) : null,
@@ -209,6 +212,7 @@ function AssetModal({ initial, clone, employees, nextAssetId, onClose, onSave }:
         </Field>
         <Field label="Brand"><input className={inputCls} value={form.brand} onChange={set('brand')} /></Field>
         <Field label="Model"><input className={inputCls} value={form.model} onChange={set('model')} /></Field>
+        <Field label="Chipset"><input className={inputCls} value={form.chipset} onChange={set('chipset')} placeholder="e.g. Intel Core Ultra 7, Apple M4" /></Field>
         <Field label="Serial Number"><input className={inputCls} value={form.serial_number} onChange={set('serial_number')} /></Field>
         <Field label="Condition">
           <select className={selectCls} value={form.condition} onChange={set('condition')}>
@@ -366,7 +370,7 @@ export default function AssetsPage() {
     setLoading(true)
     const [{ data: a }, { data: e }] = await Promise.all([
       supabase.from('assets')
-        .select('id,asset_id,company,category,item_name,brand,model,serial_number,purchase_date,purchase_price,vendor,warranty_end,condition,location,notes,employee_id')
+        .select('id,asset_id,company,category,item_name,brand,model,chipset,serial_number,purchase_date,purchase_price,vendor,warranty_end,condition,location,notes,employee_id')
         .order('asset_id'),
       supabase.from('employees').select('id,name').eq('is_active', true).order('name'),
     ])
@@ -561,11 +565,29 @@ export default function AssetsPage() {
                         return diff >= 0 && diff <= 60
                       })()
                       return (
-                        <tr key={r.id} className="hover:bg-gray-50">
+                        <tr key={r.id} className="hover:bg-gray-50 group">
                           <td className="px-4 py-2 font-mono text-xs text-gray-500">{r.asset_id}</td>
                           <td className="px-4 py-2 text-gray-500 text-xs">{r.category ?? '—'}</td>
-                          <td className="px-4 py-2 font-medium text-gray-800">{r.item_name ?? '—'}</td>
-                          <td className="px-4 py-2 text-gray-600">{[r.brand, r.model].filter(Boolean).join(' / ') || '—'}</td>
+                          <td className="px-4 py-2 font-medium text-gray-800 relative">
+                            <div className="flex items-center gap-1">
+                              {r.item_name ?? '—'}
+                              {r.notes && (
+                                <>
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                                  <div className="absolute left-0 bottom-full mb-1 z-50
+                                    bg-gray-800 text-white text-xs px-2 py-1.5 rounded shadow-lg
+                                    whitespace-pre-wrap max-w-64 pointer-events-none
+                                    opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {r.notes}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-2 text-gray-600">
+                            {[r.brand, r.model].filter(Boolean).join(' / ') || '—'}
+                            {r.chipset && <div className="text-xs text-gray-400 mt-0.5">{r.chipset}</div>}
+                          </td>
                           <td className="px-4 py-2 font-mono text-xs text-gray-500">{r.serial_number ?? '—'}</td>
                           <td className="px-4 py-2 text-gray-600">{r.company ?? '—'}</td>
                           <td className="px-4 py-2 text-gray-600">
