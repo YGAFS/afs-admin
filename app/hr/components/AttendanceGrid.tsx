@@ -316,7 +316,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                 const isToday = isCurrentMonth && d === today.getDate()
                 return (
                   <th key={d} className={`border border-gray-400 w-8 text-center py-1 font-medium
-                    ${isToday ? 'bg-amber-100 text-amber-700' : dow === 0 ? 'bg-red-100/60 text-red-400' : dow === 6 ? 'bg-sky-100/60 text-sky-400' : 'text-gray-500'}`}>
+                    ${isToday ? 'bg-amber-200 text-amber-800' : dow === 0 ? 'bg-red-200 text-red-600' : dow === 6 ? 'bg-sky-200 text-sky-600' : 'text-gray-500'}`}>
                     <div className="font-semibold">{d}</div>
                     <div className="font-normal text-gray-400 text-xs">{t(`grid.dow.${dow}`, locale)}</div>
                   </th>
@@ -351,7 +351,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                   const empYS         = ys[emp.id]
                   const vacInfo       = vacDisplay(emp, empYS?.vacTaken ?? 0, year, month, carryovers[emp.id] ?? 0)
                   const totalSick     = empYS?.sick ?? 0
-                  const rowBg         = isUpcoming ? 'bg-blue-50/40' : isTerminated ? 'bg-red-50/30' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'
+                  const rowBg         = isUpcoming ? 'bg-blue-50' : isTerminated ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
 
                   return (
                     <tr key={emp.id} className={rowBg}>
@@ -400,10 +400,10 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                         const isBeforeStart = !!(startDateObj && cellDate < startDateObj)
                         const isAfterEnd    = !!(endDateObj   && cellDate > endDateObj)
                         const blocked       = isBeforeStart || isAfterEnd
-                        const cellBg        = blocked ? 'bg-gray-100'
-                                            : isToday  ? 'bg-amber-50'
-                                            : dow === 0 ? 'bg-red-50/50'
-                                            : dow === 6 ? 'bg-sky-50/50' : ''
+                        const cellBg        = blocked ? 'bg-gray-200'
+                                            : isToday  ? 'bg-amber-100'
+                                            : dow === 0 ? 'bg-red-100'
+                                            : dow === 6 ? 'bg-sky-100' : ''
 
                         const noteKey = `${emp.id}_${d}`
                         const cellNote = noteMap[noteKey]

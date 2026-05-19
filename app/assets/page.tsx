@@ -28,10 +28,19 @@ type Asset = {
   location: string | null
   notes: string | null
   employee_id: string | null
-  employees: { name: string }[] | null
 }
 
 type Employee = { id: string; name: string }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function computeNextAssetId(assets: Asset[]): string {
+  const nums = assets
+    .map(a => { const m = a.asset_id?.match(/(\d+)$/); return m ? parseInt(m[1], 10) : null })
+    .filter((n): n is number => n !== null)
+  const max = nums.length > 0 ? Math.max(...nums) : 0
+  return `IT-${String(max + 1).padStart(3, '0')}`
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -115,8 +124,9 @@ const emptyAssetForm: AssetForm = {
   condition: 'In Use', location: '', employee_id: '', notes: '',
 }
 
-function AssetModal({ initial, clone, employees, onClose, onSave }: {
-  initial?: Asset; clone?: Asset; employees: Employee[]; onClose: () => void; onSave: () => void
+function AssetModal({ initial, clone, employees, nextAssetId, onClose, onSave }: {
+  initial?: Asset; clone?: Asset; employees: Employee[]
+  nextAssetId: string; onClose: () => void; onSave: () => void
 }) {
   const { locale } = useLocale()
   const src = initial ?? clone
@@ -136,7 +146,7 @@ function AssetModal({ initial, clone, employees, onClose, onSave }: {
     location: src.location ?? '',
     employee_id: src.employee_id ?? '',
     notes: src.notes ?? '',
-  } : emptyAssetForm)
+  } : { ...emptyAssetForm, asset_id: nextAssetId })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -324,7 +334,7 @@ function Dashboard({ assets, company }: { assets: Asset[]; company: string }) {
             {warrantyExpiring.map(a => (
               <div key={a.id} className="flex justify-between text-xs text-amber-700">
                 <span>{a.item_name} ({a.asset_id})</span>
-                <span>{t('assets.warranty_expires', locale)} {a.warranty_end} · {a.employees?.[0]?.name ?? t('common.unassigned', locale)}</span>
+                <span>{t('assets.warranty_expires', locale)} {a.warranty_end}</span>
               </div>
             ))}
           </div>
@@ -337,6 +347,7 @@ function Dashboard({ assets, company }: { assets: Asset[]; company: string }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 type ViewTab = 'dashboard' | 'list'
+type AssetSortCol = 'asset_id' | 'category' | 'item_name' | 'purchase_date' | 'purchase_price' | 'condition'
 
 export default function AssetsPage() {
   const { locale } = useLocale()
@@ -347,6 +358,7 @@ export default function AssetsPage() {
   const [view, setView] = useState<ViewTab>('dashboard')
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
+  const [assetSort, setAssetSort] = useState<{ col: AssetSortCol; dir: 'asc' | 'desc' }>({ col: 'asset_id', dir: 'asc' })
   const [modal, setModal] = useState<{ open: boolean; item?: Asset; clone?: Asset }>({ open: false })
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
@@ -354,9 +366,9 @@ export default function AssetsPage() {
     setLoading(true)
     const [{ data: a }, { data: e }] = await Promise.all([
       supabase.from('assets')
-        .select('id,asset_id,company,category,item_name,brand,model,serial_number,purchase_date,purchase_price,vendor,warranty_end,condition,location,notes,employee_id,employees(name)')
-        .order('category'),
-      supabase.from('employees').select('id,name').order('name'),
+        .select('id,asset_id,company,category,item_name,brand,model,serial_number,purchase_date,purchase_price,vendor,warranty_end,condition,location,notes,employee_id')
+        .order('asset_id'),
+      supabase.from('employees').select('id,name').eq('is_active', true).order('name'),
     ])
     setAssets((a as Asset[]) ?? [])
     setEmployees((e as Employee[]) ?? [])
@@ -378,9 +390,29 @@ export default function AssetsPage() {
     const matchCo = !company || a.company === company
     const matchCat = !catFilter || a.category === catFilter
     const q = search.toLowerCase()
-    const matchQ = !q || [a.item_name, a.brand, a.model, a.asset_id, a.serial_number, a.employees?.[0]?.name]
+    const empName = a.employee_id ? employees.find(e => e.id === a.employee_id)?.name : undefined
+    const matchQ = !q || [a.item_name, a.brand, a.model, a.asset_id, a.serial_number, empName]
       .some(v => v?.toLowerCase().includes(q))
     return matchCo && matchCat && matchQ
+  })
+
+  function toggleAssetSort(col: AssetSortCol) {
+    setAssetSort(prev => ({ col, dir: prev.col === col && prev.dir === 'asc' ? 'desc' : 'asc' }))
+  }
+
+  const sortedAssets = [...filtered].sort((a, b) => {
+    const { col, dir } = assetSort
+    let av: string | number = ''
+    let bv: string | number = ''
+    if (col === 'asset_id')       { av = a.asset_id ?? '';         bv = b.asset_id ?? '' }
+    else if (col === 'category')  { av = a.category ?? '';         bv = b.category ?? '' }
+    else if (col === 'item_name') { av = a.item_name ?? '';        bv = b.item_name ?? '' }
+    else if (col === 'purchase_date') { av = a.purchase_date ?? ''; bv = b.purchase_date ?? '' }
+    else if (col === 'purchase_price') { av = a.purchase_price ?? 0; bv = b.purchase_price ?? 0 }
+    else if (col === 'condition') { av = a.condition ?? '';         bv = b.condition ?? '' }
+    if (av < bv) return dir === 'asc' ? -1 : 1
+    if (av > bv) return dir === 'asc' ? 1 : -1
+    return 0
   })
 
   const companyTabs = [
@@ -464,22 +496,65 @@ export default function AssetsPage() {
                 <table className="w-full text-sm min-w-max">
                   <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                     <tr>
-                      <th className="px-4 py-3 text-left">Asset ID</th>
-                      <th className="px-4 py-3 text-left">Category</th>
-                      <th className="px-4 py-3 text-left">Item</th>
+                      {([
+                        { col: 'asset_id', label: 'Asset ID' },
+                        { col: 'category', label: 'Category' },
+                        { col: 'item_name', label: 'Item' },
+                      ] as { col: AssetSortCol; label: string }[]).map(({ col, label }) => {
+                        const active = assetSort.col === col
+                        return (
+                          <th key={col} onClick={() => toggleAssetSort(col)}
+                            className="px-4 py-3 text-left cursor-pointer hover:bg-gray-100 select-none">
+                            <span className="flex items-center gap-1">
+                              {label}
+                              <span className={active ? 'text-blue-500' : 'text-gray-300'}>
+                                {active ? (assetSort.dir === 'asc' ? '↑' : '↓') : '↕'}
+                              </span>
+                            </span>
+                          </th>
+                        )
+                      })}
                       <th className="px-4 py-3 text-left">Brand / Model</th>
                       <th className="px-4 py-3 text-left">Serial</th>
                       <th className="px-4 py-3 text-left">Company</th>
                       <th className="px-4 py-3 text-left">{t('assets.col.assigned_to', locale)}</th>
-                      <th className="px-4 py-3 text-left">{t('assets.col.purchase_date', locale)}</th>
-                      <th className="px-4 py-3 text-right">{t('assets.col.purchase_price', locale)}</th>
+                      {([
+                        { col: 'purchase_date', label: t('assets.col.purchase_date', locale), align: 'left' },
+                        { col: 'purchase_price', label: t('assets.col.purchase_price', locale), align: 'right' },
+                      ] as { col: AssetSortCol; label: string; align: string }[]).map(({ col, label, align }) => {
+                        const active = assetSort.col === col
+                        return (
+                          <th key={col} onClick={() => toggleAssetSort(col)}
+                            className={`px-4 py-3 text-${align} cursor-pointer hover:bg-gray-100 select-none`}>
+                            <span className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
+                              {label}
+                              <span className={active ? 'text-blue-500' : 'text-gray-300'}>
+                                {active ? (assetSort.dir === 'asc' ? '↑' : '↓') : '↕'}
+                              </span>
+                            </span>
+                          </th>
+                        )
+                      })}
                       <th className="px-4 py-3 text-left">{t('assets.col.warranty', locale)}</th>
-                      <th className="px-4 py-3 text-left">{t('assets.col.condition', locale)}</th>
+                      {(() => {
+                        const active = assetSort.col === 'condition'
+                        return (
+                          <th onClick={() => toggleAssetSort('condition')}
+                            className="px-4 py-3 text-left cursor-pointer hover:bg-gray-100 select-none">
+                            <span className="flex items-center gap-1">
+                              {t('assets.col.condition', locale)}
+                              <span className={active ? 'text-blue-500' : 'text-gray-300'}>
+                                {active ? (assetSort.dir === 'asc' ? '↑' : '↓') : '↕'}
+                              </span>
+                            </span>
+                          </th>
+                        )
+                      })()}
                       <th className="px-4 py-3 text-left">{t('assets.col.actions', locale)}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {filtered.map(r => {
+                    {sortedAssets.map(r => {
                       const warrantyAlert = (() => {
                         if (!r.warranty_end || r.condition !== 'In Use') return false
                         const diff = (new Date(r.warranty_end).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
@@ -493,7 +568,11 @@ export default function AssetsPage() {
                           <td className="px-4 py-2 text-gray-600">{[r.brand, r.model].filter(Boolean).join(' / ') || '—'}</td>
                           <td className="px-4 py-2 font-mono text-xs text-gray-500">{r.serial_number ?? '—'}</td>
                           <td className="px-4 py-2 text-gray-600">{r.company ?? '—'}</td>
-                          <td className="px-4 py-2 text-gray-600">{r.employees?.[0]?.name ?? <span className="text-gray-300">{t('common.unassigned', locale)}</span>}</td>
+                          <td className="px-4 py-2 text-gray-600">
+                            {r.employee_id
+                              ? (employees.find(e => e.id === r.employee_id)?.name ?? r.employee_id)
+                              : <span className="text-gray-300">{t('common.unassigned', locale)}</span>}
+                          </td>
                           <td className="px-4 py-2 text-gray-500 text-xs">{r.purchase_date ?? '—'}</td>
                           <td className="px-4 py-2 text-right text-gray-600">
                             {r.purchase_price != null ? `$${r.purchase_price.toLocaleString()}` : '—'}
@@ -518,7 +597,7 @@ export default function AssetsPage() {
                     })}
                   </tbody>
                 </table>
-                {filtered.length === 0 && <p className="text-center text-gray-400 py-8 text-sm">{t('common.no_results', locale)}</p>}
+                {sortedAssets.length === 0 && <p className="text-center text-gray-400 py-8 text-sm">{t('common.no_results', locale)}</p>}
               </div>
             </div>
           )}
@@ -530,6 +609,7 @@ export default function AssetsPage() {
           initial={modal.item}
           clone={modal.clone}
           employees={employees}
+          nextAssetId={computeNextAssetId(assets)}
           onClose={() => setModal({ open: false })}
           onSave={() => { setModal({ open: false }); load() }}
         />
