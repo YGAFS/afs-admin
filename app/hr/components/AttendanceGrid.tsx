@@ -100,6 +100,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   const [ys,           setYS]           = useState<Record<string, YS>>({})
   const [carryovers,   setCarryovers]   = useState<Record<string, number>>({})
   const [editing,      setEditing]      = useState<{ empId: string; day: number } | null>(null)
+  const [dropPos,      setDropPos]      = useState<{ top: number; left: number } | null>(null)
   const [pendingCode,  setPendingCode]  = useState<LeaveCode | null>(null)
   const [pendingHours, setPendingHours] = useState('')
   const [saving,       setSaving]       = useState(false)
@@ -144,7 +145,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  useEffect(() => { setPendingCode(null); setPendingHours('') }, [editing])
+  useEffect(() => { setPendingCode(null); setPendingHours(''); if (!editing) setDropPos(null) }, [editing])
   useEffect(() => { load() }, [companyId, year, month])
 
   async function load() {
@@ -410,7 +411,14 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                           <td key={d}
                             className={`border border-gray-300 w-8 h-7 text-center relative select-none group
                               ${cellBg} ${blocked ? 'cursor-default' : 'hover:bg-blue-100/60 cursor-pointer'}`}
-                            onClick={() => !blocked && setEditing({ empId: emp.id, day: d })}
+                            onClick={e => {
+                              if (blocked) return
+                              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                              const top = rect.bottom + 2
+                              const left = Math.min(rect.left, window.innerWidth - 192)
+                              setDropPos({ top: Math.min(top, window.innerHeight - 320), left: Math.max(4, left) })
+                              setEditing({ empId: emp.id, day: d })
+                            }}
                             onContextMenu={e => {
                               if (blocked) return
                               e.preventDefault()
@@ -439,52 +447,6 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                                 {entry.hours && <span style={{ fontSize: 8 }}>{entry.hours}h</span>}
                               </div>
                             ) : null}
-                            {isEdit && !blocked && (
-                              <div ref={dropRef}
-                                className="absolute top-full left-0 z-50 bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-44"
-                                style={{ marginTop: 2 }}>
-                                <button onClick={e => { e.stopPropagation(); setCode(emp.id, d, null) }}
-                                  className="w-full text-left px-3 py-1 text-xs hover:bg-gray-100 text-gray-400">
-                                  {t('grid.clear_cell', locale)}
-                                </button>
-                                <div className="border-t border-gray-100 my-1" />
-                                {CODE_OPTIONS.map(opt => {
-                                  const label = t(`grid.code.${opt.code}`, locale)
-                                  if (opt.needsHours && pendingCode === opt.code) {
-                                    return (
-                                      <div key={opt.code} className="px-3 py-2 bg-gray-50">
-                                        <div className="text-xs text-gray-600 mb-1.5">{label}</div>
-                                        <div className="flex gap-1 items-center">
-                                          <input type="number" value={pendingHours}
-                                            onChange={e => setPendingHours(e.target.value)}
-                                            placeholder={t('grid.hours_placeholder', locale)}
-                                            min="0.5" max="8" step="0.5" autoFocus
-                                            className="w-16 border rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-                                            onClick={e => e.stopPropagation()} />
-                                          <span className="text-xs text-gray-500">{t('grid.hours', locale)}</span>
-                                          <button disabled={!pendingHours}
-                                            onClick={e => { e.stopPropagation(); if (pendingHours) setCode(emp.id, d, opt.code, parseFloat(pendingHours)) }}
-                                            className="bg-blue-500 disabled:bg-gray-300 text-white px-2 py-0.5 rounded text-xs ml-1">
-                                            {t('grid.confirm', locale)}
-                                          </button>
-                                        </div>
-                                      </div>
-                                    )
-                                  }
-                                  return (
-                                    <button key={opt.code}
-                                      onClick={e => {
-                                        e.stopPropagation()
-                                        if (opt.needsHours) { setPendingCode(opt.code); setPendingHours('') }
-                                        else setCode(emp.id, d, opt.code)
-                                      }}
-                                      className={`w-full text-left px-3 py-1 text-xs hover:opacity-80 ${CODE_COLOR[opt.code]}`}>
-                                      {label}
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            )}
                           </td>
                         )
                       })}
@@ -526,6 +488,54 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
           </tbody>
         </table>
       </div>
+
+      {/* Code picker dropdown — fixed overlay, never clipped by overflow */}
+      {editing && dropPos && (
+        <div ref={dropRef}
+          style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, zIndex: 9999 }}
+          className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-48 max-h-80 overflow-y-auto">
+          <button onClick={e => { e.stopPropagation(); setCode(editing.empId, editing.day, null) }}
+            className="w-full text-left px-3 py-1 text-xs hover:bg-gray-100 text-gray-400">
+            {t('grid.clear_cell', locale)}
+          </button>
+          <div className="border-t border-gray-100 my-1" />
+          {CODE_OPTIONS.map(opt => {
+            const label = t(`grid.code.${opt.code}`, locale)
+            if (opt.needsHours && pendingCode === opt.code) {
+              return (
+                <div key={opt.code} className="px-3 py-2 bg-gray-50">
+                  <div className="text-xs text-gray-600 mb-1.5">{label}</div>
+                  <div className="flex gap-1 items-center">
+                    <input type="number" value={pendingHours}
+                      onChange={e => setPendingHours(e.target.value)}
+                      placeholder={t('grid.hours_placeholder', locale)}
+                      min="0.5" max="8" step="0.5" autoFocus
+                      className="w-16 border rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      onClick={e => e.stopPropagation()} />
+                    <span className="text-xs text-gray-500">{t('grid.hours', locale)}</span>
+                    <button disabled={!pendingHours}
+                      onClick={e => { e.stopPropagation(); if (pendingHours) setCode(editing.empId, editing.day, opt.code, parseFloat(pendingHours)) }}
+                      className="bg-blue-500 disabled:bg-gray-300 text-white px-2 py-0.5 rounded text-xs ml-1">
+                      {t('grid.confirm', locale)}
+                    </button>
+                  </div>
+                </div>
+              )
+            }
+            return (
+              <button key={opt.code}
+                onClick={e => {
+                  e.stopPropagation()
+                  if (opt.needsHours) { setPendingCode(opt.code); setPendingHours('') }
+                  else setCode(editing.empId, editing.day, opt.code)
+                }}
+                className={`w-full text-left px-3 py-1 text-xs hover:opacity-80 ${CODE_COLOR[opt.code]}`}>
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* ⋮ dropdown — fixed overlay, never clipped */}
       {managingEmp && menuPos && (
