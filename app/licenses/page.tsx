@@ -65,9 +65,11 @@ const BILLING_CYCLES = ['Monthly', 'Annual', 'One-time']
 
 function computeNextAccountId(licenses: License[]): string {
   const nums = licenses
-    .map(l => l.account_id?.match(/^A-(\d+)$/)?.[1])
-    .filter(Boolean)
-    .map(Number)
+    .map(l => {
+      const m = l.account_id?.match(/(\d+)$/)
+      return m ? parseInt(m[1], 10) : null
+    })
+    .filter((n): n is number => n !== null)
   const max = nums.length > 0 ? Math.max(...nums) : 0
   return `A-${String(max + 1).padStart(3, '0')}`
 }
@@ -137,6 +139,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const inputCls = 'w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300'
+const inputFlexCls = 'min-w-0 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300'
 const selectCls = 'w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white'
 
 function DeleteDialog({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
@@ -226,13 +229,13 @@ function PlanManagerModal({ onClose, onChanged }: { onClose: () => void; onChang
               {editId === plan.id ? (
                 <>
                   <input
-                    className={`${inputCls} flex-1`}
+                    className={`${inputFlexCls} flex-1`}
                     value={editForm.name}
                     onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
                     placeholder={t('licenses.plan.name', locale)}
                   />
                   <input
-                    className={`${inputCls} w-28`}
+                    className={`${inputFlexCls} w-28 shrink-0`}
                     type="number" min="0" step="0.01"
                     value={editForm.monthly_cost_cad}
                     onChange={e => setEditForm(p => ({ ...p, monthly_cost_cad: e.target.value }))}
@@ -278,14 +281,14 @@ function PlanManagerModal({ onClose, onChanged }: { onClose: () => void; onChang
         <p className="text-xs font-medium text-gray-500 mb-2">{t('licenses.plan.add', locale)}</p>
         <div className="flex gap-2">
           <input
-            className={`${inputCls} flex-1`}
+            className={`${inputFlexCls} flex-1`}
             placeholder={t('licenses.plan.name', locale)}
             value={newForm.name}
             onChange={e => setNewForm(p => ({ ...p, name: e.target.value }))}
             onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
           />
           <input
-            className={`${inputCls} w-28`}
+            className={`${inputFlexCls} w-28 shrink-0`}
             type="number" min="0" step="0.01"
             placeholder="0.00"
             value={newForm.monthly_cost_cad}
