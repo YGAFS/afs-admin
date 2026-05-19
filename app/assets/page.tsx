@@ -28,7 +28,7 @@ type Asset = {
   location: string | null
   notes: string | null
   employee_id: string | null
-  employees: { name: string } | null
+  employees: { name: string }[] | null
 }
 
 type Employee = { id: string; name: string }
@@ -324,7 +324,7 @@ function Dashboard({ assets, company }: { assets: Asset[]; company: string }) {
             {warrantyExpiring.map(a => (
               <div key={a.id} className="flex justify-between text-xs text-amber-700">
                 <span>{a.item_name} ({a.asset_id})</span>
-                <span>{t('assets.warranty_expires', locale)} {a.warranty_end} · {a.employees?.name ?? t('common.unassigned', locale)}</span>
+                <span>{t('assets.warranty_expires', locale)} {a.warranty_end} · {a.employees?.[0]?.name ?? t('common.unassigned', locale)}</span>
               </div>
             ))}
           </div>
@@ -378,7 +378,7 @@ export default function AssetsPage() {
     const matchCo = !company || a.company === company
     const matchCat = !catFilter || a.category === catFilter
     const q = search.toLowerCase()
-    const matchQ = !q || [a.item_name, a.brand, a.model, a.asset_id, a.serial_number, a.employees?.name]
+    const matchQ = !q || [a.item_name, a.brand, a.model, a.asset_id, a.serial_number, a.employees?.[0]?.name]
       .some(v => v?.toLowerCase().includes(q))
     return matchCo && matchCat && matchQ
   })
@@ -493,7 +493,7 @@ export default function AssetsPage() {
                           <td className="px-4 py-2 text-gray-600">{[r.brand, r.model].filter(Boolean).join(' / ') || '—'}</td>
                           <td className="px-4 py-2 font-mono text-xs text-gray-500">{r.serial_number ?? '—'}</td>
                           <td className="px-4 py-2 text-gray-600">{r.company ?? '—'}</td>
-                          <td className="px-4 py-2 text-gray-600">{r.employees?.name ?? <span className="text-gray-300">{t('common.unassigned', locale)}</span>}</td>
+                          <td className="px-4 py-2 text-gray-600">{r.employees?.[0]?.name ?? <span className="text-gray-300">{t('common.unassigned', locale)}</span>}</td>
                           <td className="px-4 py-2 text-gray-500 text-xs">{r.purchase_date ?? '—'}</td>
                           <td className="px-4 py-2 text-right text-gray-600">
                             {r.purchase_price != null ? `$${r.purchase_price.toLocaleString()}` : '—'}
