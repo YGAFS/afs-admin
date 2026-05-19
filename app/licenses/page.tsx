@@ -25,11 +25,11 @@ type License = {
   employee_id: string | null
   created_date: string | null
   notes: string | null
-  employees: { name: string } | null
+  employees: { name: string }[] | null
 }
 
-type SubEmployee = { employee_id: string; employees: { name: string } | null }
-type SubEmpRow = { subscription_id: string; employee_id: string; employees: { name: string } | null }
+type SubEmployee = { employee_id: string; employees: { name: string }[] | null }
+type SubEmpRow = { subscription_id: string; employee_id: string; employees: { name: string }[] | null }
 
 type Subscription = {
   id: string
@@ -46,7 +46,7 @@ type Subscription = {
   owner: string | null
   status: string
   notes: string | null
-  employees: { name: string } | null
+  employees: { name: string }[] | null
   subscription_employees: SubEmployee[]
 }
 
@@ -662,7 +662,7 @@ export default function LicensesPage() {
   const filtLic = licenses.filter(l => {
     const matchCo = !company || l.company === company
     const q = licSearch.toLowerCase()
-    return matchCo && (!q || [l.display_name, l.email_address, l.account_id, l.employees?.name].some(v => v?.toLowerCase().includes(q)))
+    return matchCo && (!q || [l.display_name, l.email_address, l.account_id, l.employees?.[0]?.name].some(v => v?.toLowerCase().includes(q)))
   })
 
   const filtSub = subscriptions.filter(s => {
@@ -753,7 +753,7 @@ export default function LicensesPage() {
                         <td className="px-4 py-2"><Badge label={r.account_type} color={accountTypeColor(r.account_type)} /></td>
                         <td className="px-4 py-2 text-gray-600 text-xs">{r.license_plan ?? '—'}</td>
                         <td className="px-4 py-2 text-gray-600">{r.company ?? '—'}</td>
-                        <td className="px-4 py-2 text-gray-600">{r.employees?.name ?? <span className="text-gray-300">{t('common.unlinked', locale)}</span>}</td>
+                        <td className="px-4 py-2 text-gray-600">{r.employees?.[0]?.name ?? <span className="text-gray-300">{t('common.unlinked', locale)}</span>}</td>
                         <td className="px-4 py-2 text-right font-medium">
                           {r.account_type === 'Individual' ? `$${r.monthly_cost_cad.toFixed(2)}` : '—'}
                         </td>
@@ -834,10 +834,10 @@ export default function LicensesPage() {
                             {count === 0
                               ? <span className="text-gray-300">{t('common.none', locale)}</span>
                               : count === 1
-                                ? linked[0].employees?.name ?? '—'
+                                ? linked[0].employees?.[0]?.name ?? '—'
                                 : (
-                                  <span title={linked.map(se => se.employees?.name ?? '?').join(', ')}>
-                                    {linked[0].employees?.name} +{count - 1}
+                                  <span title={linked.map(se => se.employees?.[0]?.name ?? '?').join(', ')}>
+                                    {linked[0].employees?.[0]?.name} +{count - 1}
                                   </span>
                                 )
                             }
