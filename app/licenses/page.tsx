@@ -876,7 +876,8 @@ export default function LicensesPage() {
   const filtLic = licenses.filter(l => {
     const matchCo = !company || l.company === company
     const q = licSearch.toLowerCase()
-    return matchCo && (!q || [l.display_name, l.email_address, l.account_id, l.employees?.[0]?.name].some(v => v?.toLowerCase().includes(q)))
+    const empName = l.employee_id ? employees.find(e => e.id === l.employee_id)?.name : undefined
+    return matchCo && (!q || [l.display_name, l.email_address, l.account_id, empName].some(v => v?.toLowerCase().includes(q)))
   })
 
   function toggleLicSort(col: LicSortCol) {
@@ -1034,7 +1035,12 @@ export default function LicensesPage() {
                         <td className="px-4 py-2"><Badge label={r.account_type} color={accountTypeColor(r.account_type)} /></td>
                         <td className="px-4 py-2 text-gray-600 text-xs">{r.license_plan ?? '—'}</td>
                         <td className="px-4 py-2 text-gray-600">{r.company ?? '—'}</td>
-                        <td className="px-4 py-2 text-gray-600">{r.employees?.[0]?.name ?? <span className="text-gray-300">{t('common.unlinked', locale)}</span>}</td>
+                        <td className="px-4 py-2 text-gray-600">
+                          {r.employee_id
+                            ? (employees.find(e => e.id === r.employee_id)?.name ?? r.employee_id)
+                            : <span className="text-gray-300">{t('common.unlinked', locale)}</span>
+                          }
+                        </td>
                         <td className="px-4 py-2 text-right font-medium">
                           {r.account_type === 'Individual' ? `$${r.monthly_cost_cad.toFixed(2)}` : '—'}
                         </td>
