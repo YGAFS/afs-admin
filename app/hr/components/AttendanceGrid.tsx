@@ -493,7 +493,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       {editing && dropPos && (
         <div ref={dropRef}
           style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, zIndex: 9999 }}
-          className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-48 max-h-80 overflow-y-auto">
+          className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 w-52 max-h-80 overflow-y-auto">
           <button onClick={e => { e.stopPropagation(); setCode(editing.empId, editing.day, null) }}
             className="w-full text-left px-3 py-1 text-xs hover:bg-gray-100 text-gray-400">
             {t('grid.clear_cell', locale)}
