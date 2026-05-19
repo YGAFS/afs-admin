@@ -800,6 +800,7 @@ function Dashboard({ licenses, subscriptions, company }: {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 type ViewTab = 'dashboard' | 'licenses' | 'subscriptions'
+type LicSortCol = 'account_id' | 'display_name' | 'account_type' | 'license_plan' | 'monthly_cost_cad' | 'status'
 
 export default function LicensesPage() {
   const { locale } = useLocale()
@@ -812,6 +813,7 @@ export default function LicensesPage() {
   const [view, setView] = useState<ViewTab>('dashboard')
   const [licSearch, setLicSearch] = useState('')
   const [subSearch, setSubSearch] = useState('')
+  const [licSort, setLicSort] = useState<{ col: LicSortCol; dir: 'asc' | 'desc' }>({ col: 'account_id', dir: 'asc' })
   const [licModal, setLicModal] = useState<{ open: boolean; item?: License; clone?: License }>({ open: false })
   const [subModal, setSubModal] = useState<{ open: boolean; item?: Subscription; clone?: Subscription }>({ open: false })
   const [planManagerOpen, setPlanManagerOpen] = useState(false)
@@ -827,7 +829,7 @@ export default function LicensesPage() {
       { data: plans },
     ] = await Promise.all([
       supabase.from('licenses')
-        .select('id,account_id,display_name,email_address,alias,account_type,license_plan,monthly_cost_cad,status,company,employee_id,created_date,notes,employees(name)')
+        .select('id,account_id,display_name,email_address,alias,account_type,license_plan,monthly_cost_cad,status,company,employee_id,created_date,notes,employees!employee_id(name)')
         .order('company'),
       supabase.from('subscriptions')
         .select('*,employees!employee_id(name)')
@@ -875,6 +877,25 @@ export default function LicensesPage() {
     const matchCo = !company || l.company === company
     const q = licSearch.toLowerCase()
     return matchCo && (!q || [l.display_name, l.email_address, l.account_id, l.employees?.[0]?.name].some(v => v?.toLowerCase().includes(q)))
+  })
+
+  function toggleLicSort(col: LicSortCol) {
+    setLicSort(prev => ({ col, dir: prev.col === col && prev.dir === 'asc' ? 'desc' : 'asc' }))
+  }
+
+  const sortedLic = [...filtLic].sort((a, b) => {
+    const { col, dir } = licSort
+    let av: string | number = ''
+    let bv: string | number = ''
+    if (col === 'account_id')        { av = a.account_id ?? '';          bv = b.account_id ?? '' }
+    else if (col === 'display_name') { av = a.display_name ?? '';        bv = b.display_name ?? '' }
+    else if (col === 'account_type') { av = a.account_type ?? '';        bv = b.account_type ?? '' }
+    else if (col === 'license_plan') { av = a.license_plan ?? '';        bv = b.license_plan ?? '' }
+    else if (col === 'monthly_cost_cad') { av = a.monthly_cost_cad ?? 0; bv = b.monthly_cost_cad ?? 0 }
+    else if (col === 'status')       { av = a.status ?? '';              bv = b.status ?? '' }
+    if (av < bv) return dir === 'asc' ? -1 : 1
+    if (av > bv) return dir === 'asc' ? 1 : -1
+    return 0
   })
 
   const filtSub = subscriptions.filter(s => {
@@ -950,20 +971,62 @@ export default function LicensesPage() {
                 <table className="w-full text-sm min-w-max">
                   <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                     <tr>
-                      <th className="px-4 py-3 text-left">Account ID</th>
-                      <th className="px-4 py-3 text-left">Display Name</th>
+                      {(['account_id', 'display_name'] as LicSortCol[]).map(col => {
+                        const labels: Record<string, string> = { account_id: 'Account ID', display_name: 'Display Name' }
+                        const active = licSort.col === col
+                        return (
+                          <th key={col} onClick={() => toggleLicSort(col)}
+                            className="px-4 py-3 text-left cursor-pointer hover:bg-gray-100 select-none">
+                            <span className="flex items-center gap-1">
+                              {labels[col]}
+                              <span className={active ? 'text-blue-500' : 'text-gray-300'}>
+                                {active ? (licSort.dir === 'asc' ? '↑' : '↓') : '↕'}
+                              </span>
+                            </span>
+                          </th>
+                        )
+                      })}
                       <th className="px-4 py-3 text-left">Email</th>
-                      <th className="px-4 py-3 text-left">Type</th>
-                      <th className="px-4 py-3 text-left">Plan</th>
+                      {(['account_type', 'license_plan'] as LicSortCol[]).map(col => {
+                        const labels: Record<string, string> = { account_type: 'Type', license_plan: 'Plan' }
+                        const active = licSort.col === col
+                        return (
+                          <th key={col} onClick={() => toggleLicSort(col)}
+                            className="px-4 py-3 text-left cursor-pointer hover:bg-gray-100 select-none">
+                            <span className="flex items-center gap-1">
+                              {labels[col]}
+                              <span className={active ? 'text-blue-500' : 'text-gray-300'}>
+                                {active ? (licSort.dir === 'asc' ? '↑' : '↓') : '↕'}
+                              </span>
+                            </span>
+                          </th>
+                        )
+                      })}
                       <th className="px-4 py-3 text-left">Company</th>
                       <th className="px-4 py-3 text-left">{t('licenses.col.owner', locale)}</th>
-                      <th className="px-4 py-3 text-right">{t('licenses.col.monthly_cost', locale)}</th>
-                      <th className="px-4 py-3 text-left">Status</th>
+                      <th onClick={() => toggleLicSort('monthly_cost_cad')}
+                        className="px-4 py-3 text-right cursor-pointer hover:bg-gray-100 select-none">
+                        <span className="flex items-center justify-end gap-1">
+                          {t('licenses.col.monthly_cost', locale)}
+                          <span className={licSort.col === 'monthly_cost_cad' ? 'text-blue-500' : 'text-gray-300'}>
+                            {licSort.col === 'monthly_cost_cad' ? (licSort.dir === 'asc' ? '↑' : '↓') : '↕'}
+                          </span>
+                        </span>
+                      </th>
+                      <th onClick={() => toggleLicSort('status')}
+                        className="px-4 py-3 text-left cursor-pointer hover:bg-gray-100 select-none">
+                        <span className="flex items-center gap-1">
+                          Status
+                          <span className={licSort.col === 'status' ? 'text-blue-500' : 'text-gray-300'}>
+                            {licSort.col === 'status' ? (licSort.dir === 'asc' ? '↑' : '↓') : '↕'}
+                          </span>
+                        </span>
+                      </th>
                       <th className="px-4 py-3 text-left">{t('licenses.col.actions', locale)}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {filtLic.map(r => (
+                    {sortedLic.map(r => (
                       <tr key={r.id} className="hover:bg-gray-50">
                         <td className="px-4 py-2 font-mono text-xs text-gray-500">{r.account_id}</td>
                         <td className="px-4 py-2 font-medium text-gray-800">{r.display_name ?? '—'}</td>
@@ -987,7 +1050,7 @@ export default function LicensesPage() {
                     ))}
                   </tbody>
                 </table>
-                {filtLic.length === 0 && <p className="text-center text-gray-400 py-8 text-sm">{t('common.no_results', locale)}</p>}
+                {sortedLic.length === 0 && <p className="text-center text-gray-400 py-8 text-sm">{t('common.no_results', locale)}</p>}
               </div>
             </div>
           )}
