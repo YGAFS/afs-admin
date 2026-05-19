@@ -4,9 +4,8 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
-import { useAuth }   from '../providers'
-import { useLocale } from '../providers'
-import { t, type Locale } from '@/lib/i18n'
+import { useAuth, useLocale } from '../providers'
+import { t } from '@/lib/i18n'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,10 +30,6 @@ export default function Sidebar() {
   async function handleLogout() {
     await supabase.auth.signOut()
     router.replace('/login')
-  }
-
-  async function toggleLocale(l: Locale) {
-    await setLocale(l)
   }
 
   return (
@@ -70,33 +65,8 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Bottom: locale toggle + user + logout */}
+      {/* Bottom: user + logout */}
       <div className="border-t border-gray-700 px-2 py-3 space-y-2">
-        {/* Locale toggle */}
-        {open && (
-          <div className="flex gap-1 px-1">
-            {(['en', 'ko'] as Locale[]).map(l => (
-              <button key={l}
-                onClick={() => toggleLocale(l)}
-                className={`flex-1 py-1 rounded text-xs font-semibold transition-colors ${
-                  locale === l
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-400 hover:bg-gray-700 hover:text-white'
-                }`}>
-                {l.toUpperCase()}
-              </button>
-            ))}
-          </div>
-        )}
-        {!open && (
-          <button
-            onClick={() => toggleLocale(locale === 'en' ? 'ko' : 'en')}
-            className="w-full flex items-center justify-center py-1 rounded text-xs text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
-            title="Toggle language">
-            {locale.toUpperCase()}
-          </button>
-        )}
-
         {/* User email */}
         {open && user && (
           <div className="px-1 text-xs text-gray-500 truncate" title={user.email}>
