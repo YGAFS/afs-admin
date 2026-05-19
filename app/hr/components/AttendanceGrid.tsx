@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { useLocale } from '@/app/providers'
+import { t } from '@/lib/i18n'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,32 +31,19 @@ const CODE_COLOR: Record<string, string> = {
   T3: 'bg-gray-50   text-gray-500',   B:  'bg-gray-100  text-gray-500',
 }
 
-const CODE_OPTIONS: { code: LeaveCode; label: string; needsHours?: boolean }[] = [
-  { code: 'L',  label: 'L  — 연차 (전일)'               },
-  { code: 'L1', label: 'L1 — 오전 반일 연차'             },
-  { code: 'L2', label: 'L2 — 오후 반일 연차'             },
-  { code: 'L3', label: 'L3 — 시간 연차', needsHours: true },
-  { code: 'S',  label: 'S  — 병가 (전일)'                },
-  { code: 'S1', label: 'S1 — 오전 반일 병가'             },
-  { code: 'S2', label: 'S2 — 오후 반일 병가'             },
-  { code: 'S3', label: 'S3 — 시간 병가', needsHours: true },
-  { code: 'W',  label: 'W  — 재택근무'                   },
-  { code: 'T',  label: 'T  — Unpaid 전일'                },
-  { code: 'T1', label: 'T1 — Unpaid 오전 반일'           },
-  { code: 'T2', label: 'T2 — Unpaid 오후 반일'           },
-  { code: 'T3', label: 'T3 — Unpaid 시간', needsHours: true },
-  { code: 'B',  label: 'B  — 공휴일'                     },
+const CODE_OPTIONS: { code: LeaveCode; needsHours?: boolean }[] = [
+  { code: 'L' }, { code: 'L1' }, { code: 'L2' }, { code: 'L3', needsHours: true },
+  { code: 'S' }, { code: 'S1' }, { code: 'S2' }, { code: 'S3', needsHours: true },
+  { code: 'W' }, { code: 'T' }, { code: 'T1' }, { code: 'T2' }, { code: 'T3', needsHours: true },
+  { code: 'B' },
 ]
 
-const DOW = ['일','월','화','수','목','금','토']
 const TEAM_ORDER = ['Team Sales','Team Accounting','Team Operations','Department 1','Department 2','Department 3']
 
-// refDate: 뷰 월 말일 기준으로 적립 계산 (미래 월이면 오늘로 클램프)
 function calcAccrued(emp: Employee, refYear: number, refMonth: number): number {
   const today    = new Date()
   const monthEnd = new Date(refYear, refMonth, 0)
   const calcTo   = monthEnd < today ? monthEnd : today
-  // 입사 전 연도면 적립 없음
   if (emp.start_date && new Date(emp.start_date) > calcTo) return 0
   if (emp.probation_end) {
     const pe = new Date(emp.probation_end)
@@ -86,9 +75,6 @@ function todayIso() {
 
 type DateModal = { emp: Employee; field: 'start_date' | 'end_date' | 'reactivate' }
 
-// Returns the date from which vacation accrual should be counted.
-// If the employee is still in probation for the given year/month, returns null (= 0 accrual).
-// If probation has ended, returns probation_end. Otherwise returns start_date.
 function effectiveAccrualStart(
   emp: { uses_accrual: boolean; is_exempt: boolean; start_date: string | null; probation_end: string | null },
   year: number, month: number
@@ -96,7 +82,7 @@ function effectiveAccrualStart(
   if (emp.is_exempt || !emp.uses_accrual) return emp.start_date
   if (emp.probation_end) {
     const [py, pm] = emp.probation_end.split('-').map(Number)
-    if (year < py || (year === py && month <= pm)) return null // still in probation
+    if (year < py || (year === py && month <= pm)) return null
     return emp.probation_end
   }
   return emp.start_date
@@ -105,6 +91,7 @@ function effectiveAccrualStart(
 export default function AttendanceGrid({ companyId, year, month, onReactivate }: {
   companyId: string; year: number; month: number; onReactivate?: () => void
 }) {
+  const { locale } = useLocale()
   const [employees,    setEmployees]    = useState<Employee[]>([])
   const [leaveMap,     setLeaveMap]     = useState<Record<string, LeaveCell>>({})
   const [ys,           setYS]           = useState<Record<string, YS>>({})
@@ -113,7 +100,6 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   const [pendingCode,  setPendingCode]  = useState<LeaveCode | null>(null)
   const [pendingHours, setPendingHours] = useState('')
   const [saving,       setSaving]       = useState(false)
-  // ⋮ menu — rendered as fixed overlay to avoid overflow clipping
   const [managingEmp,  setManagingEmp]  = useState<Employee | null>(null)
   const [menuPos,      setMenuPos]      = useState<{ top: number; left: number } | null>(null)
   const [dateModal,    setDateModal]    = useState<DateModal | null>(null)
@@ -160,7 +146,6 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       .or(`start_date.is.null,start_date.lte.${lastDayStr}`)
       .order('sort_order').order('name')
 
-    // employment_type 컬럼이 없으면(migration 미실행) 필터 없이 폴백
     let { data: emps, error: empErr } = await baseQ()
       .or('employment_type.eq.office,employment_type.is.null')
     if (empErr) {
@@ -196,7 +181,6 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     }
     setYS(ysMap)
 
-    // 전년도 연차 사용량 → 이월 계산 (최대 5일)
     const prevVac: Record<string, number> = {}
     for (const emp of emps) prevVac[emp.id] = 0
     for (const e of (prevYe ?? [])) {
@@ -232,7 +216,6 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     e.stopPropagation()
     if (managingEmp?.id === emp.id) { setManagingEmp(null); setMenuPos(null); return }
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    // Position dropdown below button, aligned to right edge; clamp so it doesn't go off-screen
     const left = Math.min(rect.right - 168, window.innerWidth - 176)
     setMenuPos({ top: rect.bottom + 4, left: Math.max(4, left) })
     setManagingEmp(emp)
@@ -273,8 +256,9 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     load()
   }
 
+  const fallbackTeam = locale === 'ko' ? '기타' : 'Other'
   const teams = employees.reduce<Record<string, Employee[]>>((acc, e) => {
-    const k = e.team || '기타'; acc[k] = [...(acc[k] ?? []), e]; return acc
+    const k = e.team || fallbackTeam; acc[k] = [...(acc[k] ?? []), e]; return acc
   }, {})
   const sortedTeams = Object.entries(teams).sort(([a], [b]) => {
     const ai = TEAM_ORDER.indexOf(a) >= 0 ? TEAM_ORDER.indexOf(a) : 99
@@ -288,7 +272,9 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
         <table className="border-collapse text-xs min-w-full">
           <thead>
             <tr className="bg-slate-100">
-              <th className="sticky left-0 z-10 bg-slate-100 border border-gray-400 px-3 py-2 text-left text-gray-800 min-w-44 font-bold">직원</th>
+              <th className="sticky left-0 z-10 bg-slate-100 border border-gray-400 px-3 py-2 text-left text-gray-800 min-w-44 font-bold">
+                {t('grid.col.employee', locale)}
+              </th>
               {days.map(d => {
                 const dow     = new Date(year, month - 1, d).getDay()
                 const isToday = isCurrentMonth && d === today.getDate()
@@ -296,13 +282,19 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                   <th key={d} className={`border border-gray-400 w-8 text-center py-1 font-medium
                     ${isToday ? 'bg-amber-100 text-amber-700' : dow === 0 ? 'bg-red-100/60 text-red-400' : dow === 6 ? 'bg-sky-100/60 text-sky-400' : 'text-gray-500'}`}>
                     <div className="font-semibold">{d}</div>
-                    <div className="font-normal text-gray-400 text-xs">{DOW[dow]}</div>
+                    <div className="font-normal text-gray-400 text-xs">{t(`grid.dow.${dow}`, locale)}</div>
                   </th>
                 )
               })}
-              <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-20 whitespace-nowrap font-semibold">잔여연차</th>
-              <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-20 whitespace-nowrap font-semibold">잔여병가</th>
-              <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-12 font-semibold">재택</th>
+              <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-20 whitespace-nowrap font-semibold">
+                {t('grid.col.leave_left', locale)}
+              </th>
+              <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-20 whitespace-nowrap font-semibold">
+                {t('grid.col.sick_left', locale)}
+              </th>
+              <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-12 font-semibold">
+                {t('grid.col.wfh', locale)}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -335,22 +327,25 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                             </div>
                             {emp.position && <div className="text-xs text-gray-400">{emp.position}</div>}
                             {isUpcoming && emp.start_date && (
-                              <div className="text-xs text-blue-400">{fmtDate(emp.start_date)} 입사예정</div>
+                              <div className="text-xs text-blue-400">
+                                {fmtDate(emp.start_date)} {t('grid.upcoming', locale)}
+                              </div>
                             )}
                             {isTerminated && emp.end_date && (
-                              <div className="text-xs text-red-400">{fmtDate(emp.end_date)} 퇴사</div>
+                              <div className="text-xs text-red-400">
+                                {fmtDate(emp.end_date)} {t('grid.terminated_label', locale)}
+                              </div>
                             )}
                             {!isTerminated && !isUpcoming && emp.probation_start && (() => {
-                              const t = todayIso()
-                              const on = emp.probation_start <= t && (!emp.probation_end || emp.probation_end >= t)
+                              const todStr = todayIso()
+                              const on = emp.probation_start <= todStr && (!emp.probation_end || emp.probation_end >= todStr)
                               return on ? (
                                 <div className="text-xs text-orange-500">
-                                  수습중{emp.probation_end ? ` (~${fmtDate(emp.probation_end)})` : ''}
+                                  {t('grid.probation_active', locale)}{emp.probation_end ? ` (~${fmtDate(emp.probation_end)})` : ''}
                                 </div>
                               ) : null
                             })()}
                           </div>
-                          {/* ⋮ — always shown on hover, for all employees */}
                           <button
                             onClick={e => openManageMenu(e, emp)}
                             className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-700 px-1 rounded text-base leading-none flex-shrink-0">
@@ -393,25 +388,27 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                                 style={{ marginTop: 2 }}>
                                 <button onClick={e => { e.stopPropagation(); setCode(emp.id, d, null) }}
                                   className="w-full text-left px-3 py-1 text-xs hover:bg-gray-100 text-gray-400">
-                                  ✕ 비우기
+                                  {t('grid.clear_cell', locale)}
                                 </button>
                                 <div className="border-t border-gray-100 my-1" />
                                 {CODE_OPTIONS.map(opt => {
+                                  const label = t(`grid.code.${opt.code}`, locale)
                                   if (opt.needsHours && pendingCode === opt.code) {
                                     return (
                                       <div key={opt.code} className="px-3 py-2 bg-gray-50">
-                                        <div className="text-xs text-gray-600 mb-1.5">{opt.label}</div>
+                                        <div className="text-xs text-gray-600 mb-1.5">{label}</div>
                                         <div className="flex gap-1 items-center">
                                           <input type="number" value={pendingHours}
                                             onChange={e => setPendingHours(e.target.value)}
-                                            placeholder="예) 2" min="0.5" max="8" step="0.5" autoFocus
+                                            placeholder={t('grid.hours_placeholder', locale)}
+                                            min="0.5" max="8" step="0.5" autoFocus
                                             className="w-16 border rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
                                             onClick={e => e.stopPropagation()} />
-                                          <span className="text-xs text-gray-500">시간</span>
+                                          <span className="text-xs text-gray-500">{t('grid.hours', locale)}</span>
                                           <button disabled={!pendingHours}
                                             onClick={e => { e.stopPropagation(); if (pendingHours) setCode(emp.id, d, opt.code, parseFloat(pendingHours)) }}
                                             className="bg-blue-500 disabled:bg-gray-300 text-white px-2 py-0.5 rounded text-xs ml-1">
-                                            확인
+                                            {t('grid.confirm', locale)}
                                           </button>
                                         </div>
                                       </div>
@@ -425,7 +422,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                                         else setCode(emp.id, d, opt.code)
                                       }}
                                       className={`w-full text-left px-3 py-1 text-xs hover:opacity-80 ${CODE_COLOR[opt.code]}`}>
-                                      {opt.label}
+                                      {label}
                                     </button>
                                   )
                                 })}
@@ -463,7 +460,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                   <td colSpan={daysInMonth + 4} className="border-b border-gray-200 bg-white">
                     <button onClick={() => setAddingToTeam(team)}
                       className="w-full px-4 py-1.5 text-xs text-blue-500 hover:text-blue-700 hover:bg-blue-50/50 text-left transition-colors">
-                      + {team}에 직원 추가
+                      {locale === 'ko' ? `+ ${team}에 직원 추가` : `+ Add Employee — ${team}`}
                     </button>
                   </td>
                 </tr>
@@ -481,7 +478,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
           <div className="px-3 py-1.5 text-xs text-gray-500 border-b font-medium">{managingEmp.name}</div>
           <button onClick={() => openDateModal('start_date')}
             className="w-full text-left px-3 py-2 text-xs text-blue-600 hover:bg-blue-50">
-            입사일 수정{managingEmp.start_date ? ` (${fmtDate(managingEmp.start_date)})` : ''}
+            {t('grid.menu.edit_start', locale)}{managingEmp.start_date ? ` (${fmtDate(managingEmp.start_date)})` : ''}
           </button>
           <button onClick={() => {
             setPosValue(managingEmp.position ?? '')
@@ -489,7 +486,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
             setManagingEmp(null); setMenuPos(null)
           }}
             className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
-            직급 수정{managingEmp.position ? ` (${managingEmp.position})` : ''}
+            {t('grid.menu.edit_position', locale)}{managingEmp.position ? ` (${managingEmp.position})` : ''}
           </button>
           <button onClick={() => {
             const emp = managingEmp
@@ -508,18 +505,18 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
             setManagingEmp(null); setMenuPos(null)
           }}
             className="w-full text-left px-3 py-2 text-xs text-orange-600 hover:bg-orange-50">
-            수습 기간 설정{managingEmp.probation_start ? ' ✓' : ''}
+            {t('grid.menu.set_probation', locale)}{managingEmp.probation_start ? ' ✓' : ''}
           </button>
           {managingEmp.end_date ? (
             <>
               <button onClick={() => openDateModal('end_date')}
                 className="w-full text-left px-3 py-2 text-xs text-orange-600 hover:bg-orange-50">
-                퇴사일 수정 ({fmtDate(managingEmp.end_date)})
+                {t('grid.menu.edit_end', locale)} ({fmtDate(managingEmp.end_date!)})
               </button>
               <div className="border-t border-gray-100 my-1" />
               <button onClick={() => openDateModal('reactivate')}
                 className="w-full text-left px-3 py-2 text-xs text-green-600 hover:bg-green-50">
-                복직 처리
+                {t('grid.menu.reactivate', locale)}
               </button>
             </>
           ) : (
@@ -527,50 +524,54 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
               <div className="border-t border-gray-100 my-1" />
               <button onClick={() => openDateModal('end_date')}
                 className="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50">
-                퇴사 처리
+                {t('grid.menu.terminate', locale)}
               </button>
             </>
           )}
         </div>
       )}
 
-      {/* 날짜 편집 / 복직 모달 */}
+      {/* Date edit / reactivate modal */}
       {dateModal && (
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
           onClick={() => setDateModal(null)}>
           <div className="bg-white rounded-xl p-6 w-80 shadow-xl" onClick={e => e.stopPropagation()}>
             {dateModal.field === 'reactivate' ? (
               <>
-                <h3 className="font-semibold text-gray-900 mb-1">복직 처리</h3>
+                <h3 className="font-semibold text-gray-900 mb-1">{t('grid.reactivate.title', locale)}</h3>
                 <p className="text-sm text-gray-500 mb-6">
-                  <strong className="text-gray-800">{dateModal.emp.name}</strong>을(를) 복직 처리하시겠습니까?
-                  <br /><span className="text-xs">퇴사일이 제거되고 재직 상태로 변경됩니다.</span>
+                  <strong className="text-gray-800">{dateModal.emp.name}</strong>
+                  <br /><span className="text-xs">{t('grid.reactivate.note', locale)}</span>
                 </p>
                 <div className="flex gap-2">
                   <button onClick={confirmDateModal} disabled={saving}
                     className="flex-1 bg-green-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium">
-                    복직 처리
+                    {t('grid.menu.reactivate', locale)}
                   </button>
                   <button onClick={() => setDateModal(null)}
                     className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
-                    취소
+                    {t('common.cancel', locale)}
                   </button>
                 </div>
               </>
             ) : (
               <>
                 <h3 className="font-semibold text-gray-900 mb-1">
-                  {dateModal.field === 'start_date' ? '입사일 수정' : '퇴사일 수정'}
+                  {dateModal.field === 'start_date'
+                    ? t('grid.date_modal.start_title', locale)
+                    : t('grid.date_modal.end_title', locale)}
                 </h3>
                 <p className="text-sm text-gray-800 font-medium mb-1">{dateModal.emp.name}</p>
                 <p className="text-xs text-gray-400 mb-4">
                   {dateModal.field === 'start_date'
-                    ? '입사일 이전 날짜는 근태 입력이 잠깁니다.'
-                    : '퇴사일 이후 날짜는 근태 입력이 잠기며, 이전 기록은 유지됩니다.'}
+                    ? t('grid.date_modal.start_note', locale)
+                    : t('grid.date_modal.end_note', locale)}
                 </p>
                 <div className="mb-4">
                   <label className="text-xs text-gray-500 mb-1 block">
-                    {dateModal.field === 'start_date' ? '입사일' : '퇴사일'}
+                    {dateModal.field === 'start_date'
+                      ? t('grid.date_modal.start_label', locale)
+                      : t('grid.date_modal.end_label', locale)}
                   </label>
                   <input type="date" value={dateValue}
                     onChange={e => setDateValue(e.target.value)}
@@ -580,7 +581,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                   {dateModal.field === 'start_date' && (
                     <button onClick={() => setDateValue('')}
                       className="mt-1 text-xs text-gray-400 hover:text-gray-600">
-                      날짜 제거 (입사일 제한 없음)
+                      {t('grid.date_modal.clear', locale)}
                     </button>
                   )}
                 </div>
@@ -590,11 +591,11 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                     className={`flex-1 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium ${
                       dateModal.field === 'end_date' ? 'bg-red-600' : 'bg-blue-600'
                     }`}>
-                    저장
+                    {t('common.save', locale)}
                   </button>
                   <button onClick={() => setDateModal(null)}
                     className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
-                    취소
+                    {t('common.cancel', locale)}
                   </button>
                 </div>
               </>
@@ -603,29 +604,29 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
         </div>
       )}
 
-      {/* 직원 추가 모달 */}
+      {/* Add employee modal */}
       {addingToTeam && (
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
           onClick={() => setAddingToTeam(null)}>
           <div className="bg-white rounded-xl p-6 w-80 shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold text-gray-900 mb-1">직원 추가</h3>
+            <h3 className="font-semibold text-gray-900 mb-1">{t('grid.add_emp.title', locale)}</h3>
             <div className="text-xs text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg mb-4">{addingToTeam}</div>
             <div className="space-y-3">
-              <input placeholder="이름 *" value={newEmp.name}
+              <input placeholder={t('grid.add_emp.name_ph', locale)} value={newEmp.name}
                 onChange={e => setNewEmp(p => ({ ...p, name: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-              <input placeholder="직급 (선택)" value={newEmp.position}
+              <input placeholder={t('grid.add_emp.position_ph', locale)} value={newEmp.position}
                 onChange={e => setNewEmp(p => ({ ...p, position: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">입사일</label>
+                <label className="text-xs text-gray-500 mb-1 block">{t('grid.add_emp.start_date', locale)}</label>
                 <input type="date" value={newEmp.start_date}
                   onChange={e => setNewEmp(p => ({ ...p, start_date: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
               </div>
               <div className="flex gap-3 items-end">
                 <div className="flex-1">
-                  <label className="text-xs text-gray-500 mb-1 block">연간 연차 (일)</label>
+                  <label className="text-xs text-gray-500 mb-1 block">{t('grid.add_emp.annual_leave', locale)}</label>
                   <input type="number" value={newEmp.vacation_allowance}
                     onChange={e => setNewEmp(p => ({ ...p, vacation_allowance: +e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
@@ -633,32 +634,36 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                 <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer pb-2">
                   <input type="checkbox" checked={newEmp.uses_accrual}
                     onChange={e => setNewEmp(p => ({ ...p, uses_accrual: e.target.checked }))} className="rounded" />
-                  월별 적립
+                  {t('grid.add_emp.accrual', locale)}
                 </label>
               </div>
             </div>
             <div className="flex gap-2 mt-5">
               <button onClick={handleAddEmployee} disabled={!newEmp.name.trim()}
-                className="flex-1 bg-blue-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium">추가</button>
+                className="flex-1 bg-blue-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium">
+                {t('common.add', locale)}
+              </button>
               <button onClick={() => setAddingToTeam(null)}
-                className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">취소</button>
+                className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                {t('common.cancel', locale)}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 직급 수정 모달 */}
+      {/* Position modal */}
       {posModal && (
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
              onClick={e => { if (e.target === e.currentTarget) setPosModal(null) }}>
           <div className="bg-white rounded-xl p-6 w-72 shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold text-gray-900 mb-1">직급 수정</h3>
+            <h3 className="font-semibold text-gray-900 mb-1">{t('grid.pos_modal.title', locale)}</h3>
             <p className="text-sm text-gray-500 mb-3">{posModal.emp.name}</p>
             <input
               type="text" value={posValue} autoFocus
               onChange={e => setPosValue(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') document.getElementById('pos-save')?.click() }}
-              placeholder="예) Manager, Driver, Coordinator"
+              placeholder="e.g. Manager, Driver, Coordinator"
               className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4"
             />
             <div className="flex gap-2">
@@ -670,15 +675,19 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                   ))
                   setPosModal(null)
                 }}
-                className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700">저장</button>
+                className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700">
+                {t('common.save', locale)}
+              </button>
               <button onClick={() => setPosModal(null)}
-                className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">취소</button>
+                className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                {t('common.cancel', locale)}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 수습 기간 설정 모달 */}
+      {/* Probation modal */}
       {probModal && (() => {
         const emp = probModal.emp
         const saveProb = async () => {
@@ -701,11 +710,10 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
           <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
                onClick={e => { if (e.target === e.currentTarget) setProbModal(null) }}>
             <div className="bg-white rounded-xl p-6 w-80 shadow-xl space-y-4" onClick={e => e.stopPropagation()}>
-              <h3 className="font-semibold text-gray-900">수습 기간 — {emp.name}</h3>
+              <h3 className="font-semibold text-gray-900">{t('grid.menu.set_probation', locale)} — {emp.name}</h3>
 
-              {/* 시작일 */}
               <div className="space-y-1.5">
-                <p className="text-xs text-gray-500 font-medium">수습 시작일</p>
+                <p className="text-xs text-gray-500 font-medium">{t('grid.prob_modal.start', locale)}</p>
                 <div className="flex gap-2">
                   <button
                     className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probStartMode === 'hire' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
@@ -715,13 +723,15 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                         const d = new Date(emp.start_date); d.setDate(d.getDate() + 90)
                         setProbEndVal(d.toISOString().split('T')[0])
                       }
-                    }}>입사일</button>
+                    }}>{t('grid.prob_modal.hire_btn', locale)}</button>
                   <button
                     className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probStartMode === 'custom' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-                    onClick={() => setProbStartMode('custom')}>직접 입력</button>
+                    onClick={() => setProbStartMode('custom')}>{t('grid.prob_modal.custom', locale)}</button>
                 </div>
                 {probStartMode === 'hire'
-                  ? <p className="text-xs text-gray-400">입사일: {emp.start_date ?? '미설정'}</p>
+                  ? <p className="text-xs text-gray-400">
+                      {t('grid.prob_modal.hire_label', locale)} {emp.start_date ?? t('common.not_set', locale)}
+                    </p>
                   : <input type="date" value={probStartVal}
                       onChange={e => {
                         setProbStartVal(e.target.value)
@@ -734,9 +744,8 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                 }
               </div>
 
-              {/* 종료일 */}
               <div className="space-y-1.5">
-                <p className="text-xs text-gray-500 font-medium">수습 종료일</p>
+                <p className="text-xs text-gray-500 font-medium">{t('grid.prob_modal.end', locale)}</p>
                 <div className="flex gap-2">
                   <button
                     className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probEndMode === '90d' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
@@ -744,10 +753,10 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                       setProbEndMode('90d')
                       const ref = probStartMode === 'hire' ? emp.start_date : probStartVal
                       if (ref) { const d = new Date(ref); d.setDate(d.getDate() + 90); setProbEndVal(d.toISOString().split('T')[0]) }
-                    }}>+90일</button>
+                    }}>{t('grid.prob_modal.plus90', locale)}</button>
                   <button
                     className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probEndMode === 'custom' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-                    onClick={() => setProbEndMode('custom')}>직접 입력</button>
+                    onClick={() => setProbEndMode('custom')}>{t('grid.prob_modal.custom', locale)}</button>
                 </div>
                 <input type="date" value={probEndVal}
                   readOnly={probEndMode === '90d'}
@@ -755,15 +764,20 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                   className={`w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${probEndMode === '90d' ? 'bg-gray-50 text-gray-500' : ''}`} />
               </div>
 
-              {/* 버튼 */}
               <div className="flex gap-2 pt-1">
                 <button onClick={saveProb}
-                  className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700">저장</button>
+                  className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700">
+                  {t('common.save', locale)}
+                </button>
                 <button onClick={() => setProbModal(null)}
-                  className="px-4 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">취소</button>
+                  className="px-4 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                  {t('common.cancel', locale)}
+                </button>
                 {emp.probation_start && (
                   <button onClick={deleteProb}
-                    className="px-4 border border-red-200 text-red-600 rounded-lg py-2 text-sm hover:bg-red-50">삭제</button>
+                    className="px-4 border border-red-200 text-red-600 rounded-lg py-2 text-sm hover:bg-red-50">
+                    {t('common.delete', locale)}
+                  </button>
                 )}
               </div>
             </div>
@@ -772,7 +786,9 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       })()}
 
       {saving && (
-        <div className="fixed bottom-4 right-4 bg-gray-800 text-white text-xs px-3 py-2 rounded-lg shadow">저장 중...</div>
+        <div className="fixed bottom-4 right-4 bg-gray-800 text-white text-xs px-3 py-2 rounded-lg shadow">
+          {t('grid.saving', locale)}
+        </div>
       )}
     </>
   )
