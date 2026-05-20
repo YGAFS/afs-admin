@@ -345,6 +345,7 @@ const translations: Record<Locale, Record<string, string>> = {
     // Sick panel
     'emp.sick.title':          'Sick Leave Status',
     'emp.sick.paid':           'Paid Used',
+    'emp.sick.remaining':      'Remaining',
     'emp.sick.unpaid':         'Unpaid Used',
     'emp.sick.alert':          '⚠ Unpaid limit exceeded — consult management',
     'emp.sick.paid_exhausted': 'Paid allowance exhausted — subsequent days unpaid',
@@ -733,6 +734,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'emp.vac.executive':    '임원 — 연차 별도 카운트 없음',
     'emp.sick.title':          '병가 현황',
     'emp.sick.paid':           '유급 사용',
+    'emp.sick.remaining':      '잔여',
     'emp.sick.unpaid':         '무급 사용',
     'emp.sick.alert':          '⚠ 무급 한도 초과 — 회사와 협의 필요',
     'emp.sick.paid_exhausted': '유급 한도 소진 — 이후 무급 처리',
