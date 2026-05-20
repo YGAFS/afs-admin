@@ -595,14 +595,28 @@ export default function EmployeeSearch() {
                   <div>
                     <span className="text-gray-600 font-semibold">{t('emp.sick.paid', locale)}</span>
                     <span className={`ml-2 font-bold text-base ${paidSick >= 5 ? 'text-orange-600' : 'text-gray-900'}`}>
-                      {paidSick}/5{locale === 'ko' ? '일' : ' days'}
+                      {days(paidSick)}
+                    </span>
+                    <span className="text-gray-400 text-xs ml-1">
+                      {locale === 'ko' ? '/ 5일' : '/ 5 days'}
                     </span>
                   </div>
+                  {paidSick < 5 && (
+                    <div>
+                      <span className="text-gray-600 font-semibold">{t('emp.sick.remaining', locale)}</span>
+                      <span className="ml-2 font-bold text-base text-gray-900">
+                        {days(Math.round((5 - paidSick) * 10) / 10)}
+                      </span>
+                    </div>
+                  )}
                   {unpaidSick > 0 && (
                     <div>
                       <span className="text-gray-600 font-semibold">{t('emp.sick.unpaid', locale)}</span>
                       <span className={`ml-2 font-bold text-base ${unpaidSick > 3 ? 'text-red-600' : 'text-orange-500'}`}>
-                        {unpaidSick}/3{locale === 'ko' ? '일' : ' days'}
+                        {days(unpaidSick)}
+                      </span>
+                      <span className="text-gray-400 text-xs ml-1">
+                        {locale === 'ko' ? '/ 3일' : '/ 3 days'}
                       </span>
                     </div>
                   )}
