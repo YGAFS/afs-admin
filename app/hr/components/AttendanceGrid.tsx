@@ -6,8 +6,8 @@ import { useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
 )
 
 type LeaveCode = 'L'|'L1'|'L2'|'L3'|'S'|'S1'|'S2'|'S3'|'W'|'W1'|'W2'|'W3'|'T'|'T1'|'T2'|'T3'|'B'

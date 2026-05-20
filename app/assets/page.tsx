@@ -1,12 +1,12 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
 )
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -365,6 +365,16 @@ export default function AssetsPage() {
   const [assetSort, setAssetSort] = useState<{ col: AssetSortCol; dir: 'asc' | 'desc' }>({ col: 'asset_id', dir: 'asc' })
   const [modal, setModal] = useState<{ open: boolean; item?: Asset; clone?: Asset }>({ open: false })
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [rowCtx, setRowCtx] = useState<{ asset: Asset; x: number; y: number } | null>(null)
+  const rowCtxRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (rowCtxRef.current && !rowCtxRef.current.contains(e.target as Node)) setRowCtx(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -554,7 +564,6 @@ export default function AssetsPage() {
                           </th>
                         )
                       })()}
-                      <th className="px-4 py-3 text-left">{t('assets.col.actions', locale)}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -565,7 +574,8 @@ export default function AssetsPage() {
                         return diff >= 0 && diff <= 60
                       })()
                       return (
-                        <tr key={r.id} className="hover:bg-gray-50 group">
+                        <tr key={r.id} className="hover:bg-gray-50 group cursor-context-menu"
+                          onContextMenu={e => { e.preventDefault(); setRowCtx({ asset: r, x: e.clientX, y: e.clientY }) }}>
                           <td className="px-4 py-2 font-mono text-xs text-gray-500">{r.asset_id}</td>
                           <td className="px-4 py-2 text-gray-500 text-xs">{r.category ?? '—'}</td>
                           <td className="px-4 py-2 font-medium text-gray-800 relative">
@@ -607,13 +617,6 @@ export default function AssetsPage() {
                           <td className="px-4 py-2">
                             <Badge label={r.condition} color={CONDITION_COLORS[r.condition] ?? 'bg-gray-100 text-gray-500'} />
                           </td>
-                          <td className="px-4 py-2">
-                            <div className="flex gap-2">
-                              <button onClick={() => setModal({ open: true, item: r })} className="text-xs text-blue-500 hover:underline">{t('common.edit', locale)}</button>
-                              <button onClick={() => setModal({ open: true, clone: r })} className="text-xs text-gray-400 hover:underline">{t('common.clone', locale)}</button>
-                              <button onClick={() => setDeleteTarget(r.id)} className="text-xs text-red-400 hover:underline">{t('common.delete', locale)}</button>
-                            </div>
-                          </td>
                         </tr>
                       )
                     })}
@@ -638,6 +641,26 @@ export default function AssetsPage() {
       )}
       {deleteTarget && (
         <DeleteDialog onCancel={() => setDeleteTarget(null)} onConfirm={handleDelete} />
+      )}
+
+      {rowCtx && (
+        <div ref={rowCtxRef}
+          style={{ position: 'fixed', top: rowCtx.y, left: Math.min(rowCtx.x, window.innerWidth - 160), zIndex: 9999 }}
+          className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 w-36">
+          <button onClick={() => { setModal({ open: true, item: rowCtx.asset }); setRowCtx(null) }}
+            className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 text-blue-600">
+            {t('common.edit', locale)}
+          </button>
+          <button onClick={() => { setModal({ open: true, clone: rowCtx.asset }); setRowCtx(null) }}
+            className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-gray-600">
+            {t('common.clone', locale)}
+          </button>
+          <div className="border-t border-gray-100 my-1" />
+          <button onClick={() => { setDeleteTarget(rowCtx.asset.id); setRowCtx(null) }}
+            className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-500">
+            {t('common.delete', locale)}
+          </button>
+        </div>
       )}
     </div>
   )

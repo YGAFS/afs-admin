@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLocale } from '@/app/providers'
-import { t } from '@/lib/i18n'
+import { t, type Locale } from '@/lib/i18n'
 
 type Company = { id: string; code: string; name: string; next_reorder_date: string | null; alert_days_before: number }
 type Item = { id: string; name: string; category: string; unit: string; company_id: string; supplier: string | null; ea_per_unit: number | null }
@@ -13,7 +13,7 @@ type TabType = 'DASHBOARD' | 'AFS' | 'TNT' | 'ZFS' | 'SETTINGS'
 const COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#F97316','#14B8A6','#EC4899','#6366F1']
 const fmt = (v: number) => `$${v.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2})}`
 
-function OrderFormFields({draft,setDraft,items,getCode,locale}:{draft:any,setDraft:any,items:Item[],getCode:(id:string)=>string,locale:string}) {
+function OrderFormFields({draft,setDraft,items,getCode,locale}:{draft:any,setDraft:any,items:Item[],getCode:(id:string)=>string,locale:Locale}) {
   return (
     <>
       <div>

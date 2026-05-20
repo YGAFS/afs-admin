@@ -1,14 +1,21 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { User } from '@supabase/supabase-js'
 import type { Locale } from '@/lib/i18n'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+// Lazy singleton — only instantiated client-side (never during SSR/prerender)
+let _supabase: SupabaseClient | null = null
+function getSupabase() {
+  if (!_supabase) {
+    _supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
+    )
+  }
+  return _supabase
+}
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -30,13 +37,14 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const [locale,  setLocaleState] = useState<Locale>('en')
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    const sb = getSupabase()
+    sb.auth.getUser().then(({ data }) => {
       const u = data.user ?? null
       setUser(u)
       setLocaleState((u?.user_metadata?.locale as Locale) ?? 'en')
       setLoading(false)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_, session) => {
       const u = session?.user ?? null
       setUser(u)
       setLocaleState((u?.user_metadata?.locale as Locale) ?? 'en')
@@ -47,7 +55,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   async function setLocale(l: Locale) {
     setLocaleState(l)
     if (user) {
-      await supabase.auth.updateUser({ data: { locale: l } })
+      await getSupabase().auth.updateUser({ data: { locale: l } })
     }
   }
 

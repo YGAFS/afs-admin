@@ -1,5 +1,7 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 import { useLocale } from '@/app/providers'
 import { t, type Locale } from '@/lib/i18n'
 
