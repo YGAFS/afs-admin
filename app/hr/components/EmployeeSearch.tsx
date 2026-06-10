@@ -146,6 +146,7 @@ export default function EmployeeSearch() {
   const [teamEdit,     setTeamEdit]     = useState(false)
   const [teamValue,    setTeamValue]    = useState('')
   const [sortMode,     setSortMode]     = useState<'hire'|'name'>('hire')
+  const [quickDeleteId,setQuickDeleteId]= useState<string | null>(null)
   const [probModal,    setProbModal]    = useState(false)
   const [probStartMode,setProbStartMode]= useState<'hire'|'custom'>('hire')
   const [probStartVal, setProbStartVal] = useState('')
@@ -170,10 +171,20 @@ export default function EmployeeSearch() {
   useEffect(() => {
     let q = supabase.from('employees')
       .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
-      .eq('is_active', !showInactive).order('name')
+      .order('name')
+    // Active: is_active=true AND no end_date. Terminated: is_active=false OR has end_date.
+    if (!showInactive) {
+      q = q.eq('is_active', true)
+    } else {
+      q = q.or('is_active.eq.false,end_date.not.is.null')
+    }
     if (query)                q = q.ilike('name', `%${query}%`)
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
-    q.then(({ data }) => { setEmps(sortEmployees((data as Employee[]) ?? [], sortMode)); setSel(null) })
+    q.then(({ data }) => {
+      let emps = (data as Employee[]) ?? []
+      if (!showInactive) emps = emps.filter(e => !e.end_date)
+      setEmps(sortEmployees(emps, sortMode)); setSel(null)
+    })
   }, [query, compFilter, showInactive, sortMode])
 
   async function loadStats(emp: Employee, year: number) {
@@ -346,6 +357,15 @@ export default function EmployeeSearch() {
     setSel(null); setDeleteConfirm(false); setSaving(false)
   }
 
+  async function handleDeleteDirect(empId: string) {
+    setSaving(true)
+    await supabase.from('employees').delete().eq('id', empId)
+    setEmps(p => p.filter(e => e.id !== empId))
+    if (selected?.id === empId) setSel(null)
+    setQuickDeleteId(null)
+    setSaving(false)
+  }
+
   async function handleAddEmployee() {
     if (!newEmp.company_id || !newEmp.name.trim()) return
     setSaving(true); setAddError('')
@@ -373,9 +393,14 @@ export default function EmployeeSearch() {
     setSaving(false)
     let q = supabase.from('employees')
       .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
-      .eq('is_active', !showInactive).order('name')
+      .order('name')
+    if (!showInactive) { q = q.eq('is_active', true) } else { q = q.or('is_active.eq.false,end_date.not.is.null') }
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
-    q.then(({ data }) => setEmps(sortEmployees((data as Employee[]) ?? [], sortMode)))
+    q.then(({ data }) => {
+      let emps = (data as Employee[]) ?? []
+      if (!showInactive) emps = emps.filter(e => !e.end_date)
+      setEmps(sortEmployees(emps, sortMode))
+    })
   }
 
   function getVacStats(emp: Employee, periodUsed: number, co: number) {
@@ -453,35 +478,63 @@ export default function EmployeeSearch() {
               {showInactive ? t('emp.no_terminated', locale) : t('emp.no_results', locale)}
             </div>
           ) : employees.map(emp => (
-            <button key={emp.id} onClick={() => select(emp)}
-              className={`w-full text-left px-4 py-3 border-b border-gray-200 last:border-0 hover:bg-blue-50 transition-colors
-                ${selected?.id === emp.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-gray-900">{emp.name}</span>
-                {emp.is_exempt && (
-                  <span className="text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-medium">
-                    {t('emp.badge.executive', locale)}
+            <div key={emp.id}
+              className={`group relative border-b border-gray-200 last:border-0 transition-colors cursor-pointer
+                ${selected?.id === emp.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : 'hover:bg-blue-50'}`}>
+              {quickDeleteId === emp.id ? (
+                <div className="px-4 py-3 flex items-center justify-between gap-2">
+                  <span className="text-xs text-gray-600">
+                    {locale === 'ko' ? `${emp.name} 삭제할까요?` : `Delete ${emp.name}?`}
                   </span>
-                )}
-                {emp.employment_type === 'remote' && (
-                  <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded font-medium">Remote</span>
-                )}
-                {emp.employment_type === 'contractor' && (
-                  <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-medium">IC</span>
-                )}
-                {emp.is_active && emp.start_date && new Date(emp.start_date) > new Date() && (
-                  <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">
-                    {t('emp.badge.upcoming', locale)}
-                  </span>
-                )}
-              </div>
-              <div className="text-xs text-gray-500 mt-0.5">{(emp.companies as any)?.name} · {emp.position || emp.team || '—'}</div>
-              {emp.end_date && (
-                <div className="text-xs text-red-500 mt-0.5 font-medium">
-                  {emp.end_date} {t('emp.badge.terminated', locale)}
+                  <div className="flex gap-1.5 shrink-0">
+                    <button
+                      onClick={e => { e.stopPropagation(); handleDeleteDirect(emp.id) }}
+                      disabled={saving}
+                      className="text-xs bg-red-600 text-white px-2 py-0.5 rounded hover:bg-red-700 disabled:opacity-50">
+                      {locale === 'ko' ? '삭제' : 'Delete'}
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); setQuickDeleteId(null) }}
+                      className="text-xs border border-gray-300 text-gray-500 px-2 py-0.5 rounded hover:bg-gray-100">
+                      {locale === 'ko' ? '취소' : 'Cancel'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div onClick={() => select(emp)} className="px-4 py-3 pr-8">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-900">{emp.name}</span>
+                    {emp.is_exempt && (
+                      <span className="text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-medium">
+                        {t('emp.badge.executive', locale)}
+                      </span>
+                    )}
+                    {emp.employment_type === 'remote' && (
+                      <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded font-medium">Remote</span>
+                    )}
+                    {emp.employment_type === 'contractor' && (
+                      <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-medium">IC</span>
+                    )}
+                    {emp.is_active && emp.start_date && new Date(emp.start_date) > new Date() && (
+                      <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">
+                        {t('emp.badge.upcoming', locale)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">{(emp.companies as any)?.name} · {emp.position || emp.team || '—'}</div>
+                  {emp.end_date && (
+                    <div className="text-xs text-red-500 mt-0.5 font-medium">
+                      {emp.end_date} {t('emp.badge.terminated', locale)}
+                    </div>
+                  )}
+                  <button
+                    onClick={e => { e.stopPropagation(); setQuickDeleteId(emp.id) }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-300 hover:text-red-500 text-xs">
+                    ✕
+                  </button>
                 </div>
               )}
-            </button>
+            </div>
           ))}
         </div>
 
