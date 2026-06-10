@@ -46,7 +46,8 @@ function isoFromDate(d: Date): string {
 
 function getAnniversaryPeriod(startDateIso: string): AnnivPeriod | null {
   if (!startDateIso) return null
-  const start = new Date(startDateIso)
+  const [sy, sm, sd] = startDateIso.split('-').map(Number)
+  const start = new Date(sy, sm - 1, sd)   // local time — avoids UTC midnight → prev-day bug
   const today = new Date()
   if (start > today) return null
   let years = today.getFullYear() - start.getFullYear()
