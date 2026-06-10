@@ -38,14 +38,36 @@ type Subscription = {
 }
 
 function calcDays(code: string) { return ['L1','L2','S1','S2'].includes(code) ? 0.5 : 1 }
-function calcAccrued(emp: { vacation_allowance: number; start_date?: string }): number {
-  if (!emp.start_date) return 0
-  const start = new Date(emp.start_date)
+type AnnivPeriod = { periodStart: Date; periodEnd: Date; periodYear: number }
+
+function isoFromDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+function getAnniversaryPeriod(startDateIso: string): AnnivPeriod | null {
+  if (!startDateIso) return null
+  const start = new Date(startDateIso)
   const today = new Date()
-  if (start > today) return 0
-  let months = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth())
-  if (today.getDate() < start.getDate()) months--
-  return Math.round(Math.max(0, months) * (emp.vacation_allowance / 12) * 10) / 10
+  if (start > today) return null
+  let years = today.getFullYear() - start.getFullYear()
+  const candidate = new Date(start)
+  candidate.setFullYear(start.getFullYear() + years)
+  if (candidate > today) years--
+  years = Math.max(0, years)
+  const periodStart = new Date(start)
+  periodStart.setFullYear(start.getFullYear() + years)
+  const periodEnd = new Date(start)
+  periodEnd.setFullYear(start.getFullYear() + years + 1)
+  periodEnd.setDate(periodEnd.getDate() - 1)
+  return { periodStart, periodEnd, periodYear: years + 1 }
+}
+
+function calcAccruedInPeriod(allowance: number, periodStart: Date): number {
+  const today = new Date()
+  let months = (today.getFullYear() - periodStart.getFullYear()) * 12
+             + (today.getMonth() - periodStart.getMonth())
+  if (today.getDate() < periodStart.getDate()) months--
+  return Math.round(Math.max(0, months) * (allowance / 12) * 10) / 10
 }
 function todayIso() {
   const d = new Date()
@@ -102,7 +124,9 @@ export default function EmployeeSearch() {
   const [probEndMode,  setProbEndMode]  = useState<'90d'|'custom'>('90d')
   const [probEndVal,   setProbEndVal]   = useState('')
   const [statsYear,    setStatsYear]    = useState(new Date().getFullYear())
-  const [totalVacUsed, setTotalVacUsed] = useState(0)
+  const [periodVacUsed, setPeriodVacUsed] = useState(0)
+  const [carryover,     setCarryover]     = useState(0)
+  const [paidOutPrev,   setPaidOutPrev]   = useState(0)
   const [licenses,     setLicenses]     = useState<License[]>([])
   const [assets,       setAssets]       = useState<Asset[]>([])
   const [subscriptions,setSubs]         = useState<Subscription[]>([])
@@ -125,15 +149,38 @@ export default function EmployeeSearch() {
   }, [query, compFilter, showInactive])
 
   async function loadStats(emp: Employee, year: number) {
-    const [{ data }, { data: allVacData }] = await Promise.all([
+    const today  = new Date()
+    const period = emp.start_date ? getAnniversaryPeriod(emp.start_date) : null
+
+    let prevStartIso: string | null = null
+    let prevEndIso:   string | null = null
+    if (period && period.periodYear > 1) {
+      const ps = new Date(period.periodStart); ps.setFullYear(ps.getFullYear() - 1)
+      const pe = new Date(period.periodStart); pe.setDate(pe.getDate() - 1)
+      prevStartIso = isoFromDate(ps)
+      prevEndIso   = isoFromDate(pe)
+    }
+
+    const vacCodes = ['L','L1','L2','L3']
+    const empty    = { data: [] as { leave_code: string }[], error: null }
+    const [yearRes, periodRes, prevRes] = await Promise.all([
       supabase.from('leave_entries').select('date,leave_code').eq('employee_id', emp.id)
         .gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
-      supabase.from('leave_entries').select('leave_code').eq('employee_id', emp.id)
-        .in('leave_code', ['L','L1','L2','L3']),
+      period
+        ? supabase.from('leave_entries').select('leave_code').eq('employee_id', emp.id)
+            .gte('date', isoFromDate(period.periodStart)).lte('date', isoFromDate(today))
+            .in('leave_code', vacCodes)
+        : Promise.resolve(empty),
+      (prevStartIso && prevEndIso)
+        ? supabase.from('leave_entries').select('leave_code').eq('employee_id', emp.id)
+            .gte('date', prevStartIso).lte('date', prevEndIso)
+            .in('leave_code', vacCodes)
+        : Promise.resolve(empty),
     ])
+
     const s: Summary = { vac: 0, sick: 0, wfh: 0, toil: 0, other: 0 }
     const m: Monthly = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i+1, { vac:0, sick:0, wfh:0, toil:0, other:0 }]))
-    for (const e of (data ?? [])) {
+    for (const e of (yearRes.data ?? [])) {
       const mo = parseInt(e.date.split('-')[1], 10)
       const d  = calcDays(e.leave_code)
       if      (['L','L1','L2','L3'].includes(e.leave_code)) { s.vac  += d; m[mo].vac  += d }
@@ -142,10 +189,23 @@ export default function EmployeeSearch() {
       else if (['T','T1','T2','T3'].includes(e.leave_code)) { const td = ['T1','T2'].includes(e.leave_code) ? 0.5 : 1; s.toil += td; m[mo].toil += td }
       else                                                  { s.other += d; m[mo].other += d }
     }
-    let totalVac = 0
-    for (const e of (allVacData ?? []))
-      totalVac += ['L1','L2'].includes(e.leave_code) ? 0.5 : 1
-    setTotalVacUsed(totalVac)
+
+    let curUsed = 0
+    for (const e of (periodRes.data ?? []))
+      curUsed += ['L1','L2'].includes(e.leave_code) ? 0.5 : 1
+    setPeriodVacUsed(curUsed)
+
+    let co = 0; let paidOut = 0
+    if (prevStartIso) {
+      let prevUsed = 0
+      for (const e of (prevRes.data ?? []))
+        prevUsed += ['L1','L2'].includes(e.leave_code) ? 0.5 : 1
+      const prevRemaining = emp.vacation_allowance - prevUsed
+      co      = Math.min(5, Math.max(0, prevRemaining))
+      paidOut = Math.max(0, prevRemaining - 5)
+    }
+    setCarryover(co)
+    setPaidOutPrev(paidOut)
     setSum(s); setMo(m)
   }
 
@@ -290,14 +350,17 @@ export default function EmployeeSearch() {
     q.then(({ data }) => setEmps((data as Employee[]) ?? []))
   }
 
-  function getVacStats(emp: Employee, totalUsed: number) {
+  function getVacStats(emp: Employee, periodUsed: number, co: number) {
     if (emp.is_exempt) return null
     if (emp.uses_accrual) {
-      const accrued   = calcAccrued(emp)
-      const remaining = Math.max(0, Math.round((accrued - totalUsed) * 10) / 10)
-      return { accrued, remaining, annual: emp.vacation_allowance, isAccrual: true, totalUsed }
+      const period = emp.start_date ? getAnniversaryPeriod(emp.start_date) : null
+      if (!period) return null
+      const accrued    = calcAccruedInPeriod(emp.vacation_allowance, period.periodStart)
+      const totalAvail = Math.round((accrued + co) * 10) / 10
+      const remaining  = Math.max(0, Math.round((totalAvail - periodUsed) * 10) / 10)
+      return { accrued, carryover: co, totalAvail, remaining, annual: emp.vacation_allowance, isAccrual: true, period, periodUsed }
     }
-    return { accrued: emp.vacation_allowance, remaining: emp.vacation_allowance - totalUsed, annual: emp.vacation_allowance, isAccrual: false, totalUsed }
+    return { accrued: emp.vacation_allowance, carryover: 0, totalAvail: emp.vacation_allowance, remaining: emp.vacation_allowance - periodUsed, annual: emp.vacation_allowance, isAccrual: false, period: null, periodUsed }
   }
 
   const days = (n: number) => locale === 'ko' ? `${n}일` : `${n} days`
@@ -382,7 +445,7 @@ export default function EmployeeSearch() {
 
         {/* Detail panel */}
         {selected && summary ? (() => {
-          const vacStats   = getVacStats(selected, totalVacUsed)
+          const vacStats   = getVacStats(selected, periodVacUsed, carryover)
           const paidSick   = Math.min(summary.sick, 5)
           const unpaidSick = Math.max(0, summary.sick - 5)
           const sickAlert  = summary.sick > 8
@@ -534,17 +597,35 @@ export default function EmployeeSearch() {
               {/* Leave status */}
               {vacStats ? (
                 <div className="bg-green-50 border-2 border-green-200 rounded-xl p-4 mb-3">
-                  <div className="text-sm font-bold text-green-800 mb-2">{t('emp.vac.title', locale)}</div>
-                  <div className="flex gap-6 text-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-sm font-bold text-green-800">{t('emp.vac.title', locale)}</div>
+                    {vacStats.period && (
+                      <div className="text-xs text-green-600 font-medium">
+                        {isoFromDate(vacStats.period.periodStart)} ~ {isoFromDate(vacStats.period.periodEnd)}
+                        <span className="ml-1.5 bg-green-200 text-green-800 px-1.5 py-0.5 rounded font-semibold">
+                          {locale === 'ko' ? `${vacStats.period.periodYear}년차` : `Year ${vacStats.period.periodYear}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-5 text-sm flex-wrap">
                     {vacStats.isAccrual && (
                       <div>
                         <span className="text-green-700 font-semibold">{t('emp.vac.accrued', locale)}</span>
                         <span className="ml-2 text-green-900 font-bold text-base">{days(vacStats.accrued)}</span>
                       </div>
                     )}
+                    {vacStats.carryover > 0 && (
+                      <div>
+                        <span className="text-blue-600 font-semibold">
+                          {locale === 'ko' ? '이월' : 'Carried over'}
+                        </span>
+                        <span className="ml-2 text-blue-700 font-bold text-base">+{days(vacStats.carryover)}</span>
+                      </div>
+                    )}
                     <div>
                       <span className="text-green-700 font-semibold">{t('emp.vac.used', locale)}</span>
-                      <span className="ml-2 text-green-900 font-bold text-base">{days(vacStats.totalUsed)}</span>
+                      <span className="ml-2 text-green-900 font-bold text-base">{days(vacStats.periodUsed)}</span>
                     </div>
                     <div>
                       <span className={`font-semibold ${vacStats.remaining <= 1 ? 'text-red-600' : 'text-green-700'}`}>
@@ -556,10 +637,17 @@ export default function EmployeeSearch() {
                     </div>
                   </div>
                   {vacStats.isAccrual && (
-                    <div className="text-xs text-green-600 font-medium mt-1">
+                    <div className="text-xs text-green-600 font-medium mt-1.5">
                       {locale === 'ko'
-                        ? `입사일 기준 매월 ${(vacStats.annual/12).toFixed(2)}일 적립 · 누적 잔여`
-                        : `Accrual from hire date: ${(vacStats.annual/12).toFixed(2)} days/month · cumulative balance`}
+                        ? `입사일 기준 매월 ${(vacStats.annual/12).toFixed(2)}일 적립 · 미사용 최대 5일 이월, 초과분 수당 정산`
+                        : `Accrual from hire: ${(vacStats.annual/12).toFixed(2)} days/month · up to 5 days carry over, excess paid out`}
+                    </div>
+                  )}
+                  {paidOutPrev > 0 && (
+                    <div className="text-xs text-orange-600 font-semibold mt-1">
+                      {locale === 'ko'
+                        ? `전년도 수당 정산: ${paidOutPrev}일 소멸 (5일 초과분)`
+                        : `Prior year payout: ${paidOutPrev} days expired (over 5-day limit)`}
                     </div>
                   )}
                 </div>
