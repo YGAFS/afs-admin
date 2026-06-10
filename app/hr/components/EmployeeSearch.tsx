@@ -38,19 +38,14 @@ type Subscription = {
 }
 
 function calcDays(code: string) { return ['L1','L2','S1','S2'].includes(code) ? 0.5 : 1 }
-function calcAccrued(emp: { vacation_allowance: number; probation_end?: string; start_date?: string }, year: number): number {
-  const today  = new Date()
-  const calcTo = year < today.getFullYear() ? new Date(year, 11, 31) : today
-  if (emp.start_date && new Date(emp.start_date) > calcTo) return 0
-  if (emp.probation_end) {
-    const pe = new Date(emp.probation_end)
-    if (pe > calcTo) return 0
-    const accrualStart = pe.getFullYear() < year ? new Date(year, 0, 1) : pe
-    return Math.min(((calcTo.getTime() - accrualStart.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
-  }
-  const soy          = new Date(year, 0, 1)
-  const accrualStart = emp.start_date && new Date(emp.start_date) > soy ? new Date(emp.start_date) : soy
-  return Math.min(((calcTo.getTime() - accrualStart.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
+function calcAccrued(emp: { vacation_allowance: number; start_date?: string }): number {
+  if (!emp.start_date) return 0
+  const start = new Date(emp.start_date)
+  const today = new Date()
+  if (start > today) return 0
+  let months = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth())
+  if (today.getDate() < start.getDate()) months--
+  return Math.round(Math.max(0, months) * (emp.vacation_allowance / 12) * 10) / 10
 }
 function todayIso() {
   const d = new Date()
@@ -107,7 +102,7 @@ export default function EmployeeSearch() {
   const [probEndMode,  setProbEndMode]  = useState<'90d'|'custom'>('90d')
   const [probEndVal,   setProbEndVal]   = useState('')
   const [statsYear,    setStatsYear]    = useState(new Date().getFullYear())
-  const [carryover,    setCarryover]    = useState(0)
+  const [totalVacUsed, setTotalVacUsed] = useState(0)
   const [licenses,     setLicenses]     = useState<License[]>([])
   const [assets,       setAssets]       = useState<Asset[]>([])
   const [subscriptions,setSubs]         = useState<Subscription[]>([])
@@ -130,11 +125,11 @@ export default function EmployeeSearch() {
   }, [query, compFilter, showInactive])
 
   async function loadStats(emp: Employee, year: number) {
-    const [{ data }, { data: prevData }] = await Promise.all([
+    const [{ data }, { data: allVacData }] = await Promise.all([
       supabase.from('leave_entries').select('date,leave_code').eq('employee_id', emp.id)
         .gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
       supabase.from('leave_entries').select('leave_code').eq('employee_id', emp.id)
-        .gte('date', `${year-1}-01-01`).lte('date', `${year-1}-12-31`),
+        .in('leave_code', ['L','L1','L2','L3']),
     ])
     const s: Summary = { vac: 0, sick: 0, wfh: 0, toil: 0, other: 0 }
     const m: Monthly = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i+1, { vac:0, sick:0, wfh:0, toil:0, other:0 }]))
@@ -147,12 +142,10 @@ export default function EmployeeSearch() {
       else if (['T','T1','T2','T3'].includes(e.leave_code)) { const td = ['T1','T2'].includes(e.leave_code) ? 0.5 : 1; s.toil += td; m[mo].toil += td }
       else                                                  { s.other += d; m[mo].other += d }
     }
-    let prevVacTaken = 0
-    for (const e of (prevData ?? []))
-      if (['L','L1','L2','L3'].includes(e.leave_code))
-        prevVacTaken += ['L1','L2'].includes(e.leave_code) ? 0.5 : 1
-    const prevAccrued = calcAccrued(emp, year - 1)
-    setCarryover(Math.min(5, Math.max(0, prevAccrued - prevVacTaken)))
+    let totalVac = 0
+    for (const e of (allVacData ?? []))
+      totalVac += ['L1','L2'].includes(e.leave_code) ? 0.5 : 1
+    setTotalVacUsed(totalVac)
     setSum(s); setMo(m)
   }
 
@@ -297,14 +290,14 @@ export default function EmployeeSearch() {
     q.then(({ data }) => setEmps((data as Employee[]) ?? []))
   }
 
-  function getVacStats(emp: Employee, vacUsed: number, year: number, co: number) {
+  function getVacStats(emp: Employee, totalUsed: number) {
     if (emp.is_exempt) return null
     if (emp.uses_accrual) {
-      const accrued   = Math.round((calcAccrued(emp, year) + co) * 10) / 10
-      const remaining = Math.max(0, Math.round((accrued - vacUsed) * 10) / 10)
-      return { accrued, remaining, annual: emp.vacation_allowance, isAccrual: true, carryover: co }
+      const accrued   = calcAccrued(emp)
+      const remaining = Math.max(0, Math.round((accrued - totalUsed) * 10) / 10)
+      return { accrued, remaining, annual: emp.vacation_allowance, isAccrual: true, totalUsed }
     }
-    return { accrued: emp.vacation_allowance, remaining: emp.vacation_allowance - vacUsed, annual: emp.vacation_allowance, isAccrual: false, carryover: 0 }
+    return { accrued: emp.vacation_allowance, remaining: emp.vacation_allowance - totalUsed, annual: emp.vacation_allowance, isAccrual: false, totalUsed }
   }
 
   const days = (n: number) => locale === 'ko' ? `${n}일` : `${n} days`
@@ -389,7 +382,7 @@ export default function EmployeeSearch() {
 
         {/* Detail panel */}
         {selected && summary ? (() => {
-          const vacStats   = getVacStats(selected, summary.vac, statsYear, carryover)
+          const vacStats   = getVacStats(selected, totalVacUsed)
           const paidSick   = Math.min(summary.sick, 5)
           const unpaidSick = Math.max(0, summary.sick - 5)
           const sickAlert  = summary.sick > 8
@@ -547,14 +540,11 @@ export default function EmployeeSearch() {
                       <div>
                         <span className="text-green-700 font-semibold">{t('emp.vac.accrued', locale)}</span>
                         <span className="ml-2 text-green-900 font-bold text-base">{days(vacStats.accrued)}</span>
-                        <span className="text-green-600 text-xs ml-1">
-                          {locale === 'ko' ? `/ 연 ${vacStats.annual}일` : `/ yr: ${vacStats.annual} days`}
-                        </span>
                       </div>
                     )}
                     <div>
                       <span className="text-green-700 font-semibold">{t('emp.vac.used', locale)}</span>
-                      <span className="ml-2 text-green-900 font-bold text-base">{days(summary.vac)}</span>
+                      <span className="ml-2 text-green-900 font-bold text-base">{days(vacStats.totalUsed)}</span>
                     </div>
                     <div>
                       <span className={`font-semibold ${vacStats.remaining <= 1 ? 'text-red-600' : 'text-green-700'}`}>
@@ -568,15 +558,8 @@ export default function EmployeeSearch() {
                   {vacStats.isAccrual && (
                     <div className="text-xs text-green-600 font-medium mt-1">
                       {locale === 'ko'
-                        ? `매월 ${(vacStats.annual/12).toFixed(2)}일 적립 · 사전 사용 불가`
-                        : `Monthly accrual: ${(vacStats.annual/12).toFixed(2)} days · no advance use`}
-                      {vacStats.carryover > 0 && (
-                        <span className="ml-2 text-blue-600">
-                          {locale === 'ko'
-                            ? `· 전년 이월 ${vacStats.carryover}일 포함`
-                            : `· incl. ${vacStats.carryover}-day carryover`}
-                        </span>
-                      )}
+                        ? `입사일 기준 매월 ${(vacStats.annual/12).toFixed(2)}일 적립 · 누적 잔여`
+                        : `Accrual from hire date: ${(vacStats.annual/12).toFixed(2)} days/month · cumulative balance`}
                     </div>
                   )}
                 </div>
@@ -620,6 +603,9 @@ export default function EmployeeSearch() {
                       </span>
                     </div>
                   )}
+                </div>
+                <div className="text-xs text-gray-400 font-medium mt-1">
+                  {locale === 'ko' ? '매해 1월 1일 초기화 · 연차와 별도 타임라인' : 'Resets Jan 1 each year · separate from vacation'}
                 </div>
                 {sickAlert && (
                   <div className="text-xs text-red-600 font-bold mt-1">{t('emp.sick.alert', locale)}</div>
