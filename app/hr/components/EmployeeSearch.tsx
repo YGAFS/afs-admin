@@ -38,6 +38,29 @@ type Subscription = {
 }
 
 function calcDays(code: string) { return ['L1','L2','S1','S2'].includes(code) ? 0.5 : 1 }
+
+function positionRank(pos: string | null | undefined): number {
+  if (!pos) return 99
+  const p = pos.toLowerCase()
+  if (/president|ceo|coo|cfo|cto|chief/.test(p)) return 1
+  if (/vice.?president|\bvp\b/.test(p))           return 2
+  if (/director/.test(p))                         return 3
+  if (/manager/.test(p))                          return 4
+  if (/senior|lead|executive/.test(p))            return 5
+  if (/specialist|analyst|coordinator/.test(p))   return 6
+  if (/associate|representative|\brep\b/.test(p)) return 7
+  if (/assistant|junior|intern/.test(p))          return 8
+  return 9
+}
+
+function sortEmployees(emps: Employee[]): Employee[] {
+  return [...emps].sort((a, b) => {
+    const da = a.start_date ?? '9999-12-31'
+    const db = b.start_date ?? '9999-12-31'
+    if (da !== db) return da < db ? -1 : 1
+    return positionRank(a.position) - positionRank(b.position)
+  })
+}
 type AnnivPeriod = { periodStart: Date; periodEnd: Date; periodYear: number }
 
 function isoFromDate(d: Date): string {
@@ -146,7 +169,7 @@ export default function EmployeeSearch() {
       .eq('is_active', !showInactive).order('name')
     if (query)                q = q.ilike('name', `%${query}%`)
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
-    q.then(({ data }) => { setEmps((data as Employee[]) ?? []); setSel(null) })
+    q.then(({ data }) => { setEmps(sortEmployees((data as Employee[]) ?? [])); setSel(null) })
   }, [query, compFilter, showInactive])
 
   async function loadStats(emp: Employee, year: number) {
@@ -348,7 +371,7 @@ export default function EmployeeSearch() {
       .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
       .eq('is_active', !showInactive).order('name')
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
-    q.then(({ data }) => setEmps((data as Employee[]) ?? []))
+    q.then(({ data }) => setEmps(sortEmployees((data as Employee[]) ?? [])))
   }
 
   function getVacStats(emp: Employee, periodUsed: number, co: number) {
