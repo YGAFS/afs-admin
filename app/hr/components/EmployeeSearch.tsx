@@ -53,7 +53,8 @@ function positionRank(pos: string | null | undefined): number {
   return 9
 }
 
-function sortEmployees(emps: Employee[]): Employee[] {
+function sortEmployees(emps: Employee[], mode: 'hire' | 'name' = 'hire'): Employee[] {
+  if (mode === 'name') return [...emps].sort((a, b) => a.name.localeCompare(b.name))
   return [...emps].sort((a, b) => {
     const da = a.start_date ?? '9999-12-31'
     const db = b.start_date ?? '9999-12-31'
@@ -142,6 +143,9 @@ export default function EmployeeSearch() {
   const [newEmp,       setNewEmp]       = useState<NewEmpForm>(BLANK_FORM)
   const [posEdit,      setPosEdit]      = useState(false)
   const [posValue,     setPosValue]     = useState('')
+  const [teamEdit,     setTeamEdit]     = useState(false)
+  const [teamValue,    setTeamValue]    = useState('')
+  const [sortMode,     setSortMode]     = useState<'hire'|'name'>('hire')
   const [probModal,    setProbModal]    = useState(false)
   const [probStartMode,setProbStartMode]= useState<'hire'|'custom'>('hire')
   const [probStartVal, setProbStartVal] = useState('')
@@ -169,8 +173,8 @@ export default function EmployeeSearch() {
       .eq('is_active', !showInactive).order('name')
     if (query)                q = q.ilike('name', `%${query}%`)
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
-    q.then(({ data }) => { setEmps(sortEmployees((data as Employee[]) ?? [])); setSel(null) })
-  }, [query, compFilter, showInactive])
+    q.then(({ data }) => { setEmps(sortEmployees((data as Employee[]) ?? [], sortMode)); setSel(null) })
+  }, [query, compFilter, showInactive, sortMode])
 
   async function loadStats(emp: Employee, year: number) {
     const today  = new Date()
@@ -371,7 +375,7 @@ export default function EmployeeSearch() {
       .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
       .eq('is_active', !showInactive).order('name')
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
-    q.then(({ data }) => setEmps(sortEmployees((data as Employee[]) ?? [])))
+    q.then(({ data }) => setEmps(sortEmployees((data as Employee[]) ?? [], sortMode)))
   }
 
   function getVacStats(emp: Employee, periodUsed: number, co: number) {
@@ -392,7 +396,7 @@ export default function EmployeeSearch() {
   return (
     <div>
       {/* Search filter + add button */}
-      <div className="flex gap-2 mb-3">
+      <div className="flex gap-2 mb-2">
         <input value={query} onChange={e => setQuery(e.target.value)}
           placeholder={t('emp.search_ph', locale)}
           className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" />
@@ -405,6 +409,20 @@ export default function EmployeeSearch() {
           className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg whitespace-nowrap transition-colors">
           {t('emp.add', locale)}
         </button>
+      </div>
+      {/* Sort toggle */}
+      <div className="flex items-center gap-1 mb-3">
+        <span className="text-xs text-gray-400 mr-1">{locale === 'ko' ? '정렬:' : 'Sort:'}</span>
+        {([['hire', locale === 'ko' ? '입사일순' : 'Hire Date'], ['name', locale === 'ko' ? '이름순' : 'Name']] as const).map(([mode, label]) => (
+          <button key={mode} onClick={() => setSortMode(mode)}
+            className={`px-2.5 py-1 text-xs rounded-lg font-semibold border transition-colors ${
+              sortMode === mode
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-500 border-gray-300 hover:border-blue-400 hover:text-blue-600'
+            }`}>
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Active / Terminated tabs */}
@@ -517,9 +535,42 @@ export default function EmployeeSearch() {
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-gray-600 mt-1 font-medium">
-                    {(selected.companies as any)?.name} · {selected.team} · {selected.manager_name || t('emp.no_manager', locale)}
-                  </p>
+                  <div className="flex items-center gap-1 mt-1 text-sm text-gray-600 font-medium flex-wrap">
+                    <span>{(selected.companies as any)?.name}</span>
+                    <span className="text-gray-400">·</span>
+                    {teamEdit ? (
+                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <input autoFocus type="text" value={teamValue}
+                          onChange={e => setTeamValue(e.target.value)}
+                          onKeyDown={async e => {
+                            if (e.key === 'Enter') {
+                              await supabase.from('employees').update({ team: teamValue || null }).eq('id', selected.id)
+                              setEmps(prev => prev.map(em => em.id === selected.id ? { ...em, team: teamValue } : em))
+                              setSel(s => s ? { ...s, team: teamValue } : s)
+                              setTeamEdit(false)
+                            } else if (e.key === 'Escape') setTeamEdit(false)
+                          }}
+                          className="text-sm border border-blue-400 rounded px-2 py-0.5 w-32 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        <button onClick={async () => {
+                          await supabase.from('employees').update({ team: teamValue || null }).eq('id', selected.id)
+                          setEmps(prev => prev.map(em => em.id === selected.id ? { ...em, team: teamValue } : em))
+                          setSel(s => s ? { ...s, team: teamValue } : s)
+                          setTeamEdit(false)
+                        }} className="text-xs text-white bg-blue-600 px-2 py-0.5 rounded hover:bg-blue-700">
+                          {t('common.save', locale)}
+                        </button>
+                        <button onClick={() => setTeamEdit(false)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setTeamValue(selected.team ?? ''); setTeamEdit(true) }}
+                        className="hover:text-blue-600 group flex items-center gap-0.5">
+                        <span>{selected.team || <span className="text-gray-400 text-xs">{locale === 'ko' ? '부서 없음' : 'No team'}</span>}</span>
+                        <span className="text-gray-300 group-hover:text-blue-400 text-xs ml-0.5">✎</span>
+                      </button>
+                    )}
+                    <span className="text-gray-400">·</span>
+                    <span>{selected.manager_name || t('emp.no_manager', locale)}</span>
+                  </div>
 
                   {/* Probation */}
                   {(() => {

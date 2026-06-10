@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
@@ -35,8 +35,20 @@ export default function CompanyAttendancePage() {
   const [dateValue,      setDateValue]      = useState('')
   const [saving,         setSaving]         = useState(false)
   const now = new Date()
-  const [year,  setYear]  = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [year,           setYear]           = useState(now.getFullYear())
+  const [month,          setMonth]          = useState(now.getMonth() + 1)
+  const [showPicker,     setShowPicker]     = useState(false)
+  const [pickerYear,     setPickerYear]     = useState(now.getFullYear())
+  const pickerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node))
+        setShowPicker(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   useEffect(() => {
     const label = COMPANY_MAP[company]
@@ -106,9 +118,39 @@ export default function CompanyAttendancePage() {
         </h1>
         <div className="flex items-center gap-2 ml-auto">
           <button onClick={() => shiftMonth(-1)} className="px-3 py-1.5 border rounded-lg text-sm hover:bg-gray-50">◀</button>
-          <span className="text-base font-semibold w-32 text-center">{monthLabel}</span>
+          <div className="relative" ref={pickerRef}>
+            <button
+              onClick={() => { setPickerYear(year); setShowPicker(p => !p) }}
+              className="text-base font-semibold w-32 text-center px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+              {monthLabel}
+            </button>
+            {showPicker && (
+              <div className="absolute top-10 left-1/2 -translate-x-1/2 bg-white border border-gray-200 rounded-xl shadow-xl p-3 z-50 w-56">
+                <div className="flex items-center justify-between mb-2">
+                  <button onClick={() => setPickerYear(y => y - 1)}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 text-xs font-bold">◀</button>
+                  <span className="text-sm font-bold text-gray-800">{pickerYear}</span>
+                  <button onClick={() => setPickerYear(y => y + 1)}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 text-xs font-bold">▶</button>
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                    <button key={m}
+                      onClick={() => { setYear(pickerYear); setMonth(m); setShowPicker(false) }}
+                      className={`py-1.5 text-xs rounded-lg font-medium transition-colors ${
+                        pickerYear === year && m === month
+                          ? 'bg-blue-600 text-white'
+                          : 'hover:bg-blue-50 text-gray-700'
+                      }`}>
+                      {t(`month.${m}`, locale)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <button onClick={() => shiftMonth(1)} className="px-3 py-1.5 border rounded-lg text-sm hover:bg-gray-50">▶</button>
-          <button onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth() + 1) }}
+          <button onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth() + 1); setShowPicker(false) }}
             className="px-3 py-1.5 border rounded-lg text-sm text-blue-600 hover:bg-blue-50">
             {t('hr.attendance.this_month', locale)}
           </button>
