@@ -868,11 +868,15 @@ export default function EmployeeSearch() {
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <th className="text-left px-3 py-2 text-gray-600 font-bold w-14">{t('emp.monthly.type', locale)}</th>
-                      {Array.from({ length: 12 }, (_, i) => (
-                        <th key={i+1} className="text-center px-1 py-2 text-gray-600 font-semibold min-w-8">
-                          {t(`month.${i+1}`, locale)}
-                        </th>
-                      ))}
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const [hy, hm] = selected.start_date ? selected.start_date.split('-').map(Number) : [null, null]
+                        const beforeHire = hy != null && (statsYear < hy || (statsYear === hy && (i + 1) < hm!))
+                        return (
+                          <th key={i+1} className={`text-center px-1 py-2 font-semibold min-w-8 ${beforeHire ? 'bg-gray-100 text-gray-300' : 'text-gray-600'}`}>
+                            {t(`month.${i+1}`, locale)}
+                          </th>
+                        )
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -887,10 +891,12 @@ export default function EmployeeSearch() {
                           {row.labelKey ? t(row.labelKey, locale) : 'Unpaid'}
                         </td>
                         {Array.from({ length: 12 }, (_, i) => {
+                          const [hy, hm] = selected.start_date ? selected.start_date.split('-').map(Number) : [null, null]
+                          const beforeHire = hy != null && (statsYear < hy || (statsYear === hy && (i + 1) < hm!))
                           const v = monthly[i+1]?.[row.key] ?? 0
                           return (
-                            <td key={i} className={`text-center py-2 ${v > 0 ? row.color : 'text-gray-300'}`}>
-                              {v > 0 ? v : '·'}
+                            <td key={i} className={`text-center py-2 ${beforeHire ? 'bg-gray-100' : v > 0 ? row.color : 'text-gray-300'}`}>
+                              {beforeHire ? '' : v > 0 ? v : '·'}
                             </td>
                           )
                         })}

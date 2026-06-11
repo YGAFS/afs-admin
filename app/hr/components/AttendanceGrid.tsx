@@ -48,12 +48,6 @@ function calcAccrued(emp: Employee, refYear: number, refMonth: number): number {
   const monthEnd = new Date(refYear, refMonth, 0)
   const calcTo   = monthEnd < today ? monthEnd : today
   if (emp.start_date && new Date(emp.start_date) > calcTo) return 0
-  if (emp.probation_end) {
-    const pe = new Date(emp.probation_end)
-    if (pe > calcTo) return 0
-    const accrualStart = pe.getFullYear() < refYear ? new Date(refYear, 0, 1) : pe
-    return Math.min(((calcTo.getTime() - accrualStart.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
-  }
   const soy          = new Date(refYear, 0, 1)
   const accrualStart = emp.start_date && new Date(emp.start_date) > soy ? new Date(emp.start_date) : soy
   return Math.min(((calcTo.getTime() - accrualStart.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
