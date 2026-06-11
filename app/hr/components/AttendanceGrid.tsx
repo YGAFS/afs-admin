@@ -160,13 +160,15 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     if (!emps?.length) return
 
     const ids = emps.map(e => e.id)
-    const [{ data: me }, { data: ye }, { data: prevYe }, { data: notesRaw }] = await Promise.all([
+    const [{ data: me }, { data: ye }, { data: prevYe }, { data: prevPrevYe }, { data: notesRaw }] = await Promise.all([
       supabase.from('leave_entries').select('employee_id,date,leave_code,hours')
         .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
       supabase.from('leave_entries').select('employee_id,leave_code')
         .in('employee_id', ids).gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
       supabase.from('leave_entries').select('employee_id,leave_code')
         .in('employee_id', ids).gte('date', `${year-1}-01-01`).lte('date', `${year-1}-12-31`),
+      supabase.from('leave_entries').select('employee_id,leave_code')
+        .in('employee_id', ids).gte('date', `${year-2}-01-01`).lte('date', `${year-2}-12-31`),
       supabase.from('attendance_notes').select('employee_id,date,note')
         .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
     ])
@@ -194,6 +196,14 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     }
     setYS(ysMap)
 
+    const prevPrevVac: Record<string, number> = {}
+    for (const emp of emps) prevPrevVac[emp.id] = 0
+    for (const e of (prevPrevYe ?? [])) {
+      if (!(e.employee_id in prevPrevVac)) continue
+      if (['L','L1','L2','L3'].includes(e.leave_code))
+        prevPrevVac[e.employee_id] += ['L1','L2'].includes(e.leave_code) ? 0.5 : 1
+    }
+
     const prevVac: Record<string, number> = {}
     for (const emp of emps) prevVac[emp.id] = 0
     for (const e of (prevYe ?? [])) {
@@ -201,10 +211,14 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       if (['L','L1','L2','L3'].includes(e.leave_code))
         prevVac[e.employee_id] += ['L1','L2'].includes(e.leave_code) ? 0.5 : 1
     }
+
     const coMap: Record<string, number> = {}
     for (const emp of emps) {
-      const prevAccrued = calcAccrued(emp, year - 1, 12)
-      coMap[emp.id] = Math.min(5, Math.max(0, prevAccrued - prevVac[emp.id]))
+      const prevPrevAccrued = calcAccrued(emp, year - 2, 12)
+      const prevCarryover   = Math.min(5, Math.max(0, prevPrevAccrued - prevPrevVac[emp.id]))
+      const prevAccrued     = calcAccrued(emp, year - 1, 12)
+      const prevTotalAvail  = prevAccrued + prevCarryover
+      coMap[emp.id] = Math.min(5, Math.max(0, prevTotalAvail - prevVac[emp.id]))
     }
     setCarryovers(coMap)
   }
