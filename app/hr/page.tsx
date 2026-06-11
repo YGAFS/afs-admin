@@ -10,7 +10,7 @@ export default function HrPage() {
   const router = useRouter()
   const { locale } = useLocale()
 
-  const COMPANIES = [
+  const COMPANIES: { slug: string; labelKey: string; color: string; disabled?: boolean }[] = [
     { slug: 'afs', labelKey: 'hr.afs_attendance', color: 'bg-blue-600  hover:bg-blue-700  text-white' },
     { slug: 'tnt', labelKey: 'hr.tnt_attendance', color: 'bg-green-600 hover:bg-green-700 text-white' },
     { slug: 'zfs', labelKey: 'hr.zfs_attendance',  color: 'bg-purple-600 hover:bg-purple-700 text-white' },
