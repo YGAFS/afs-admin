@@ -110,10 +110,8 @@ function getAllAnnivPeriods(startDateIso: string): AnnivPeriod[] {
 
 function calcAccruedInPeriod(allowance: number, periodStart: Date): number {
   const today = new Date()
-  let months = (today.getFullYear() - periodStart.getFullYear()) * 12
-             + (today.getMonth() - periodStart.getMonth())
-  if (today.getDate() < periodStart.getDate()) months--
-  return Math.round(Math.max(0, months) * (allowance / 12) * 100) / 100
+  const daysElapsed = Math.floor((today.getTime() - periodStart.getTime()) / 86400000)
+  return Math.round(Math.max(0, daysElapsed) / 365 * allowance * 100) / 100
 }
 function todayIso() {
   const d = new Date()
