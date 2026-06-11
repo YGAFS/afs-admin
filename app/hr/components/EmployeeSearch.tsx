@@ -113,7 +113,7 @@ function calcAccruedInPeriod(allowance: number, periodStart: Date): number {
   let months = (today.getFullYear() - periodStart.getFullYear()) * 12
              + (today.getMonth() - periodStart.getMonth())
   if (today.getDate() < periodStart.getDate()) months--
-  return Math.round(Math.max(0, months) * (allowance / 12) * 10) / 10
+  return Math.round(Math.max(0, months) * (allowance / 12) * 100) / 100
 }
 function todayIso() {
   const d = new Date()
@@ -260,14 +260,14 @@ export default function EmployeeSearch() {
         vacEntries
           .filter(e => e.date >= pStartIso && e.date <= pEndIso)
           .reduce((sum, e) => sum + (['L1','L2'].includes(e.leave_code) ? 0.5 : 1), 0)
-        * 10) / 10
+        * 100) / 100
 
       const accrued   = isCurrent
         ? calcAccruedInPeriod(emp.vacation_allowance, p.periodStart)
         : emp.vacation_allowance
-      const remaining = Math.max(0, Math.round((accrued + carryIn - used) * 10) / 10)
+      const remaining = Math.max(0, Math.round((accrued + carryIn - used) * 100) / 100)
       const carryOut  = isCurrent ? 0 : Math.min(5, remaining)
-      const expired   = isCurrent ? 0 : Math.max(0, Math.round((remaining - 5) * 10) / 10)
+      const expired   = isCurrent ? 0 : Math.max(0, Math.round((remaining - 5) * 100) / 100)
 
       history.push({ periodYear: p.periodYear, periodStart: p.periodStart, periodEnd: p.periodEnd, accrued, carryIn, used, remaining, carryOut, expired, isCurrent })
       carryIn = carryOut
@@ -442,14 +442,14 @@ export default function EmployeeSearch() {
       const period = emp.start_date ? getAnniversaryPeriod(emp.start_date) : null
       if (!period) return null
       const accrued    = calcAccruedInPeriod(emp.vacation_allowance, period.periodStart)
-      const totalAvail = Math.round((accrued + co) * 10) / 10
-      const remaining  = Math.max(0, Math.round((totalAvail - periodUsed) * 10) / 10)
+      const totalAvail = Math.round((accrued + co) * 100) / 100
+      const remaining  = Math.max(0, Math.round((totalAvail - periodUsed) * 100) / 100)
       return { accrued, carryover: co, totalAvail, remaining, annual: emp.vacation_allowance, isAccrual: true, period, periodUsed }
     }
     return { accrued: emp.vacation_allowance, carryover: 0, totalAvail: emp.vacation_allowance, remaining: emp.vacation_allowance - periodUsed, annual: emp.vacation_allowance, isAccrual: false, period: null, periodUsed }
   }
 
-  const days = (n: number) => locale === 'ko' ? `${n}일` : `${n} days`
+  const days = (n: number) => locale === 'ko' ? `${n.toFixed(2)}일` : `${n.toFixed(2)} days`
 
   return (
     <div>
@@ -807,8 +807,8 @@ export default function EmployeeSearch() {
                   {paidOutPrev > 0 && (
                     <div className="text-xs text-orange-600 font-semibold mt-1">
                       {locale === 'ko'
-                        ? `전년도 수당 정산: ${paidOutPrev}일 소멸 (5일 초과분)`
-                        : `Prior year payout: ${paidOutPrev} days expired (over 5-day limit)`}
+                        ? `전년도 수당 정산: ${paidOutPrev.toFixed(2)}일 소멸 (5일 초과분)`
+                        : `Prior year payout: ${paidOutPrev.toFixed(2)} days expired (over 5-day limit)`}
                     </div>
                   )}
                 </div>
