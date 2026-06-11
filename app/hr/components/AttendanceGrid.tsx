@@ -10,7 +10,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
 )
 
-type LeaveCode = 'L'|'L1'|'L2'|'L3'|'S'|'S1'|'S2'|'S3'|'W'|'W1'|'W2'|'W3'|'T'|'T1'|'T2'|'T3'|'B'
+type LeaveCode = 'L'|'L1'|'L2'|'L3'|'S'|'S1'|'S2'|'S3'|'W'|'W1'|'W2'|'W3'|'T'|'T1'|'T2'|'T3'|'B'|'O'
 type Employee  = {
   id: string; name: string; team: string; manager_name: string
   vacation_allowance: number; position: string | null; sort_order: number
@@ -19,7 +19,7 @@ type Employee  = {
   probation_start?: string; probation_end?: string
 }
 type LeaveCell = { code: LeaveCode; hours?: number }
-type YS        = { vacTaken: number; sick: number; wfh: number }
+type YS        = { vacTaken: number; sick: number; wfh: number; ot: number }
 
 const CODE_COLOR: Record<string, string> = {
   L:  'bg-green-200 text-green-800',  L1: 'bg-green-100 text-green-700',
@@ -31,6 +31,7 @@ const CODE_COLOR: Record<string, string> = {
   T:  'bg-gray-200  text-gray-700',
   T1: 'bg-gray-100  text-gray-600',   T2: 'bg-gray-100  text-gray-600',
   T3: 'bg-gray-50   text-gray-500',   B:  'bg-gray-100  text-gray-500',
+  O:  'bg-orange-200 text-orange-800',
 }
 
 const CODE_OPTIONS: { code: LeaveCode; needsHours?: boolean }[] = [
@@ -39,6 +40,7 @@ const CODE_OPTIONS: { code: LeaveCode; needsHours?: boolean }[] = [
   { code: 'W' }, { code: 'W1' }, { code: 'W2' }, { code: 'W3', needsHours: true },
   { code: 'T' }, { code: 'T1' }, { code: 'T2' }, { code: 'T3', needsHours: true },
   { code: 'B' },
+  { code: 'O', needsHours: true },
 ]
 
 const TEAM_ORDER = ['Team Sales','Team Accounting','Team Operations','Department 1','Department 2','Department 3']
@@ -163,7 +165,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     const [{ data: me }, { data: ye }, { data: prevYe }, { data: prevPrevYe }, { data: notesRaw }] = await Promise.all([
       supabase.from('leave_entries').select('employee_id,date,leave_code,hours')
         .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
-      supabase.from('leave_entries').select('employee_id,leave_code')
+      supabase.from('leave_entries').select('employee_id,leave_code,hours')
         .in('employee_id', ids).gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
       supabase.from('leave_entries').select('employee_id,leave_code')
         .in('employee_id', ids).gte('date', `${year-1}-01-01`).lte('date', `${year-1}-12-31`),
@@ -184,7 +186,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     setNoteMap(nm)
 
     const ysMap: Record<string, YS> = {}
-    for (const emp of emps) ysMap[emp.id] = { vacTaken: 0, sick: 0, wfh: 0 }
+    for (const emp of emps) ysMap[emp.id] = { vacTaken: 0, sick: 0, wfh: 0, ot: 0 }
     for (const e of (ye ?? [])) {
       if (!ysMap[e.employee_id]) continue
       const d = ['L1','L2','S1','S2'].includes(e.leave_code) ? 0.5 : 1
@@ -193,6 +195,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       else if (e.leave_code === 'W')                           ysMap[e.employee_id].wfh      += 1
       else if (['W1','W2'].includes(e.leave_code))             ysMap[e.employee_id].wfh      += 0.5
       else if (e.leave_code === 'W3')                          ysMap[e.employee_id].wfh      += 0.5
+      else if (e.leave_code === 'O')                           ysMap[e.employee_id].ot       += (e.hours ?? 0)
     }
     setYS(ysMap)
 
@@ -339,13 +342,16 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
               <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-12 font-semibold">
                 {t('grid.col.wfh', locale)}
               </th>
+              <th className="border border-gray-300 px-2 py-2 text-center text-orange-700 min-w-14 whitespace-nowrap font-semibold">
+                {t('grid.col.ot', locale)}
+              </th>
             </tr>
           </thead>
           <tbody>
             {sortedTeams.map(([team, emps]) => (
               <>
                 <tr key={`th-${team}`}>
-                  <td colSpan={daysInMonth + 4}
+                  <td colSpan={daysInMonth + 5}
                     className="sticky left-0 bg-gray-200 border-y-2 border-gray-400 border-l-4 border-l-blue-600 px-3 py-1.5 font-bold text-slate-700 text-xs">
                     {team}
                   </td>
@@ -479,12 +485,17 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                           {(empYS?.wfh ?? 0) > 0 ? empYS!.wfh : '—'}
                         </span>
                       </td>
+                      <td className="border border-gray-300 text-center">
+                        <span className={`text-xs ${(empYS?.ot ?? 0) > 0 ? 'text-orange-600 font-semibold' : 'text-gray-300'}`}>
+                          {(empYS?.ot ?? 0) > 0 ? `${empYS!.ot}h` : '—'}
+                        </span>
+                      </td>
                     </tr>
                   )
                 })}
 
                 <tr key={`add-${team}`}>
-                  <td colSpan={daysInMonth + 4} className="border-b border-gray-200 bg-white">
+                  <td colSpan={daysInMonth + 5} className="border-b border-gray-200 bg-white">
                     <button onClick={() => setAddingToTeam(team)}
                       className="w-full px-4 py-1.5 text-xs text-blue-500 hover:text-blue-700 hover:bg-blue-50/50 text-left transition-colors">
                       {locale === 'ko' ? `+ ${team}에 직원 추가` : `+ Add Employee — ${team}`}
@@ -517,7 +528,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                     <input type="number" value={pendingHours}
                       onChange={e => setPendingHours(e.target.value)}
                       placeholder={t('grid.hours_placeholder', locale)}
-                      min="0.5" max="8" step="0.5" autoFocus
+                      min="0.5" max="24" step="0.5" autoFocus
                       className="w-16 border rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
                       onClick={e => e.stopPropagation()} />
                     <span className="text-xs text-gray-500">{t('grid.hours', locale)}</span>

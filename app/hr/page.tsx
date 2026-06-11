@@ -13,7 +13,7 @@ export default function HrPage() {
   const COMPANIES = [
     { slug: 'afs', labelKey: 'hr.afs_attendance', color: 'bg-blue-600  hover:bg-blue-700  text-white' },
     { slug: 'tnt', labelKey: 'hr.tnt_attendance', color: 'bg-green-600 hover:bg-green-700 text-white' },
-    { slug: 'zfs', labelKey: 'hr.zfs_coming_soon', color: 'bg-gray-200  text-gray-400 cursor-not-allowed', disabled: true },
+    { slug: 'zfs', labelKey: 'hr.zfs_attendance',  color: 'bg-purple-600 hover:bg-purple-700 text-white' },
   ]
 
   return (
