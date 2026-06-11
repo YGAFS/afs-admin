@@ -152,7 +152,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     const baseQ = () => supabase.from('employees')
       .select('id,name,team,manager_name,vacation_allowance,position,sort_order,is_exempt,uses_accrual,start_date,end_date,probation_start,probation_end')
       .eq('company_id', companyId)
-      .or(`is_active.eq.true,end_date.gte.${firstDayStr}`)
+      .or(`end_date.is.null,end_date.gte.${firstDayStr}`)
       .or(`start_date.is.null,start_date.lte.${lastDayStr}`)
       .order('sort_order').order('name')
 
