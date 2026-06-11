@@ -231,11 +231,12 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
     if (code === null) {
-      await supabase.from('leave_entries').delete().eq('employee_id', empId).eq('date', dateStr)
-      setLeaveMap(p => { const n = { ...p }; delete n[key]; return n })
+      const { error } = await supabase.from('leave_entries').delete().eq('employee_id', empId).eq('date', dateStr)
+      if (!error) setLeaveMap(p => { const n = { ...p }; delete n[key]; return n })
     } else {
-      await supabase.from('leave_entries')
+      const { error } = await supabase.from('leave_entries')
         .upsert({ employee_id: empId, date: dateStr, leave_code: code, hours: hours ?? null }, { onConflict: 'employee_id,date' })
+      if (error) { alert(`저장 실패: ${error.message}`); setSaving(false); return }
       setLeaveMap(p => ({ ...p, [key]: { code, hours } }))
     }
     setSaving(false); setEditing(null); setPendingCode(null); setPendingHours('')
