@@ -46,6 +46,9 @@ function ContactMgr({ label, contacts, selectedId, onSelect, storageKey, onChang
   const [newName,   setNewName]   = useState('')
   const [newEmail,  setNewEmail]  = useState('')
   const save = (list: EmailContact[]) => { saveEmailContacts(storageKey, list); onChange(list) }
+  const validEmail = (e: string) => e.includes('@') && e.split('@')[1]?.includes('.')
+  const editEmailInvalid = editEmail.trim() && !validEmail(editEmail.trim())
+  const newEmailInvalid  = newEmail.trim()  && !validEmail(newEmail.trim())
   return (
     <div className="mb-4">
       <div className="flex items-center justify-between mb-1.5">
@@ -58,7 +61,11 @@ function ContactMgr({ label, contacts, selectedId, onSelect, storageKey, onChang
       <select value={selectedId} onChange={e => onSelect(e.target.value)}
         className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
         <option value="">{locale === 'ko' ? '— 선택 —' : '— Select —'}</option>
-        {contacts.map(c => <option key={c.id} value={c.id}>{c.name} ({c.email})</option>)}
+        {contacts.map(c => (
+          <option key={c.id} value={c.id}>
+            {c.name} ({c.email}){!validEmail(c.email) ? ' ⚠️' : ''}
+          </option>
+        ))}
       </select>
       {open && (
         <div className="mt-2 border rounded-lg p-3 bg-gray-50 space-y-2">
@@ -68,16 +75,19 @@ function ContactMgr({ label, contacts, selectedId, onSelect, storageKey, onChang
             </p>
           )}
           {contacts.map(c => (
-            <div key={c.id} className="bg-white rounded-lg p-2 border">
+            <div key={c.id} className={`bg-white rounded-lg p-2 border ${!validEmail(c.email) ? 'border-orange-300' : ''}`}>
               {editId === c.id ? (
                 <div className="flex gap-1 flex-wrap">
                   <input value={editName} onChange={e => setEditName(e.target.value)}
                     placeholder={locale === 'ko' ? '이름' : 'Name'}
                     className="flex-1 min-w-20 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                  <input value={editEmail} onChange={e => setEditEmail(e.target.value)}
-                    type="email" placeholder="Email"
-                    className="flex-1 min-w-32 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                  <button disabled={!editName.trim() || !editEmail.trim()}
+                  <div className="flex-1 min-w-32">
+                    <input value={editEmail} onChange={e => setEditEmail(e.target.value)}
+                      type="email" placeholder="user@company.com"
+                      className={`w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 ${editEmailInvalid ? 'border-red-400 focus:ring-red-400' : 'focus:ring-blue-400'}`} />
+                    {editEmailInvalid && <p className="text-red-500 text-[10px] mt-0.5">user@domain.com 형식 필요</p>}
+                  </div>
+                  <button disabled={!editName.trim() || !validEmail(editEmail.trim())}
                     onClick={() => { save(contacts.map(x => x.id === c.id ? { id: c.id, name: editName.trim(), email: editEmail.trim() } : x)); setEditId(null) }}
                     className="text-xs bg-blue-500 disabled:bg-gray-300 text-white px-2 py-1 rounded">
                     {locale === 'ko' ? '저장' : 'Save'}
@@ -91,7 +101,8 @@ function ContactMgr({ label, contacts, selectedId, onSelect, storageKey, onChang
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <span className="text-xs font-medium text-gray-700">{c.name}</span>
-                    <span className="text-xs text-gray-400 ml-2">{c.email}</span>
+                    <span className={`text-xs ml-2 ${!validEmail(c.email) ? 'text-orange-500 font-medium' : 'text-gray-400'}`}>{c.email}</span>
+                    {!validEmail(c.email) && <span className="text-[10px] text-orange-500 ml-1">← 수정 필요</span>}
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
                     <button onClick={() => { setEditId(c.id); setEditName(c.name); setEditEmail(c.email) }}
@@ -107,14 +118,17 @@ function ContactMgr({ label, contacts, selectedId, onSelect, storageKey, onChang
               )}
             </div>
           ))}
-          <div className="flex gap-1 pt-2 border-t border-gray-200">
+          <div className="flex gap-1 pt-2 border-t border-gray-200 flex-wrap">
             <input value={newName} onChange={e => setNewName(e.target.value)}
               placeholder={locale === 'ko' ? '이름' : 'Name'}
               className="flex-1 min-w-16 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
-            <input value={newEmail} onChange={e => setNewEmail(e.target.value)}
-              placeholder="Email" type="email"
-              className="flex-1 min-w-28 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
-            <button disabled={!newName.trim() || !newEmail.trim()}
+            <div className="flex-1 min-w-28">
+              <input value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                placeholder="user@company.com" type="email"
+                className={`w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 ${newEmailInvalid ? 'border-red-400 focus:ring-red-400' : 'focus:ring-blue-400'}`} />
+              {newEmailInvalid && <p className="text-red-500 text-[10px] mt-0.5">user@domain.com 형식 필요</p>}
+            </div>
+            <button disabled={!newName.trim() || !validEmail(newEmail.trim())}
               onClick={() => {
                 const c = { id: Math.random().toString(36).slice(2), name: newName.trim(), email: newEmail.trim() }
                 save([...contacts, c]); setNewName(''); setNewEmail('')
