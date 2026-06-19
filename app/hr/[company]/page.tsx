@@ -242,96 +242,69 @@ export default function CompanyAttendancePage() {
   }
 
   function buildEmailBody() {
-    const compLabel = COMPANY_MAP[company] ?? company.toUpperCase()
-    const selected  = Array.from(emailDates).sort((a, b) => a - b)
+    const selected = Array.from(emailDates).sort((a, b) => a - b)
     if (!selected.length) return { subject: '', body: '' }
 
-    const sender    = emailSenders.find(s => s.id === fromId)
     const recipient = emailRecips.find(r => r.id === toId)
+    const empMap    = Object.fromEntries(emailEmps.map(e => [e.id, e.name]))
 
-    const codeDesc = (code: string, hours: number | null) => {
-      const KO: Record<string, string> = {
-        L:'연차', L1:'오전 반차', L2:'오후 반차', L3:'시간 연차',
-        S:'병가', S1:'오전 반차 병가', S2:'오후 반차 병가', S3:'시간 병가',
-        W:'재택', W1:'오전 반차 재택', W2:'오후 반차 재택', W3:'시간 재택',
-        T:'Unpaid', T1:'Unpaid 오전', T2:'Unpaid 오후', T3:'Unpaid 시간',
-        B:'공휴일', O:'초과근무',
-      }
-      const EN: Record<string, string> = {
-        L:'Leave', L1:'AM Half Leave', L2:'PM Half Leave', L3:'Hourly Leave',
-        S:'Sick', S1:'AM Half Sick', S2:'PM Half Sick', S3:'Hourly Sick',
-        W:'WFH', W1:'AM Half WFH', W2:'PM Half WFH', W3:'Hourly WFH',
-        T:'Unpaid', T1:'Unpaid AM', T2:'Unpaid PM', T3:'Unpaid Hourly',
-        B:'Holiday', O:'Overtime',
-      }
-      const m = locale === 'ko' ? KO : EN
-      return hours ? `${m[code] ?? code} (${code}, ${hours}h)` : `${m[code] ?? code} (${code})`
-    }
-
-    const empMap = Object.fromEntries(emailEmps.map(e => [e.id, e.name]))
-    const DOW_KO = ['일', '월', '화', '수', '목', '금', '토']
-    const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    const DOW    = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
     const dayLbl = (d: number) => {
       const dow = new Date(year, month - 1, d).getDay()
-      return locale === 'ko'
-        ? `${month}월 ${d}일 (${DOW_KO[dow]})`
-        : `${t(`month.${month}`, 'en')} ${d} (${DOW_EN[dow]})`
+      return `${MONTHS[month - 1]} ${d} (${DOW[dow]})`
     }
 
-    const lines: string[] = []
+    // W / B / O are not reported; L→Paid Leave, S→Sick Leave, T→Unpaid Leave
+    const SKIP = new Set(['W','W1','W2','W3','B','O'])
+    const codeLabel = (code: string, hours: number | null): string | null => {
+      if (SKIP.has(code)) return null
+      const map: Record<string, string> = {
+        L:'Paid Leave',   L1:'Paid Leave (AM Half)',   L2:'Paid Leave (PM Half)',   L3:'Paid Leave (Hourly)',
+        S:'Sick Leave',   S1:'Sick Leave (AM Half)',   S2:'Sick Leave (PM Half)',   S3:'Sick Leave (Hourly)',
+        T:'Unpaid Leave', T1:'Unpaid Leave (AM Half)', T2:'Unpaid Leave (PM Half)', T3:'Unpaid Leave (Hourly)',
+      }
+      const base = map[code] ?? code
+      return hours ? `${base} (${hours}h)` : base
+    }
 
-    // Greeting
-    lines.push(`Hi ${recipient ? recipient.name : ''},`, '')
-
-    // Intro
-    const daysLabel = selected
-      .map(d => locale === 'ko' ? `${month}월 ${d}일` : `${t(`month.${month}`, 'en')} ${d}`)
-      .join(', ')
-    lines.push(
-      locale === 'ko'
-        ? `${daysLabel}에 다음 직원들이 휴가/병가를 사용하기로 했습니다. 관련하여 처리해주시면 감사하겠습니다.`
-        : `The following employees have scheduled leave/sick for ${daysLabel}. Please process accordingly.`,
-      ''
-    )
-
-    // Day breakdown (skip empty days)
-    for (const day of selected) {
+    type DayGroup = { day: number; rows: { name: string; label: string }[] }
+    const groups: DayGroup[] = selected.flatMap(day => {
       const ds   = `${year}-${padFn(month)}-${padFn(day)}`
       const rows = emailEntries
         .filter(e => e.date === ds)
-        .map(e => ({ name: empMap[e.employee_id] ?? '?', code: e.leave_code, hours: e.hours }))
+        .flatMap(e => {
+          const label = codeLabel(e.leave_code, e.hours)
+          return label ? [{ name: empMap[e.employee_id] ?? '?', label }] : []
+        })
         .sort((a, b) => a.name.localeCompare(b.name))
-      if (!rows.length) continue
-      lines.push(`■ ${dayLbl(day)}`)
-      rows.forEach(r => lines.push(`  • ${r.name} — ${codeDesc(r.code, r.hours)}`))
+      return rows.length ? [{ day, rows }] : []
+    })
+
+    const lines: string[] = []
+    lines.push(`Hi ${recipient?.name ?? ''},`, '')
+
+    if (groups.length === 0) {
+      lines.push('No leave entries to report for the selected dates.', '')
+    } else if (groups.length === 1) {
+      const g    = groups[0]
+      const noun = g.rows.length === 1 ? 'employee is' : 'employees are'
+      lines.push(`The following ${noun} scheduled to be on leave on ${dayLbl(g.day)}.`, '')
+      g.rows.forEach(r => lines.push(`  • ${r.name} - ${r.label}`))
       lines.push('')
+    } else {
+      lines.push('The following employees are scheduled to be on leave on the dates below.', '')
+      for (const g of groups) {
+        lines.push(dayLbl(g.day))
+        g.rows.forEach(r => lines.push(`  • ${r.name} - ${r.label}`))
+        lines.push('')
+      }
     }
 
-    // Closing
-    lines.push(locale === 'ko' ? '감사합니다,' : 'Thank you,')
-    if (sender) { lines.push(sender.name, sender.email) }
+    lines.push('Please update your records accordingly.', '', 'Thank you.')
 
-    // Subject: list unique employee names
-    const allEntries = selected.flatMap(d => {
-      const ds = `${year}-${padFn(month)}-${padFn(d)}`
-      return emailEntries.filter(e => e.date === ds)
-    })
-    const uniqueIds  = [...new Set(allEntries.map(e => e.employee_id))]
-    const topNames   = uniqueIds.slice(0, 2).map(id => empMap[id] ?? '?')
-    const extraCount = uniqueIds.length - topNames.length
-    const namesSuffix = extraCount > 0 ? (locale === 'ko' ? ` 외 ${extraCount}명` : ` +${extraCount}`) : ''
-    const namesStr   = topNames.join(', ') + namesSuffix
-    const shortDays  = selected.map(d =>
-      locale === 'ko' ? `${month}월 ${d}일` : `${t(`month.${month}`, 'en')} ${d}`
-    ).join(', ')
-
-    const subject = uniqueIds.length > 0
-      ? (locale === 'ko'
-          ? `[${compLabel}] 근태 안내 — ${shortDays} (${namesStr})`
-          : `[${compLabel}] Attendance Notice — ${shortDays} (${namesStr})`)
-      : (locale === 'ko'
-          ? `[${compLabel}] 근태 안내 — ${shortDays}`
-          : `[${compLabel}] Attendance Notice — ${shortDays}`)
+    const shortDays = selected.map(d => `${MONTHS[month - 1]} ${d}`).join(', ')
+    const subject   = `Employee Leave Notification - ${shortDays}`
 
     return { subject, body: lines.join('\n') }
   }
