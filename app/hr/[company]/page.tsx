@@ -325,8 +325,10 @@ export default function CompanyAttendancePage() {
   function openMailto() {
     const { subject, body } = buildEmailBody()
     const recipient = emailRecips.find(r => r.id === toId)
+    const toEmail = recipient?.email ?? ''
+    // toEmail must NOT be encodeURIComponent'd — mailto: requires a raw address; encoding @ → %40 breaks Outlook
     window.open(
-      `mailto:${encodeURIComponent(recipient?.email ?? '')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+      `mailto:${toEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
       '_blank'
     )
   }
