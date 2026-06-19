@@ -24,6 +24,111 @@ function fmtDate(iso?: string) {
   return `${+m}. ${+d}.`
 }
 
+type EmailContact = { id: string; name: string; email: string }
+const SENDER_KEY    = 'afs_email_senders'
+const RECIPIENT_KEY = 'afs_email_recipients'
+function loadEmailContacts(key: string): EmailContact[] {
+  try { return JSON.parse(localStorage.getItem(key) ?? '[]') } catch { return [] }
+}
+function saveEmailContacts(key: string, list: EmailContact[]) {
+  localStorage.setItem(key, JSON.stringify(list))
+}
+
+function ContactMgr({ label, contacts, selectedId, onSelect, storageKey, onChange, locale }: {
+  label: string; contacts: EmailContact[]; selectedId: string
+  onSelect: (id: string) => void; storageKey: string
+  onChange: (list: EmailContact[]) => void; locale: string
+}) {
+  const [open,      setOpen]      = useState(false)
+  const [editId,    setEditId]    = useState<string|null>(null)
+  const [editName,  setEditName]  = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [newName,   setNewName]   = useState('')
+  const [newEmail,  setNewEmail]  = useState('')
+  const save = (list: EmailContact[]) => { saveEmailContacts(storageKey, list); onChange(list) }
+  return (
+    <div className="mb-4">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-xs font-medium text-gray-600">{label}</span>
+        <button onClick={() => { setOpen(o => !o); setEditId(null); setNewName(''); setNewEmail('') }}
+          className="text-xs text-blue-500 hover:text-blue-700">
+          {open ? (locale === 'ko' ? '닫기' : 'Close') : (locale === 'ko' ? '+ 추가/관리' : '+ Add/Manage')}
+        </button>
+      </div>
+      <select value={selectedId} onChange={e => onSelect(e.target.value)}
+        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+        <option value="">{locale === 'ko' ? '— 선택 —' : '— Select —'}</option>
+        {contacts.map(c => <option key={c.id} value={c.id}>{c.name} ({c.email})</option>)}
+      </select>
+      {open && (
+        <div className="mt-2 border rounded-lg p-3 bg-gray-50 space-y-2">
+          {!contacts.length && (
+            <p className="text-xs text-gray-400 text-center py-1">
+              {locale === 'ko' ? '등록된 연락처 없음' : 'No contacts yet'}
+            </p>
+          )}
+          {contacts.map(c => (
+            <div key={c.id} className="bg-white rounded-lg p-2 border">
+              {editId === c.id ? (
+                <div className="flex gap-1 flex-wrap">
+                  <input value={editName} onChange={e => setEditName(e.target.value)}
+                    placeholder={locale === 'ko' ? '이름' : 'Name'}
+                    className="flex-1 min-w-20 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  <input value={editEmail} onChange={e => setEditEmail(e.target.value)}
+                    type="email" placeholder="Email"
+                    className="flex-1 min-w-32 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  <button disabled={!editName.trim() || !editEmail.trim()}
+                    onClick={() => { save(contacts.map(x => x.id === c.id ? { id: c.id, name: editName.trim(), email: editEmail.trim() } : x)); setEditId(null) }}
+                    className="text-xs bg-blue-500 disabled:bg-gray-300 text-white px-2 py-1 rounded">
+                    {locale === 'ko' ? '저장' : 'Save'}
+                  </button>
+                  <button onClick={() => setEditId(null)}
+                    className="text-xs border px-2 py-1 rounded text-gray-500 hover:bg-gray-50">
+                    {locale === 'ko' ? '취소' : 'Cancel'}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-xs font-medium text-gray-700">{c.name}</span>
+                    <span className="text-xs text-gray-400 ml-2">{c.email}</span>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button onClick={() => { setEditId(c.id); setEditName(c.name); setEditEmail(c.email) }}
+                      className="text-xs text-blue-500 hover:text-blue-700">
+                      {locale === 'ko' ? '수정' : 'Edit'}
+                    </button>
+                    <button onClick={() => { save(contacts.filter(x => x.id !== c.id)); if (selectedId === c.id) onSelect('') }}
+                      className="text-xs text-red-400 hover:text-red-600">
+                      {locale === 'ko' ? '삭제' : 'Del'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          <div className="flex gap-1 pt-2 border-t border-gray-200">
+            <input value={newName} onChange={e => setNewName(e.target.value)}
+              placeholder={locale === 'ko' ? '이름' : 'Name'}
+              className="flex-1 min-w-16 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            <input value={newEmail} onChange={e => setNewEmail(e.target.value)}
+              placeholder="Email" type="email"
+              className="flex-1 min-w-28 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            <button disabled={!newName.trim() || !newEmail.trim()}
+              onClick={() => {
+                const c = { id: Math.random().toString(36).slice(2), name: newName.trim(), email: newEmail.trim() }
+                save([...contacts, c]); setNewName(''); setNewEmail('')
+              }}
+              className="text-xs bg-green-600 disabled:bg-gray-300 text-white px-2 py-1 rounded whitespace-nowrap">
+              + {locale === 'ko' ? '추가' : 'Add'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CompanyAttendancePage() {
   const { company } = useParams() as { company: string }
   const { locale } = useLocale()
@@ -36,10 +141,13 @@ export default function CompanyAttendancePage() {
   const [saving,         setSaving]         = useState(false)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [emailDates,     setEmailDates]     = useState<Set<number>>(new Set())
-  const [emailTo,        setEmailTo]        = useState('')
   const [emailEntries,   setEmailEntries]   = useState<Array<{ date: string; employee_id: string; leave_code: string; hours: number | null }>>([])
   const [emailEmps,      setEmailEmps]      = useState<Array<{ id: string; name: string }>>([])
   const [emailLoading,   setEmailLoading]   = useState(false)
+  const [emailSenders,   setEmailSenders]   = useState<EmailContact[]>([])
+  const [emailRecips,    setEmailRecips]    = useState<EmailContact[]>([])
+  const [fromId,         setFromId]         = useState('')
+  const [toId,           setToId]           = useState('')
   const now = new Date()
   const [year,           setYear]           = useState(now.getFullYear())
   const [month,          setMonth]          = useState(now.getMonth() + 1)
@@ -124,6 +232,9 @@ export default function CompanyAttendancePage() {
     const selected  = Array.from(emailDates).sort((a, b) => a - b)
     if (!selected.length) return { subject: '', body: '' }
 
+    const sender    = emailSenders.find(s => s.id === fromId)
+    const recipient = emailRecips.find(r => r.id === toId)
+
     const codeDesc = (code: string, hours: number | null) => {
       const KO: Record<string, string> = {
         L:'연차', L1:'오전 반차', L2:'오후 반차', L3:'시간 연차',
@@ -143,45 +254,79 @@ export default function CompanyAttendancePage() {
       return hours ? `${m[code] ?? code} (${code}, ${hours}h)` : `${m[code] ?? code} (${code})`
     }
 
-    const empMap  = Object.fromEntries(emailEmps.map(e => [e.id, e.name]))
-    const DOW_KO  = ['일', '월', '화', '수', '목', '금', '토']
-    const DOW_EN  = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    const dayLbl  = (d: number) => {
+    const empMap = Object.fromEntries(emailEmps.map(e => [e.id, e.name]))
+    const DOW_KO = ['일', '월', '화', '수', '목', '금', '토']
+    const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const dayLbl = (d: number) => {
       const dow = new Date(year, month - 1, d).getDay()
       return locale === 'ko'
         ? `${month}월 ${d}일 (${DOW_KO[dow]})`
         : `${t(`month.${month}`, 'en')} ${d} (${DOW_EN[dow]})`
     }
 
-    const lines: string[] = [
+    const lines: string[] = []
+
+    // Greeting
+    lines.push(`Hi ${recipient ? recipient.name : ''},`, '')
+
+    // Intro
+    const daysLabel = selected
+      .map(d => locale === 'ko' ? `${month}월 ${d}일` : `${t(`month.${month}`, 'en')} ${d}`)
+      .join(', ')
+    lines.push(
       locale === 'ko'
-        ? `${compLabel} 근태 리포트 — ${year}년 ${month}월`
-        : `${compLabel} Attendance Report — ${t(`month.${month}`, 'en')} ${year}`,
-      '',
-    ]
+        ? `${daysLabel}에 다음 직원들이 휴가/병가를 사용하기로 했습니다. 관련하여 처리해주시면 감사하겠습니다.`
+        : `The following employees have scheduled leave/sick for ${daysLabel}. Please process accordingly.`,
+      ''
+    )
+
+    // Day breakdown (skip empty days)
     for (const day of selected) {
       const ds   = `${year}-${padFn(month)}-${padFn(day)}`
-      const rows = emailEntries.filter(e => e.date === ds)
+      const rows = emailEntries
+        .filter(e => e.date === ds)
         .map(e => ({ name: empMap[e.employee_id] ?? '?', code: e.leave_code, hours: e.hours }))
         .sort((a, b) => a.name.localeCompare(b.name))
+      if (!rows.length) continue
       lines.push(`■ ${dayLbl(day)}`)
-      if (!rows.length) lines.push(`  ${locale === 'ko' ? '(기록 없음)' : '(No entries)'}`)
-      else rows.forEach(r => lines.push(`  • ${r.name} — ${codeDesc(r.code, r.hours)}`))
+      rows.forEach(r => lines.push(`  • ${r.name} — ${codeDesc(r.code, r.hours)}`))
       lines.push('')
     }
-    lines.push('---', locale === 'ko' ? 'AFS Admin에서 생성됨' : 'Generated from AFS Admin')
 
-    const daysStr = selected.map(d => locale === 'ko' ? `${d}일` : String(d)).join(', ')
-    const subject = locale === 'ko'
-      ? `[${compLabel}] ${year}년 ${month}월 근태 리포트 (${daysStr})`
-      : `[${compLabel}] ${t(`month.${month}`, 'en')} ${year} Attendance Report (${daysStr})`
+    // Closing
+    lines.push(locale === 'ko' ? '감사합니다,' : 'Thank you,')
+    if (sender) { lines.push(sender.name, sender.email) }
+
+    // Subject: list unique employee names
+    const allEntries = selected.flatMap(d => {
+      const ds = `${year}-${padFn(month)}-${padFn(d)}`
+      return emailEntries.filter(e => e.date === ds)
+    })
+    const uniqueIds  = [...new Set(allEntries.map(e => e.employee_id))]
+    const topNames   = uniqueIds.slice(0, 2).map(id => empMap[id] ?? '?')
+    const extraCount = uniqueIds.length - topNames.length
+    const namesSuffix = extraCount > 0 ? (locale === 'ko' ? ` 외 ${extraCount}명` : ` +${extraCount}`) : ''
+    const namesStr   = topNames.join(', ') + namesSuffix
+    const shortDays  = selected.map(d =>
+      locale === 'ko' ? `${month}월 ${d}일` : `${t(`month.${month}`, 'en')} ${d}`
+    ).join(', ')
+
+    const subject = uniqueIds.length > 0
+      ? (locale === 'ko'
+          ? `[${compLabel}] 근태 안내 — ${shortDays} (${namesStr})`
+          : `[${compLabel}] Attendance Notice — ${shortDays} (${namesStr})`)
+      : (locale === 'ko'
+          ? `[${compLabel}] 근태 안내 — ${shortDays}`
+          : `[${compLabel}] Attendance Notice — ${shortDays}`)
+
     return { subject, body: lines.join('\n') }
   }
 
   function openMailto() {
     const { subject, body } = buildEmailBody()
+    const recipient = emailRecips.find(r => r.id === toId)
     window.open(
-      `mailto:${encodeURIComponent(emailTo)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+      `mailto:${encodeURIComponent(recipient?.email ?? '')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
       '_blank'
     )
   }
@@ -252,7 +397,15 @@ export default function CompanyAttendancePage() {
             {t('hr.attendance.this_month', locale)}
           </button>
           <button
-            onClick={() => { setEmailDates(new Set()); setEmailTo(''); setShowEmailModal(true); loadEmailData() }}
+            onClick={() => {
+              setEmailSenders(loadEmailContacts(SENDER_KEY))
+              setEmailRecips(loadEmailContacts(RECIPIENT_KEY))
+              setEmailDates(new Set())
+              setFromId('')
+              setToId('')
+              setShowEmailModal(true)
+              loadEmailData()
+            }}
             disabled={!companyId}
             className="px-3 py-1.5 border rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 whitespace-nowrap">
             📧 {locale === 'ko' ? '리포트' : 'Report'}
@@ -408,16 +561,19 @@ export default function CompanyAttendancePage() {
                   </div>
                 </div>
 
+                {/* Sender */}
+                <ContactMgr
+                  label={locale === 'ko' ? '발신자 (From)' : 'From'}
+                  contacts={emailSenders} selectedId={fromId} onSelect={setFromId}
+                  storageKey={SENDER_KEY} onChange={setEmailSenders} locale={locale}
+                />
+
                 {/* Recipient */}
-                <div className="mb-4">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    {locale === 'ko' ? '수신자 이메일' : 'Recipient Email'}
-                  </label>
-                  <input type="email" value={emailTo}
-                    onChange={e => setEmailTo(e.target.value)}
-                    placeholder="example@company.com"
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                </div>
+                <ContactMgr
+                  label={locale === 'ko' ? '수신자 (To)' : 'To'}
+                  contacts={emailRecips} selectedId={toId} onSelect={setToId}
+                  storageKey={RECIPIENT_KEY} onChange={setEmailRecips} locale={locale}
+                />
 
                 {/* Preview */}
                 {emailDates.size > 0 ? (
@@ -425,7 +581,7 @@ export default function CompanyAttendancePage() {
                     <p className="text-xs font-medium text-gray-500 mb-1.5">
                       {locale === 'ko' ? '미리보기' : 'Preview'}
                     </p>
-                    <pre className="bg-gray-50 border rounded-lg p-3 text-xs text-gray-700 whitespace-pre-wrap max-h-44 overflow-y-auto font-mono leading-relaxed">
+                    <pre className="bg-gray-50 border rounded-lg p-3 text-xs text-gray-700 whitespace-pre-wrap max-h-52 overflow-y-auto font-mono leading-relaxed">
                       {buildEmailBody().body}
                     </pre>
                   </div>
@@ -437,7 +593,7 @@ export default function CompanyAttendancePage() {
 
                 <div className="flex gap-2">
                   <button onClick={openMailto}
-                    disabled={emailDates.size === 0 || !emailTo.trim()}
+                    disabled={emailDates.size === 0 || !toId}
                     className="flex-1 bg-blue-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 transition-colors">
                     📧 {locale === 'ko' ? '이메일 열기' : 'Open Email Client'}
                   </button>
