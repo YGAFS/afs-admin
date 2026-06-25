@@ -14,11 +14,16 @@ const COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#F9
 const fmt = (v: number) => `$${v.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2})}`
 
 function OrderFormFields({draft,setDraft,items,getCode,locale}:{draft:any,setDraft:any,items:Item[],getCode:(id:string)=>string,locale:Locale}) {
+  function handleItemChange(id:string) {
+    const item=items.find(i=>i.id===id)
+    setDraft((d:any)=>({...d,item_id:id,ea_per_unit:item?.ea_per_unit?.toString()??''}))
+  }
+  const perEa=draft.unit_price&&draft.ea_per_unit?Number(draft.unit_price)/Number(draft.ea_per_unit):null
   return (
     <>
       <div>
         <label className="text-xs text-gray-600 mb-1 block">{t('supplies.form.item', locale)}</label>
-        <select value={draft.item_id} onChange={e=>setDraft((d:any)=>({...d,item_id:e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" required>
+        <select value={draft.item_id} onChange={e=>handleItemChange(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" required>
           <option value="">{t('supplies.form.select', locale)}</option>
           {items.map(item=><option key={item.id} value={item.id}>[{getCode(item.company_id)}] {item.name}</option>)}
         </select>
@@ -32,12 +37,19 @@ function OrderFormFields({draft,setDraft,items,getCode,locale}:{draft:any,setDra
           <input type="number" value={draft.unit_price} onChange={e=>setDraft((d:any)=>({...d,unit_price:e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" step="0.01"/></div>
         <div><label className="text-xs text-gray-600 mb-1 block">{t('supplies.form.invoice', locale)}</label>
           <input type="text" value={draft.invoice_ref} onChange={e=>setDraft((d:any)=>({...d,invoice_ref:e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"/></div>
+        <div>
+          <label className="text-xs text-gray-600 mb-1 block">{t('supplies.form.ea_per_unit', locale)}</label>
+          <input type="number" value={draft.ea_per_unit} onChange={e=>setDraft((d:any)=>({...d,ea_per_unit:e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" min="1" placeholder="e.g. 24"/>
+        </div>
+        {perEa&&<div className="flex items-end pb-2">
+          <p className="text-xs text-gray-400">개당 단가 <span className="text-blue-600 font-semibold">${perEa.toFixed(2)}/ea</span></p>
+        </div>}
       </div>
     </>
   )
 }
 
-const emptyDraft = () => ({item_id:'',order_date:new Date().toISOString().split('T')[0],quantity:1,unit_price:'',invoice_ref:''})
+const emptyDraft = () => ({item_id:'',order_date:new Date().toISOString().split('T')[0],quantity:1,unit_price:'',invoice_ref:'',ea_per_unit:''})
 const emptyItemDraft = () => ({name:'',category:'Coffee',unit:'bag',supplier:'',ea_per_unit:'',company_id:''})
 
 export default function SuppliesPage() {
@@ -154,12 +166,14 @@ export default function SuppliesPage() {
     e.preventDefault()
     const qty=Number(addDraft.quantity); const price=Number(addDraft.unit_price)||null
     await supabase.from('supply_orders').insert({item_id:addDraft.item_id,order_date:addDraft.order_date,quantity:qty,unit_price:price,total_cost:price?qty*price:null,invoice_ref:addDraft.invoice_ref||null,status:'received',consumed:false})
+    if(addDraft.item_id&&addDraft.ea_per_unit) await supabase.from('supply_items').update({ea_per_unit:Number(addDraft.ea_per_unit)}).eq('id',addDraft.item_id)
     setShowAdd(false); setAddDraft(emptyDraft()); await loadData()
   }
 
   function startEdit(order:Order) {
+    const item=items.find(i=>i.id===order.item_id)
     setEditingOrder(order)
-    setEditDraft({item_id:order.item_id,order_date:order.order_date,quantity:order.quantity,unit_price:order.unit_price?.toString()??'',invoice_ref:order.invoice_ref??''})
+    setEditDraft({item_id:order.item_id,order_date:order.order_date,quantity:order.quantity,unit_price:order.unit_price?.toString()??'',invoice_ref:order.invoice_ref??'',ea_per_unit:item?.ea_per_unit?.toString()??''})
   }
 
   async function handleSaveEdit(e:React.FormEvent) {
@@ -167,6 +181,7 @@ export default function SuppliesPage() {
     if(!editingOrder) return
     const qty=Number(editDraft.quantity); const price=Number(editDraft.unit_price)||null
     await supabase.from('supply_orders').update({item_id:editDraft.item_id,order_date:editDraft.order_date,quantity:qty,unit_price:price,total_cost:price?qty*price:null,invoice_ref:editDraft.invoice_ref||null}).eq('id',editingOrder.id)
+    if(editDraft.item_id&&editDraft.ea_per_unit) await supabase.from('supply_items').update({ea_per_unit:Number(editDraft.ea_per_unit)}).eq('id',editDraft.item_id)
     setEditingOrder(null); await loadData()
   }
 
