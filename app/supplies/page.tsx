@@ -7,7 +7,7 @@ import { t, type Locale } from '@/lib/i18n'
 
 type Company = { id: string; code: string; name: string; next_reorder_date: string | null; alert_days_before: number }
 type Item = { id: string; name: string; category: string; unit: string; company_id: string; supplier: string | null; ea_per_unit: number | null }
-type Order = { id: string; item_id: string; order_date: string; quantity: number; unit_price: number | null; total_cost: number | null; invoice_ref: string | null; status: string; consumed: boolean }
+type Order = { id: string; item_id: string; order_date: string; quantity: number; unit_price: number | null; total_cost: number | null; invoice_ref: string | null; status: string; consumed: boolean; ea_per_unit: number | null }
 type TabType = 'DASHBOARD' | 'AFS' | 'TNT' | 'ZFS' | 'SETTINGS'
 
 const COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#F97316','#14B8A6','#EC4899','#6366F1']
@@ -142,12 +142,12 @@ export default function SuppliesPage() {
   },[tab,orders,items,companies])
 
   const invoiceGroups = useMemo(()=>{
-    const g:Record<string,{date:string;invoice:string;lines:(Order&{itemName:string;unit:string;ea_per_unit:number|null})[]}>= {}
+    const g:Record<string,{date:string;invoice:string;lines:(Order&{itemName:string;unit:string})[]}>= {}
     companyOrders.forEach(o=>{
       const item=items.find(i=>i.id===o.item_id)
       const k=`${o.order_date}__${o.invoice_ref??'no-inv'}`
       if(!g[k]) g[k]={date:o.order_date,invoice:o.invoice_ref??'—',lines:[]}
-      g[k].lines.push({...o,itemName:item?.name??'?',unit:item?.unit??'',ea_per_unit:item?.ea_per_unit??null})
+      g[k].lines.push({...o,itemName:item?.name??'?',unit:item?.unit??''})
     })
     return Object.entries(g).sort(([a],[b])=>b.localeCompare(a))
   },[companyOrders,items])
@@ -165,23 +165,22 @@ export default function SuppliesPage() {
   async function handleAddOrder(e:React.FormEvent) {
     e.preventDefault()
     const qty=Number(addDraft.quantity); const price=Number(addDraft.unit_price)||null
-    await supabase.from('supply_orders').insert({item_id:addDraft.item_id,order_date:addDraft.order_date,quantity:qty,unit_price:price,total_cost:price?qty*price:null,invoice_ref:addDraft.invoice_ref||null,status:'received',consumed:false})
-    if(addDraft.item_id&&addDraft.ea_per_unit) await supabase.from('supply_items').update({ea_per_unit:Number(addDraft.ea_per_unit)}).eq('id',addDraft.item_id)
+    const ea=addDraft.ea_per_unit?Number(addDraft.ea_per_unit):null
+    await supabase.from('supply_orders').insert({item_id:addDraft.item_id,order_date:addDraft.order_date,quantity:qty,unit_price:price,total_cost:price?qty*price:null,invoice_ref:addDraft.invoice_ref||null,status:'received',consumed:false,ea_per_unit:ea})
     setShowAdd(false); setAddDraft(emptyDraft()); await loadData()
   }
 
   function startEdit(order:Order) {
-    const item=items.find(i=>i.id===order.item_id)
     setEditingOrder(order)
-    setEditDraft({item_id:order.item_id,order_date:order.order_date,quantity:order.quantity,unit_price:order.unit_price?.toString()??'',invoice_ref:order.invoice_ref??'',ea_per_unit:item?.ea_per_unit?.toString()??''})
+    setEditDraft({item_id:order.item_id,order_date:order.order_date,quantity:order.quantity,unit_price:order.unit_price?.toString()??'',invoice_ref:order.invoice_ref??'',ea_per_unit:order.ea_per_unit?.toString()??''})
   }
 
   async function handleSaveEdit(e:React.FormEvent) {
     e.preventDefault()
     if(!editingOrder) return
     const qty=Number(editDraft.quantity); const price=Number(editDraft.unit_price)||null
-    await supabase.from('supply_orders').update({item_id:editDraft.item_id,order_date:editDraft.order_date,quantity:qty,unit_price:price,total_cost:price?qty*price:null,invoice_ref:editDraft.invoice_ref||null}).eq('id',editingOrder.id)
-    if(editDraft.item_id&&editDraft.ea_per_unit) await supabase.from('supply_items').update({ea_per_unit:Number(editDraft.ea_per_unit)}).eq('id',editDraft.item_id)
+    const ea=editDraft.ea_per_unit?Number(editDraft.ea_per_unit):null
+    await supabase.from('supply_orders').update({item_id:editDraft.item_id,order_date:editDraft.order_date,quantity:qty,unit_price:price,total_cost:price?qty*price:null,invoice_ref:editDraft.invoice_ref||null,ea_per_unit:ea}).eq('id',editingOrder.id)
     setEditingOrder(null); await loadData()
   }
 
