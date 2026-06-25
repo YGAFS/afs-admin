@@ -130,12 +130,12 @@ export default function SuppliesPage() {
   },[tab,orders,items,companies])
 
   const invoiceGroups = useMemo(()=>{
-    const g:Record<string,{date:string;invoice:string;lines:(Order&{itemName:string;unit:string})[]}>= {}
+    const g:Record<string,{date:string;invoice:string;lines:(Order&{itemName:string;unit:string;ea_per_unit:number|null})[]}>= {}
     companyOrders.forEach(o=>{
       const item=items.find(i=>i.id===o.item_id)
       const k=`${o.order_date}__${o.invoice_ref??'no-inv'}`
       if(!g[k]) g[k]={date:o.order_date,invoice:o.invoice_ref??'—',lines:[]}
-      g[k].lines.push({...o,itemName:item?.name??'?',unit:item?.unit??''})
+      g[k].lines.push({...o,itemName:item?.name??'?',unit:item?.unit??'',ea_per_unit:item?.ea_per_unit??null})
     })
     return Object.entries(g).sort(([a],[b])=>b.localeCompare(a))
   },[companyOrders,items])
@@ -408,14 +408,17 @@ export default function SuppliesPage() {
                   </button>
                   {isExp&&(
                     <div className="border-t border-gray-100">
-                      <div className="grid grid-cols-5 text-xs text-gray-400 px-4 py-2 bg-gray-50 font-medium">
+                      <div className="grid grid-cols-6 text-xs text-gray-400 px-4 py-2 bg-gray-50 font-medium">
                         <span className="col-span-2">{t('supplies.invoice.item', locale)}</span>
                         <span>{t('supplies.invoice.qty', locale)}</span>
                         <span>{t('supplies.invoice.unit_price', locale)}</span>
+                        <span>{t('supplies.invoice.per_ea', locale)}</span>
                         <span>{t('supplies.invoice.subtotal', locale)}</span>
                       </div>
-                      {group.lines.map(line=>(
-                        <div key={line.id} className="grid grid-cols-5 text-sm px-4 py-2.5 border-t border-gray-50 items-center hover:bg-gray-50 group">
+                      {group.lines.map(line=>{
+                        const perEa=line.unit_price&&line.ea_per_unit?line.unit_price/line.ea_per_unit:null
+                        return(
+                        <div key={line.id} className="grid grid-cols-6 text-sm px-4 py-2.5 border-t border-gray-50 items-center hover:bg-gray-50 group">
                           <span className="text-gray-700 col-span-2 flex items-center gap-2">
                             {line.itemName}
                             <span className="hidden group-hover:flex gap-1">
@@ -423,11 +426,13 @@ export default function SuppliesPage() {
                               <button type="button" onClick={()=>handleDelete(line.id)} className="text-xs px-1.5 py-0.5 rounded border border-gray-200 text-gray-400 hover:text-red-600 hover:border-red-300">🗑️</button>
                             </span>
                           </span>
-                          <span className="text-gray-600">{line.quantity}{line.unit}</span>
+                          <span className="text-gray-600">{line.quantity}{line.unit}{line.ea_per_unit?<span className="text-xs text-gray-400 ml-1">({line.quantity*line.ea_per_unit}ea)</span>:null}</span>
                           <span className="text-gray-600">{line.unit_price?fmt(line.unit_price):'—'}</span>
+                          <span className="text-gray-500 text-xs">{perEa?`$${perEa.toFixed(2)}/ea`:'—'}</span>
                           <span className="text-gray-700 font-medium">{line.total_cost?fmt(line.total_cost):'—'}</span>
                         </div>
-                      ))}
+                        )
+                      })}
                       <div className="flex justify-end px-4 py-2.5 border-t border-gray-100 bg-gray-50">
                         <span className="text-sm font-bold text-gray-800">{t('supplies.invoice.total', locale)} {fmt(total)}</span>
                       </div>
