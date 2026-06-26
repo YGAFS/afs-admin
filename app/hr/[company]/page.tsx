@@ -154,7 +154,9 @@ export default function CompanyAttendancePage() {
   const [dateValue,      setDateValue]      = useState('')
   const [saving,         setSaving]         = useState(false)
   const [showEmailModal, setShowEmailModal] = useState(false)
-  const [emailDates,     setEmailDates]     = useState<Set<number>>(new Set())
+  const [emailDates,     setEmailDates]     = useState<Set<string>>(new Set())
+  const [calYear,        setCalYear]        = useState(0)
+  const [calMonth,       setCalMonth]       = useState(0)
   const [emailEntries,   setEmailEntries]   = useState<Array<{ date: string; employee_id: string; leave_code: string; hours: number | null }>>([])
   const [emailEmps,      setEmailEmps]      = useState<Array<{ id: string; name: string }>>([])
   const [emailLoading,   setEmailLoading]   = useState(false)
@@ -219,12 +221,12 @@ export default function CompanyAttendancePage() {
 
   const padFn = (n: number) => String(n).padStart(2, '0')
 
-  async function loadEmailData() {
+  async function loadEmailData(cy = calYear, cm = calMonth) {
     if (!companyId) return
     setEmailLoading(true)
-    const daysInMo = new Date(year, month, 0).getDate()
-    const first = `${year}-${padFn(month)}-01`
-    const last  = `${year}-${padFn(month)}-${padFn(daysInMo)}`
+    const daysInMo = new Date(cy, cm, 0).getDate()
+    const first = `${cy}-${padFn(cm)}-01`
+    const last  = `${cy}-${padFn(cm)}-${padFn(daysInMo)}`
     const { data: emps } = await supabase.from('employees')
       .select('id,name').eq('company_id', companyId)
       .or(`end_date.is.null,end_date.gte.${first}`)
@@ -242,7 +244,7 @@ export default function CompanyAttendancePage() {
   }
 
   function buildEmailBody() {
-    const selected = Array.from(emailDates).sort((a, b) => a - b)
+    const selected = Array.from(emailDates).sort()
     if (!selected.length) return { subject: '', body: '' }
 
     const recipient = emailRecips.find(r => r.id === toId)
@@ -250,9 +252,10 @@ export default function CompanyAttendancePage() {
 
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
     const DOW    = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-    const dayLbl = (d: number) => {
-      const dow = new Date(year, month - 1, d).getDay()
-      return `${MONTHS[month - 1]} ${d} (${DOW[dow]})`
+    const dayLbl = (iso: string) => {
+      const [y, m, d] = iso.split('-').map(Number)
+      const dow = new Date(y, m - 1, d).getDay()
+      return `${MONTHS[m - 1]} ${d} (${DOW[dow]})`
     }
 
     // W / B / O are not reported; L→Paid Leave, S→Sick Leave, T→Unpaid Leave
@@ -268,17 +271,16 @@ export default function CompanyAttendancePage() {
       return hours ? `${base} (${hours}h)` : base
     }
 
-    type DayGroup = { day: number; rows: { name: string; label: string }[] }
-    const groups: DayGroup[] = selected.flatMap(day => {
-      const ds   = `${year}-${padFn(month)}-${padFn(day)}`
+    type DayGroup = { iso: string; rows: { name: string; label: string }[] }
+    const groups: DayGroup[] = selected.flatMap(iso => {
       const rows = emailEntries
-        .filter(e => e.date === ds)
+        .filter(e => e.date === iso)
         .flatMap(e => {
           const label = codeLabel(e.leave_code, e.hours)
           return label ? [{ name: empMap[e.employee_id] ?? '?', label }] : []
         })
         .sort((a, b) => a.name.localeCompare(b.name))
-      return rows.length ? [{ day, rows }] : []
+      return rows.length ? [{ iso, rows }] : []
     })
 
     const lines: string[] = []
@@ -289,13 +291,13 @@ export default function CompanyAttendancePage() {
     } else if (groups.length === 1) {
       const g    = groups[0]
       const noun = g.rows.length === 1 ? 'employee is' : 'employees are'
-      lines.push(`The following ${noun} scheduled to be on leave on ${dayLbl(g.day)}.`, '')
+      lines.push(`The following ${noun} scheduled to be on leave on ${dayLbl(g.iso)}.`, '')
       g.rows.forEach(r => lines.push(`  • ${r.name} - ${r.label}`))
       lines.push('')
     } else {
       lines.push('The following employees are scheduled to be on leave on the dates below.', '')
       for (const g of groups) {
-        lines.push(dayLbl(g.day))
+        lines.push(dayLbl(g.iso))
         g.rows.forEach(r => lines.push(`  • ${r.name} - ${r.label}`))
         lines.push('')
       }
@@ -303,7 +305,7 @@ export default function CompanyAttendancePage() {
 
     lines.push('Please update your records accordingly.', '', 'Thank you.')
 
-    const shortDays = selected.map(d => `${MONTHS[month - 1]} ${d}`).join(', ')
+    const shortDays = selected.map(iso => { const [y,m,d] = iso.split('-').map(Number); return `${MONTHS[m-1]} ${d}` }).join(', ')
     const subject   = `Employee Leave Notification - ${shortDays}`
 
     return { subject, body: lines.join('\n') }
@@ -390,10 +392,12 @@ export default function CompanyAttendancePage() {
               setEmailSenders(loadEmailContacts(SENDER_KEY))
               setEmailRecips(loadEmailContacts(RECIPIENT_KEY))
               setEmailDates(new Set())
+              setCalYear(year)
+              setCalMonth(month)
               setFromId('')
               setToId('')
               setShowEmailModal(true)
-              loadEmailData()
+              loadEmailData(year, month)
             }}
             disabled={!companyId}
             className="px-3 py-1.5 border rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 whitespace-nowrap">
@@ -494,9 +498,34 @@ export default function CompanyAttendancePage() {
               <>
                 {/* Date grid */}
                 <div className="mb-5">
-                  <p className="text-xs font-medium text-gray-500 mb-2">
-                    {locale === 'ko' ? '날짜 선택 (복수 선택 가능)' : 'Select dates (multi-select)'}
-                  </p>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-gray-500">
+                      {locale === 'ko' ? '날짜 선택 (복수 선택 가능)' : 'Select dates (multi-select)'}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          const d = new Date(calYear, calMonth - 2, 1)
+                          const ny = d.getFullYear(); const nm = d.getMonth() + 1
+                          setCalYear(ny); setCalMonth(nm); loadEmailData(ny, nm)
+                        }}
+                        className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 text-sm">
+                        ‹
+                      </button>
+                      <span className="text-xs font-semibold text-gray-700 min-w-20 text-center">
+                        {new Date(calYear, calMonth - 1).toLocaleString('en', { month: 'long', year: 'numeric' })}
+                      </span>
+                      <button
+                        onClick={() => {
+                          const d = new Date(calYear, calMonth, 1)
+                          const ny = d.getFullYear(); const nm = d.getMonth() + 1
+                          setCalYear(ny); setCalMonth(nm); loadEmailData(ny, nm)
+                        }}
+                        className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 text-sm">
+                        ›
+                      </button>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-7 gap-1">
                     {(locale === 'ko'
                       ? ['일', '월', '화', '수', '목', '금', '토']
@@ -504,19 +533,19 @@ export default function CompanyAttendancePage() {
                     ).map(d => (
                       <div key={d} className="text-center text-xs text-gray-400 py-0.5 font-medium">{d}</div>
                     ))}
-                    {Array.from({ length: new Date(year, month - 1, 1).getDay() }).map((_, i) => (
+                    {Array.from({ length: new Date(calYear, calMonth - 1, 1).getDay() }).map((_, i) => (
                       <div key={`gap-${i}`} />
                     ))}
-                    {Array.from({ length: new Date(year, month, 0).getDate() }, (_, i) => i + 1).map(day => {
-                      const ds      = `${year}-${padFn(month)}-${padFn(day)}`
+                    {Array.from({ length: new Date(calYear, calMonth, 0).getDate() }, (_, i) => i + 1).map(day => {
+                      const ds       = `${calYear}-${padFn(calMonth)}-${padFn(day)}`
                       const hasEntry = emailEntries.some(e => e.date === ds)
-                      const isSel   = emailDates.has(day)
-                      const dow     = new Date(year, month - 1, day).getDay()
+                      const isSel    = emailDates.has(ds)
+                      const dow      = new Date(calYear, calMonth - 1, day).getDay()
                       return (
                         <button key={day}
                           onClick={() => setEmailDates(prev => {
                             const next = new Set(prev)
-                            if (next.has(day)) next.delete(day); else next.add(day)
+                            if (next.has(ds)) next.delete(ds); else next.add(ds)
                             return next
                           })}
                           className={`relative py-1.5 rounded-lg text-xs font-medium transition-colors
