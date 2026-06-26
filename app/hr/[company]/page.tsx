@@ -284,7 +284,8 @@ export default function CompanyAttendancePage() {
     })
 
     const lines: string[] = []
-    lines.push(`Hi ${recipient?.name ?? ''},`, '')
+    const firstName = (recipient?.name ?? '').split(' ')[0]
+    lines.push(`Hi ${firstName},`, '')
 
     if (groups.length === 0) {
       lines.push('No leave entries to report for the selected dates.', '')
