@@ -559,7 +559,7 @@ export default function SuppliesPage() {
           <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
               <h3 className="font-bold text-gray-800 mb-1">{t('supplies.modal.edit_item', locale)}</h3>
-              <p className="text-xs text-gray-400 mb-4">{getCode(editingItem.company_id)} — {editingItem.name}</p>
+              <p className="text-xs text-gray-400 mb-4">{editingItem.name}</p>
               <form onSubmit={handleSaveItem} className="space-y-3">
                 <div>
                   <label className="text-xs text-gray-600 mb-1 block">{t('supplies.form.item_name', locale)}</label>
