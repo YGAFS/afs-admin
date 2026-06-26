@@ -248,6 +248,7 @@ export default function CompanyAttendancePage() {
     const selected = Array.from(emailDates).sort()
     if (!selected.length) return { subject: '', body: '' }
 
+    const sender    = emailSenders.find(s => s.id === fromId)
     const recipient = emailRecips.find(r => r.id === toId)
     const empMap    = Object.fromEntries(emailEmps.map(e => [e.id, e.name]))
 
@@ -306,6 +307,7 @@ export default function CompanyAttendancePage() {
     }
 
     lines.push('Please update your records accordingly.', '', 'Thank you.')
+    if (sender) lines.push('', sender.name)
 
     const shortDays = selected.map(iso => { const [y,m,d] = iso.split('-').map(Number); return `${MONTHS[m-1]} ${d}` }).join(', ')
     const subject   = `Employee Leave Notification - ${shortDays}`
