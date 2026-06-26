@@ -157,9 +157,11 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   const [noteCtx,   setNoteCtx]   = useState<{ empId: string; day: number; x: number; y: number } | null>(null)
   const [noteModal, setNoteModal] = useState<{ empId: string; day: number; existing: string } | null>(null)
   const [noteText,  setNoteText]  = useState('')
+  const [colMenu,   setColMenu]   = useState<{ day: number; top: number; left: number } | null>(null)
   const dropRef    = useRef<HTMLDivElement>(null)
   const menuRef    = useRef<HTMLDivElement>(null)
   const noteCtxRef = useRef<HTMLDivElement>(null)
+  const colMenuRef = useRef<HTMLDivElement>(null)
 
   const daysInMonth    = new Date(year, month, 0).getDate()
   const days           = Array.from({ length: daysInMonth }, (_, i) => i + 1)
@@ -176,6 +178,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
         setManagingEmp(null); setMenuPos(null)
       }
       if (noteCtxRef.current && !noteCtxRef.current.contains(e.target as Node)) setNoteCtx(null)
+      if (colMenuRef.current && !colMenuRef.current.contains(e.target as Node)) setColMenu(null)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -280,6 +283,40 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     setNoteModal(null)
   }
 
+  async function setColumnHoliday(day: number) {
+    setSaving(true); setColMenu(null)
+    const dateStr  = `${year}-${pad(month)}-${pad(day)}`
+    const cellDate = new Date(year, month - 1, day)
+    const targets  = employees.filter(emp => {
+      const s = emp.start_date ? new Date(emp.start_date) : null
+      const e = emp.end_date   ? new Date(emp.end_date)   : null
+      return !(s && cellDate < s) && !(e && cellDate > e)
+    })
+    if (targets.length) {
+      const rows = targets.map(emp => ({ employee_id: emp.id, date: dateStr, leave_code: 'B', hours: null }))
+      await supabase.from('leave_entries').upsert(rows, { onConflict: 'employee_id,date' })
+      setLeaveMap(prev => {
+        const next = { ...prev }
+        for (const emp of targets) next[`${emp.id}_${day}`] = { code: 'B' as LeaveCode }
+        return next
+      })
+    }
+    setSaving(false); load()
+  }
+
+  async function clearColumn(day: number) {
+    setSaving(true); setColMenu(null)
+    const dateStr = `${year}-${pad(month)}-${pad(day)}`
+    const ids = employees.map(e => e.id)
+    await supabase.from('leave_entries').delete().in('employee_id', ids).eq('date', dateStr)
+    setLeaveMap(prev => {
+      const next = { ...prev }
+      for (const emp of employees) delete next[`${emp.id}_${day}`]
+      return next
+    })
+    setSaving(false); load()
+  }
+
   async function deleteNote(empId: string, day: number) {
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key = `${empId}_${day}`
@@ -354,9 +391,20 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
               {days.map(d => {
                 const dow     = new Date(year, month - 1, d).getDay()
                 const isToday = isCurrentMonth && d === today.getDate()
+                const isColMenuOpen = colMenu?.day === d
                 return (
-                  <th key={d} className={`border border-gray-400 w-8 text-center py-1 font-medium
-                    ${isToday ? 'bg-amber-200 text-amber-800' : dow === 0 ? 'bg-red-200 text-red-600' : dow === 6 ? 'bg-sky-200 text-sky-600' : 'text-gray-500'}`}>
+                  <th key={d}
+                    onClick={e => {
+                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                      setColMenu(prev => prev?.day === d ? null : {
+                        day: d,
+                        top: rect.bottom + 4,
+                        left: Math.min(rect.left, window.innerWidth - 164),
+                      })
+                    }}
+                    className={`border border-gray-400 w-8 text-center py-1 font-medium cursor-pointer select-none
+                      ${isColMenuOpen ? 'ring-2 ring-inset ring-blue-400' : ''}
+                      ${isToday ? 'bg-amber-200 text-amber-800' : dow === 0 ? 'bg-red-200 text-red-600' : dow === 6 ? 'bg-sky-200 text-sky-600' : 'text-gray-500 hover:bg-slate-200'}`}>
                     <div className="font-semibold">{d}</div>
                     <div className="font-normal text-gray-400 text-xs">{t(`grid.dow.${dow}`, locale)}</div>
                   </th>
@@ -969,6 +1017,27 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Column (day) menu */}
+      {colMenu && (
+        <div ref={colMenuRef}
+          style={{ position: 'fixed', top: colMenu.top, left: colMenu.left, zIndex: 9999 }}
+          className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-40">
+          <div className="px-3 py-1.5 text-xs text-gray-500 border-b font-medium">
+            {year}-{pad(month)}-{pad(colMenu.day)}
+          </div>
+          <button
+            onClick={() => setColumnHoliday(colMenu.day)}
+            className="w-full text-left px-3 py-2 text-xs text-red-700 font-medium hover:bg-red-50">
+            공휴일(B) 일괄 설정
+          </button>
+          <button
+            onClick={() => clearColumn(colMenu.day)}
+            className="w-full text-left px-3 py-2 text-xs text-gray-600 hover:bg-gray-50">
+            이 날 전체 지우기
+          </button>
         </div>
       )}
 
