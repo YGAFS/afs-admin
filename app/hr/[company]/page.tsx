@@ -164,6 +164,7 @@ export default function CompanyAttendancePage() {
   const [emailRecips,    setEmailRecips]    = useState<EmailContact[]>([])
   const [fromId,         setFromId]         = useState('')
   const [toId,           setToId]           = useState('')
+  const [ccIds,          setCcIds]          = useState<Set<string>>(new Set())
   const now = new Date()
   const [year,           setYear]           = useState(now.getFullYear())
   const [month,          setMonth]          = useState(now.getMonth() + 1)
@@ -315,10 +316,12 @@ export default function CompanyAttendancePage() {
   function openMailto() {
     const { subject, body } = buildEmailBody()
     const recipient = emailRecips.find(r => r.id === toId)
-    const toEmail = recipient?.email ?? ''
-    // toEmail must NOT be encodeURIComponent'd — mailto: requires a raw address; encoding @ → %40 breaks Outlook
+    const toEmail   = recipient?.email ?? ''
+    const ccEmails  = [...ccIds].map(id => emailRecips.find(r => r.id === id)?.email ?? '').filter(Boolean).join(',')
+    // toEmail / ccEmails must NOT be encodeURIComponent'd — mailto: requires raw addresses; encoding @ → %40 breaks Outlook
+    const cc = ccEmails ? `&cc=${ccEmails}` : ''
     window.open(
-      `mailto:${toEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+      `mailto:${toEmail}?subject=${encodeURIComponent(subject)}${cc}&body=${encodeURIComponent(body)}`,
       '_blank'
     )
   }
@@ -397,6 +400,7 @@ export default function CompanyAttendancePage() {
               setCalMonth(month)
               setFromId('')
               setToId('')
+              setCcIds(new Set())
               setShowEmailModal(true)
               loadEmailData(year, month)
             }}
@@ -590,9 +594,28 @@ export default function CompanyAttendancePage() {
                 {/* Recipient */}
                 <ContactMgr
                   label={locale === 'ko' ? '수신자 (To)' : 'To'}
-                  contacts={emailRecips} selectedId={toId} onSelect={setToId}
+                  contacts={emailRecips} selectedId={toId} onSelect={id => { setToId(id); setCcIds(p => { const n = new Set(p); n.delete(id); return n }) }}
                   storageKey={RECIPIENT_KEY} onChange={setEmailRecips} locale={locale}
                 />
+
+                {/* CC */}
+                {emailRecips.filter(c => c.id !== toId).length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-medium text-gray-700 mb-1.5">CC</p>
+                    <div className="flex flex-col gap-1">
+                      {emailRecips.filter(c => c.id !== toId).map(c => (
+                        <label key={c.id} className="flex items-center gap-2 text-xs cursor-pointer px-2 py-1 rounded hover:bg-gray-50">
+                          <input type="checkbox"
+                            checked={ccIds.has(c.id)}
+                            onChange={() => setCcIds(prev => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n })}
+                          />
+                          <span className="text-gray-700">{c.name}</span>
+                          <span className="text-gray-400">{c.email}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Preview */}
                 {emailDates.size > 0 ? (
