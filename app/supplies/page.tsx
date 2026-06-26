@@ -6,14 +6,14 @@ import { useLocale } from '@/app/providers'
 import { t, type Locale } from '@/lib/i18n'
 
 type Company = { id: string; code: string; name: string; next_reorder_date: string | null; alert_days_before: number }
-type Item = { id: string; name: string; category: string; unit: string; company_id: string; supplier: string | null; ea_per_unit: number | null }
-type Order = { id: string; item_id: string; order_date: string; quantity: number; unit_price: number | null; total_cost: number | null; invoice_ref: string | null; status: string; consumed: boolean; ea_per_unit: number | null }
+type Item = { id: string; name: string; category: string; unit: string; company_id: string | null; supplier: string | null; ea_per_unit: number | null }
+type Order = { id: string; item_id: string; order_date: string; quantity: number; unit_price: number | null; total_cost: number | null; invoice_ref: string | null; status: string; consumed: boolean; ea_per_unit: number | null; company_id: string | null }
 type TabType = 'DASHBOARD' | 'AFS' | 'TNT' | 'ZFS' | 'SETTINGS'
 
 const COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#F97316','#14B8A6','#EC4899','#6366F1']
 const fmt = (v: number) => `$${v.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2})}`
 
-function OrderFormFields({draft,setDraft,items,getCode,locale}:{draft:any,setDraft:any,items:Item[],getCode:(id:string)=>string,locale:Locale}) {
+function OrderFormFields({draft,setDraft,items,companies,locale}:{draft:any,setDraft:any,items:Item[],companies:Company[],locale:Locale}) {
   function handleItemChange(id:string) {
     const item=items.find(i=>i.id===id)
     setDraft((d:any)=>({...d,item_id:id,ea_per_unit:item?.ea_per_unit?.toString()??''}))
@@ -22,10 +22,21 @@ function OrderFormFields({draft,setDraft,items,getCode,locale}:{draft:any,setDra
   return (
     <>
       <div>
+        <label className="text-xs text-gray-600 mb-1 block">{t('supplies.form.company', locale)}</label>
+        <div className="flex gap-2">
+          {companies.map(co=>(
+            <button key={co.id} type="button" onClick={()=>setDraft((d:any)=>({...d,company_id:co.id}))}
+              className={`flex-1 py-2 text-sm font-semibold rounded-lg border-2 transition-colors ${draft.company_id===co.id?'bg-blue-600 border-blue-600 text-white':'bg-white border-gray-200 text-gray-600 hover:border-blue-300'}`}>
+              {co.code}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
         <label className="text-xs text-gray-600 mb-1 block">{t('supplies.form.item', locale)}</label>
         <select value={draft.item_id} onChange={e=>handleItemChange(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" required>
           <option value="">{t('supplies.form.select', locale)}</option>
-          {items.map(item=><option key={item.id} value={item.id}>[{getCode(item.company_id)}] {item.name}</option>)}
+          {items.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -49,8 +60,8 @@ function OrderFormFields({draft,setDraft,items,getCode,locale}:{draft:any,setDra
   )
 }
 
-const emptyDraft = () => ({item_id:'',order_date:new Date().toISOString().split('T')[0],quantity:1,unit_price:'',invoice_ref:'',ea_per_unit:''})
-const emptyItemDraft = () => ({name:'',category:'Coffee',unit:'bag',supplier:'',ea_per_unit:'',company_id:''})
+const emptyDraft = () => ({item_id:'',order_date:new Date().toISOString().split('T')[0],quantity:1,unit_price:'',invoice_ref:'',ea_per_unit:'',company_id:''})
+const emptyItemDraft = () => ({name:'',category:'Coffee',unit:'bag',supplier:'',ea_per_unit:''})
 
 export default function SuppliesPage() {
   const { locale } = useLocale()
@@ -70,7 +81,7 @@ export default function SuppliesPage() {
   const [editDraft, setEditDraft] = useState(emptyDraft())
 
   const [showAddItem, setShowAddItem] = useState(false)
-  const [addItemDraft, setAddItemDraft] = useState(emptyItemDraft())
+  const [addItemDraft, setAddItemDraft] = useState<{name:string;category:string;unit:string;supplier:string;ea_per_unit:string}>(emptyItemDraft())
   const [editingItem, setEditingItem] = useState<Item|null>(null)
   const [editItemDraft, setEditItemDraft] = useState({name:'',category:'Coffee',unit:'bag',supplier:'',ea_per_unit:''})
 
@@ -137,9 +148,9 @@ export default function SuppliesPage() {
 
   const companyOrders = useMemo(()=>{
     if(!['AFS','TNT','ZFS'].includes(tab)) return []
-    const cid=getId(tab); const ids=new Set(items.filter(i=>i.company_id===cid).map(i=>i.id))
-    return orders.filter(o=>o.status==='received'&&ids.has(o.item_id))
-  },[tab,orders,items,companies])
+    const cid=getId(tab)
+    return orders.filter(o=>o.status==='received'&&o.company_id===cid)
+  },[tab,orders,companies])
 
   const invoiceGroups = useMemo(()=>{
     const g:Record<string,{date:string;invoice:string;lines:(Order&{itemName:string;unit:string})[]}>= {}
@@ -166,13 +177,13 @@ export default function SuppliesPage() {
     e.preventDefault()
     const qty=Number(addDraft.quantity); const price=Number(addDraft.unit_price)||null
     const ea=addDraft.ea_per_unit?Number(addDraft.ea_per_unit):null
-    await supabase.from('supply_orders').insert({item_id:addDraft.item_id,order_date:addDraft.order_date,quantity:qty,unit_price:price,total_cost:price?qty*price:null,invoice_ref:addDraft.invoice_ref||null,status:'received',consumed:false,ea_per_unit:ea})
+    await supabase.from('supply_orders').insert({item_id:addDraft.item_id,order_date:addDraft.order_date,quantity:qty,unit_price:price,total_cost:price?qty*price:null,invoice_ref:addDraft.invoice_ref||null,status:'received',consumed:false,ea_per_unit:ea,company_id:addDraft.company_id||null})
     setShowAdd(false); setAddDraft(emptyDraft()); await loadData()
   }
 
   function startEdit(order:Order) {
     setEditingOrder(order)
-    setEditDraft({item_id:order.item_id,order_date:order.order_date,quantity:order.quantity,unit_price:order.unit_price?.toString()??'',invoice_ref:order.invoice_ref??'',ea_per_unit:order.ea_per_unit?.toString()??''})
+    setEditDraft({item_id:order.item_id,order_date:order.order_date,quantity:order.quantity,unit_price:order.unit_price?.toString()??'',invoice_ref:order.invoice_ref??'',ea_per_unit:order.ea_per_unit?.toString()??'',company_id:order.company_id??''})
   }
 
   async function handleSaveEdit(e:React.FormEvent) {
@@ -180,7 +191,7 @@ export default function SuppliesPage() {
     if(!editingOrder) return
     const qty=Number(editDraft.quantity); const price=Number(editDraft.unit_price)||null
     const ea=editDraft.ea_per_unit?Number(editDraft.ea_per_unit):null
-    await supabase.from('supply_orders').update({item_id:editDraft.item_id,order_date:editDraft.order_date,quantity:qty,unit_price:price,total_cost:price?qty*price:null,invoice_ref:editDraft.invoice_ref||null,ea_per_unit:ea}).eq('id',editingOrder.id)
+    await supabase.from('supply_orders').update({item_id:editDraft.item_id,order_date:editDraft.order_date,quantity:qty,unit_price:price,total_cost:price?qty*price:null,invoice_ref:editDraft.invoice_ref||null,ea_per_unit:ea,company_id:editDraft.company_id||null}).eq('id',editingOrder.id)
     setEditingOrder(null); await loadData()
   }
 
@@ -220,8 +231,7 @@ export default function SuppliesPage() {
     e.preventDefault()
     await supabase.from('supply_items').insert({
       name:addItemDraft.name,category:addItemDraft.category||'Coffee',unit:addItemDraft.unit||'bag',
-      supplier:addItemDraft.supplier||null,ea_per_unit:addItemDraft.ea_per_unit?Number(addItemDraft.ea_per_unit):null,
-      company_id:addItemDraft.company_id
+      supplier:addItemDraft.supplier||null,ea_per_unit:addItemDraft.ea_per_unit?Number(addItemDraft.ea_per_unit):null
     })
     setShowAddItem(false); setAddItemDraft(emptyItemDraft()); await loadData()
   }
@@ -491,12 +501,11 @@ export default function SuppliesPage() {
                   <h2 className="font-semibold text-gray-700">{t('supplies.items.title', locale)}</h2>
                   <p className="text-xs text-gray-400 mt-0.5">{t('supplies.items.desc', locale)}</p>
                 </div>
-                <button type="button" onClick={()=>{setAddItemDraft({...emptyItemDraft(),company_id:companies[0]?.id??''});setShowAddItem(true)}} className="bg-blue-600 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-blue-700">{t('supplies.items.new', locale)}</button>
+                <button type="button" onClick={()=>{setAddItemDraft(emptyItemDraft());setShowAddItem(true)}} className="bg-blue-600 text-white text-sm px-3 py-1.5 rounded-lg hover:bg-blue-700">{t('supplies.items.new', locale)}</button>
               </div>
               <div className="divide-y divide-gray-50">
                 {items.map(item=>(
                   <div key={item.id} className="flex items-center gap-3 py-3">
-                    <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium shrink-0 w-10 text-center">{getCode(item.company_id)}</span>
                     <div className="flex-1 min-w-0">
                       <span className="text-sm font-medium text-gray-800">{item.name}</span>
                       <div className="flex gap-3 mt-0.5 flex-wrap">
@@ -519,7 +528,7 @@ export default function SuppliesPage() {
             <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
               <h3 className="font-bold text-gray-800 mb-4">{t('supplies.modal.new_order', locale)}</h3>
               <form onSubmit={handleAddOrder} className="space-y-3">
-                <OrderFormFields draft={addDraft} setDraft={setAddDraft} items={items} getCode={getCode} locale={locale}/>
+                <OrderFormFields draft={addDraft} setDraft={setAddDraft} items={items} companies={companies} locale={locale}/>
                 <div className="flex gap-2 justify-end pt-2">
                   <button type="button" onClick={()=>setShowAdd(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">{t('common.cancel', locale)}</button>
                   <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">{t('common.save', locale)}</button>
@@ -535,7 +544,7 @@ export default function SuppliesPage() {
             <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
               <h3 className="font-bold text-gray-800 mb-4">{t('supplies.modal.edit_order', locale)}</h3>
               <form onSubmit={handleSaveEdit} className="space-y-3">
-                <OrderFormFields draft={editDraft} setDraft={setEditDraft} items={items} getCode={getCode} locale={locale}/>
+                <OrderFormFields draft={editDraft} setDraft={setEditDraft} items={items} companies={companies} locale={locale}/>
                 <div className="flex gap-2 justify-end pt-2">
                   <button type="button" onClick={()=>setEditingOrder(null)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">{t('common.cancel', locale)}</button>
                   <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">{t('common.save', locale)}</button>
@@ -589,13 +598,6 @@ export default function SuppliesPage() {
             <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
               <h3 className="font-bold text-gray-800 mb-4">{t('supplies.modal.add_item', locale)}</h3>
               <form onSubmit={handleAddItem} className="space-y-3">
-                <div>
-                  <label className="text-xs text-gray-600 mb-1 block">{t('supplies.form.company', locale)}</label>
-                  <select value={addItemDraft.company_id} onChange={e=>setAddItemDraft(d=>({...d,company_id:e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" required>
-                    <option value="">{t('supplies.form.select', locale)}</option>
-                    {companies.map(co=><option key={co.id} value={co.id}>{co.code} — {co.name}</option>)}
-                  </select>
-                </div>
                 <div>
                   <label className="text-xs text-gray-600 mb-1 block">{t('supplies.form.item_name', locale)}</label>
                   <input type="text" value={addItemDraft.name} onChange={e=>setAddItemDraft(d=>({...d,name:e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" required/>
