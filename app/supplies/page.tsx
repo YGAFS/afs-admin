@@ -111,12 +111,11 @@ export default function SuppliesPage() {
       if(o.status!=='received') return false
       if(dashYear!=='ALL'&&!o.order_date.startsWith(dashYear)) return false
       if(dashCo!=='ALL'){
-        const item=items.find(i=>i.id===o.item_id)
-        if(!item||getCode(item.company_id)!==dashCo) return false
+        if(getCode(o.company_id??'')!==dashCo) return false
       }
       return true
     })
-  },[orders,dashYear,dashCo,items,companies])
+  },[orders,dashYear,dashCo,companies])
 
   const stats = useMemo(()=>{
     const totalSpend=dashOrders.reduce((s,o)=>s+(o.total_cost??0),0)
@@ -134,8 +133,9 @@ export default function SuppliesPage() {
     dashOrders.forEach(o=>{
       const item=items.find(i=>i.id===o.item_id)
       if(!item) return
-      if(!map[item.id]) map[item.id]={name:item.name,company:getCode(item.company_id),orders:0,units:0,spend:0}
-      map[item.id].orders+=1; map[item.id].units+=o.quantity; map[item.id].spend+=(o.total_cost??0)
+      const key=`${item.id}__${o.company_id??''}`
+      if(!map[key]) map[key]={name:item.name,company:getCode(o.company_id??''),orders:0,units:0,spend:0}
+      map[key].orders+=1; map[key].units+=o.quantity; map[key].spend+=(o.total_cost??0)
     })
     return Object.values(map).sort((a,b)=>b.spend-a.spend)
   },[dashOrders,items,companies])
@@ -388,7 +388,7 @@ export default function SuppliesPage() {
                       <div key={order.id} className="flex justify-between items-center py-2.5">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded shrink-0">{getCode(item.company_id)}</span>
+                            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded shrink-0">{getCode(order.company_id??'')}</span>
                             <span className="text-sm font-medium text-gray-800 truncate">{item.name}</span>
                           </div>
                           <p className="text-xs text-gray-400 mt-0.5">{order.order_date} · {order.quantity}{item.unit}{order.invoice_ref?` · ${order.invoice_ref}`:''}</p>
