@@ -73,11 +73,11 @@ function isoFromDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 }
 
-function getAnniversaryPeriod(startDateIso: string): AnnivPeriod | null {
+function getAnniversaryPeriod(startDateIso: string, asOf?: Date): AnnivPeriod | null {
   if (!startDateIso) return null
   const [sy, sm, sd] = startDateIso.split('-').map(Number)
   const start = new Date(sy, sm - 1, sd)   // local time — avoids UTC midnight → prev-day bug
-  const today = new Date()
+  const today = asOf ?? new Date()
   if (start > today) return null
   let years = today.getFullYear() - start.getFullYear()
   const candidate = new Date(start)
@@ -92,10 +92,10 @@ function getAnniversaryPeriod(startDateIso: string): AnnivPeriod | null {
   return { periodStart, periodEnd, periodYear: years + 1 }
 }
 
-function getAllAnnivPeriods(startDateIso: string): AnnivPeriod[] {
+function getAllAnnivPeriods(startDateIso: string, asOf?: Date): AnnivPeriod[] {
   const [sy, sm, sd] = startDateIso.split('-').map(Number)
   const start = new Date(sy, sm - 1, sd)
-  const today = new Date()
+  const today = asOf ?? new Date()
   const periods: AnnivPeriod[] = []
   let y = 0
   while (true) {
@@ -108,9 +108,9 @@ function getAllAnnivPeriods(startDateIso: string): AnnivPeriod[] {
   return periods
 }
 
-function calcAccruedInPeriod(allowance: number, periodStart: Date): number {
-  const today = new Date()
-  const daysElapsed = Math.floor((today.getTime() - periodStart.getTime()) / 86400000)
+function calcAccruedInPeriod(allowance: number, periodStart: Date, asOf?: Date): number {
+  const ref = asOf ?? new Date()
+  const daysElapsed = Math.floor((ref.getTime() - periodStart.getTime()) / 86400000)
   return Math.round(Math.max(0, daysElapsed) / 365 * allowance * 100) / 100
 }
 function todayIso() {
@@ -211,6 +211,10 @@ export default function EmployeeSearch() {
   async function loadStats(emp: Employee, year: number) {
     const today      = new Date()
     const todayIsoStr = isoFromDate(today)
+    const effectiveDate = emp.end_date
+      ? (() => { const [ey,em,ed] = emp.end_date!.split('-').map(Number); return new Date(ey, em-1, ed) })()
+      : today
+    const effectiveDateIso = emp.end_date ?? todayIsoStr
     const vacCodes   = ['L','L1','L2','L3']
 
     const [yearRes, allVacRes] = await Promise.all([
@@ -218,7 +222,7 @@ export default function EmployeeSearch() {
         .gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
       emp.start_date
         ? supabase.from('leave_entries').select('date,leave_code').eq('employee_id', emp.id)
-            .gte('date', emp.start_date).lte('date', todayIsoStr)
+            .gte('date', emp.start_date).lte('date', effectiveDateIso)
             .in('leave_code', vacCodes)
         : Promise.resolve({ data: [] as { date: string; leave_code: string }[], error: null }),
     ])
@@ -243,7 +247,7 @@ export default function EmployeeSearch() {
       return
     }
 
-    const periods   = getAllAnnivPeriods(emp.start_date)
+    const periods   = getAllAnnivPeriods(emp.start_date, effectiveDate)
     const vacEntries = allVacRes.data ?? []
     let carryIn = 0
     const history: PeriodStat[] = []
@@ -252,7 +256,7 @@ export default function EmployeeSearch() {
       const p         = periods[i]
       const isCurrent = i === periods.length - 1
       const pStartIso = isoFromDate(p.periodStart)
-      const pEndIso   = isCurrent ? todayIsoStr : isoFromDate(p.periodEnd)
+      const pEndIso   = isCurrent ? effectiveDateIso : isoFromDate(p.periodEnd)
 
       const used = Math.round(
         vacEntries
@@ -261,7 +265,7 @@ export default function EmployeeSearch() {
         * 100) / 100
 
       const accrued   = isCurrent
-        ? calcAccruedInPeriod(emp.vacation_allowance, p.periodStart)
+        ? calcAccruedInPeriod(emp.vacation_allowance, p.periodStart, effectiveDate)
         : emp.vacation_allowance
       const remaining = Math.max(0, Math.round((accrued + carryIn - used) * 100) / 100)
       const carryOut  = isCurrent ? 0 : Math.min(5, remaining)
@@ -434,12 +438,12 @@ export default function EmployeeSearch() {
     })
   }
 
-  function getVacStats(emp: Employee, periodUsed: number, co: number) {
+  function getVacStats(emp: Employee, periodUsed: number, co: number, asOf?: Date) {
     if (emp.is_exempt) return null
     if (emp.uses_accrual) {
-      const period = emp.start_date ? getAnniversaryPeriod(emp.start_date) : null
+      const period = emp.start_date ? getAnniversaryPeriod(emp.start_date, asOf) : null
       if (!period) return null
-      const accrued    = calcAccruedInPeriod(emp.vacation_allowance, period.periodStart)
+      const accrued    = calcAccruedInPeriod(emp.vacation_allowance, period.periodStart, asOf)
       const totalAvail = Math.round((accrued + co) * 100) / 100
       const remaining  = Math.max(0, Math.round((totalAvail - periodUsed) * 100) / 100)
       return { accrued, carryover: co, totalAvail, remaining, annual: emp.vacation_allowance, isAccrual: true, period, periodUsed }
@@ -571,7 +575,10 @@ export default function EmployeeSearch() {
 
         {/* Detail panel */}
         {selected && summary ? (() => {
-          const vacStats   = getVacStats(selected, periodVacUsed, carryover)
+          const asOf = selected.end_date
+            ? (() => { const [y,m,d] = selected.end_date!.split('-').map(Number); return new Date(y,m-1,d) })()
+            : undefined
+          const vacStats   = getVacStats(selected, periodVacUsed, carryover, asOf)
           const paidSick   = Math.min(summary.sick, 5)
           const unpaidSick = Math.max(0, summary.sick - 5)
           const sickAlert  = summary.sick > 8
