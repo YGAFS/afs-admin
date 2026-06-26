@@ -45,23 +45,63 @@ const CODE_OPTIONS: { code: LeaveCode; needsHours?: boolean }[] = [
 
 const TEAM_ORDER = ['Team Sales','Team Accounting','Team Operations','Department 1','Department 2','Department 3']
 
-function calcAccrued(emp: Employee, refYear: number, refMonth: number): number {
-  const today    = new Date()
-  const monthEnd = new Date(refYear, refMonth, 0)
-  const calcTo   = monthEnd < today ? monthEnd : today
-  if (emp.start_date && new Date(emp.start_date) > calcTo) return 0
-  const soy          = new Date(refYear, 0, 1)
-  const accrualStart = emp.start_date && new Date(emp.start_date) > soy ? new Date(emp.start_date) : soy
-  return Math.min(((calcTo.getTime() - accrualStart.getTime()) / 86400000 / 365) * emp.vacation_allowance, emp.vacation_allowance)
+type EmpVacStat = { accrued: number; carryIn: number; periodUsed: number }
+
+function isoToLocal(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d)
 }
-function vacDisplay(emp: Employee, taken: number, year: number, month: number, carryover: number) {
-  if (emp.is_exempt) return null
-  if (emp.uses_accrual) {
-    const acc  = Math.round((calcAccrued(emp, year, month) + carryover) * 10) / 10
-    const left = Math.max(0, Math.round((acc - taken) * 10) / 10)
-    return { text: `${left}/${acc}`, alert: left <= 1 }
+function dateToIso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+function getAnnivPeriods(startIso: string, asOf: Date) {
+  const start = isoToLocal(startIso)
+  const periods: {pStart: Date; pEnd: Date}[] = []
+  let y = 0
+  while (true) {
+    const pStart = new Date(start); pStart.setFullYear(start.getFullYear() + y)
+    if (pStart > asOf) break
+    const pEnd = new Date(start); pEnd.setFullYear(start.getFullYear() + y + 1); pEnd.setDate(pEnd.getDate() - 1)
+    periods.push({ pStart, pEnd })
+    y++
   }
-  const left = emp.vacation_allowance - taken
+  return periods
+}
+function calcAnnivVacStat(
+  emp: Employee,
+  vacEntries: { date: string; code: string }[],
+  asOf: Date
+): EmpVacStat {
+  if (!emp.start_date || !emp.uses_accrual || emp.is_exempt) return { accrued: emp.vacation_allowance, carryIn: 0, periodUsed: 0 }
+  const periods = getAnnivPeriods(emp.start_date, asOf)
+  if (!periods.length) return { accrued: 0, carryIn: 0, periodUsed: 0 }
+  const asOfIso = dateToIso(asOf)
+  let carryIn = 0
+  let result: EmpVacStat = { accrued: 0, carryIn: 0, periodUsed: 0 }
+  for (let i = 0; i < periods.length; i++) {
+    const { pStart, pEnd } = periods[i]
+    const isCurrent = i === periods.length - 1
+    const pStartIso = dateToIso(pStart)
+    const pEndIso   = isCurrent ? asOfIso : dateToIso(pEnd)
+    const used = Math.round(
+      vacEntries.filter(e => e.date >= pStartIso && e.date <= pEndIso)
+        .reduce((s, e) => s + (['L1','L2'].includes(e.code) ? 0.5 : 1), 0) * 100) / 100
+    const accrued = isCurrent
+      ? Math.round(Math.min((asOf.getTime() - pStart.getTime()) / 86400000 / 365 * emp.vacation_allowance, emp.vacation_allowance) * 100) / 100
+      : emp.vacation_allowance
+    const remaining = Math.max(0, accrued + carryIn - used)
+    if (isCurrent) { result = { accrued, carryIn, periodUsed: used }; break }
+    carryIn = Math.min(5, remaining)
+  }
+  return result
+}
+function vacDisplay(emp: Employee, vs: EmpVacStat | null, calYearTaken: number) {
+  if (emp.is_exempt) return null
+  if (emp.uses_accrual && vs) {
+    const total = Math.round((vs.accrued + vs.carryIn) * 10) / 10
+    const left  = Math.max(0, Math.round((total - vs.periodUsed) * 10) / 10)
+    return { text: `${left}/${total}`, alert: left <= 1 }
+  }
+  const left = emp.vacation_allowance - calYearTaken
   return { text: `${left}/${emp.vacation_allowance}`, alert: left <= 5 }
 }
 function fmtDate(iso: string) {
@@ -94,7 +134,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   const [employees,    setEmployees]    = useState<Employee[]>([])
   const [leaveMap,     setLeaveMap]     = useState<Record<string, LeaveCell>>({})
   const [ys,           setYS]           = useState<Record<string, YS>>({})
-  const [carryovers,   setCarryovers]   = useState<Record<string, number>>({})
+  const [vacStatMap,   setVacStatMap]   = useState<Record<string, EmpVacStat>>({})
   const [editing,      setEditing]      = useState<{ empId: string; day: number } | null>(null)
   const [dropPos,      setDropPos]      = useState<{ top: number; left: number } | null>(null)
   const [pendingCode,  setPendingCode]  = useState<LeaveCode | null>(null)
@@ -165,11 +205,11 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     const [{ data: me }, { data: ye }, { data: prevYe }, { data: prevPrevYe }, { data: notesRaw }] = await Promise.all([
       supabase.from('leave_entries').select('employee_id,date,leave_code,hours')
         .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
-      supabase.from('leave_entries').select('employee_id,leave_code,hours')
+      supabase.from('leave_entries').select('employee_id,date,leave_code,hours')
         .in('employee_id', ids).gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
-      supabase.from('leave_entries').select('employee_id,leave_code')
+      supabase.from('leave_entries').select('employee_id,date,leave_code')
         .in('employee_id', ids).gte('date', `${year-1}-01-01`).lte('date', `${year-1}-12-31`),
-      supabase.from('leave_entries').select('employee_id,leave_code')
+      supabase.from('leave_entries').select('employee_id,date,leave_code')
         .in('employee_id', ids).gte('date', `${year-2}-01-01`).lte('date', `${year-2}-12-31`),
       supabase.from('attendance_notes').select('employee_id,date,note')
         .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
@@ -199,31 +239,19 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     }
     setYS(ysMap)
 
-    const prevPrevVac: Record<string, number> = {}
-    for (const emp of emps) prevPrevVac[emp.id] = 0
-    for (const e of (prevPrevYe ?? [])) {
-      if (!(e.employee_id in prevPrevVac)) continue
-      if (['L','L1','L2','L3'].includes(e.leave_code))
-        prevPrevVac[e.employee_id] += ['L1','L2'].includes(e.leave_code) ? 0.5 : 1
+    const allVacByEmp: Record<string, { date: string; code: string }[]> = {}
+    for (const emp of emps) allVacByEmp[emp.id] = []
+    for (const e of [...(prevPrevYe ?? []), ...(prevYe ?? []), ...(ye ?? [])]) {
+      if (!allVacByEmp[e.employee_id] || !['L','L1','L2','L3'].includes(e.leave_code)) continue
+      allVacByEmp[e.employee_id].push({ date: e.date, code: e.leave_code })
     }
 
-    const prevVac: Record<string, number> = {}
-    for (const emp of emps) prevVac[emp.id] = 0
-    for (const e of (prevYe ?? [])) {
-      if (!(e.employee_id in prevVac)) continue
-      if (['L','L1','L2','L3'].includes(e.leave_code))
-        prevVac[e.employee_id] += ['L1','L2'].includes(e.leave_code) ? 0.5 : 1
-    }
-
-    const coMap: Record<string, number> = {}
+    const now = new Date()
+    const vsMap: Record<string, EmpVacStat> = {}
     for (const emp of emps) {
-      const prevPrevAccrued = calcAccrued(emp, year - 2, 12)
-      const prevCarryover   = Math.min(5, Math.max(0, prevPrevAccrued - prevPrevVac[emp.id]))
-      const prevAccrued     = calcAccrued(emp, year - 1, 12)
-      const prevTotalAvail  = prevAccrued + prevCarryover
-      coMap[emp.id] = Math.min(5, Math.max(0, prevTotalAvail - prevVac[emp.id]))
+      vsMap[emp.id] = calcAnnivVacStat(emp, allVacByEmp[emp.id] ?? [], now)
     }
-    setCarryovers(coMap)
+    setVacStatMap(vsMap)
   }
 
   async function setCode(empId: string, day: number, code: LeaveCode | null, hours?: number) {
@@ -364,7 +392,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                   const isUpcoming    = !!(startDateObj && startDateObj > today)
                   const isTerminated  = !!emp.end_date
                   const empYS         = ys[emp.id]
-                  const vacInfo       = vacDisplay(emp, empYS?.vacTaken ?? 0, year, month, carryovers[emp.id] ?? 0)
+                  const vacInfo       = vacDisplay(emp, vacStatMap[emp.id] ?? null, empYS?.vacTaken ?? 0)
                   const totalSick     = empYS?.sick ?? 0
                   const rowBg         = isUpcoming ? 'bg-blue-50' : isTerminated ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
 
