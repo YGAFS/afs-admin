@@ -53,7 +53,7 @@ function OrderFormFields({draft,setDraft,items,companies,locale}:{draft:any,setD
           <input type="number" value={draft.ea_per_unit} onChange={e=>setDraft((d:any)=>({...d,ea_per_unit:e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" min="1" placeholder="e.g. 24"/>
         </div>
         {perEa&&<div className="flex items-end pb-2">
-          <p className="text-xs text-gray-400">개당 단가 <span className="text-blue-600 font-semibold">${perEa.toFixed(2)}/ea</span></p>
+          <p className="text-xs text-gray-400">Per EA: <span className="text-blue-600 font-semibold">${perEa.toFixed(2)}</span></p>
         </div>}
       </div>
     </>

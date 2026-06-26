@@ -1031,12 +1031,12 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
           <button
             onClick={() => setColumnHoliday(colMenu.day)}
             className="w-full text-left px-3 py-2 text-xs text-red-700 font-medium hover:bg-red-50">
-            공휴일(B) 일괄 설정
+            Set Holiday (B) for All
           </button>
           <button
             onClick={() => clearColumn(colMenu.day)}
             className="w-full text-left px-3 py-2 text-xs text-gray-600 hover:bg-gray-50">
-            이 날 전체 지우기
+            Clear All This Day
           </button>
         </div>
       )}
