@@ -239,8 +239,18 @@ export default function CompanyAttendancePage() {
           .select('employee_id,date,leave_code,hours')
           .in('employee_id', ids).gte('date', first).lte('date', last)
       : { data: [] as { employee_id: string; date: string; leave_code: string; hours: number | null }[] }
-    setEmailEmps(emps ?? [])
-    setEmailEntries(entries ?? [])
+    setEmailEmps(prev => {
+      const merged = [...prev]
+      for (const e of (emps ?? [])) {
+        if (!merged.some(m => m.id === e.id)) merged.push(e)
+      }
+      return merged
+    })
+    setEmailEntries(prev => {
+      const incoming = entries ?? []
+      const filtered = prev.filter(p => p.date < first || p.date > last)
+      return [...filtered, ...incoming]
+    })
     setEmailLoading(false)
   }
 
@@ -398,6 +408,8 @@ export default function CompanyAttendancePage() {
               setEmailSenders(loadEmailContacts(SENDER_KEY))
               setEmailRecips(loadEmailContacts(RECIPIENT_KEY))
               setEmailDates(new Set())
+              setEmailEmps([])
+              setEmailEntries([])
               setCalYear(year)
               setCalMonth(month)
               setFromId('')
