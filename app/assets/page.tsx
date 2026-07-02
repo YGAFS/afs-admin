@@ -148,7 +148,7 @@ function ManagePeopleModal({
   const [deleting, setDeleting] = useState<string | null>(null)
 
   async function handleAdd() {
-    if (!form.name.trim()) { setError('이름을 입력해주세요.'); return }
+    if (!form.name.trim()) { setError('Name is required.'); return }
     setSaving(true); setError('')
     const { error: err } = await supabase.from('asset_people').insert({
       name: form.name.trim(),
@@ -172,13 +172,13 @@ function ManagePeopleModal({
     <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b">
-          <h2 className="font-semibold text-gray-800 text-sm">인원 관리 (기타)</h2>
+          <h2 className="font-semibold text-gray-800 text-sm">Manage External People</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
         </div>
         <div className="overflow-y-auto flex-1 px-5 py-3">
           {/* Add form */}
           <div className="bg-gray-50 rounded-lg p-3 mb-4">
-            <p className="text-xs font-medium text-gray-500 mb-2">새 인원 추가</p>
+            <p className="text-xs font-medium text-gray-500 mb-2">Add person</p>
             {error && <p className="text-red-500 text-xs mb-2">{error}</p>}
             <div className="grid grid-cols-3 gap-2 mb-2">
               <input className={inputCls} placeholder="이름 *" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
@@ -193,7 +193,7 @@ function ManagePeopleModal({
 
           {/* People list */}
           <div className="space-y-1">
-            {people.length === 0 && <p className="text-gray-400 text-xs py-4 text-center">등록된 인원이 없습니다.</p>}
+            {people.length === 0 && <p className="text-gray-400 text-xs py-4 text-center">No external people added yet.</p>}
             {people.map(p => (
               <div key={p.id} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 border border-gray-100">
                 <div>
@@ -352,20 +352,20 @@ function AssetModal({ initial, clone, employees, assetPeople, nextAssetId, onClo
               type="button"
               onClick={() => setShowManagePeople(true)}
               className="text-xs text-blue-500 hover:text-blue-700">
-              + 기타 인원 관리
+              + Manage External
             </button>
           </div>
           <select className={selectCls} value={form.assignee} onChange={set('assignee')}>
             <option value="">{t('common.unassigned', locale)}</option>
             {employees.length > 0 && (
-              <optgroup label="── 출결 직원 (HR) ──">
+              <optgroup label="── Office ──">
                 {employees.map(e => (
                   <option key={e.id} value={`hr:${e.id}`}>{e.name}</option>
                 ))}
               </optgroup>
             )}
             {assetPeople.length > 0 && (
-              <optgroup label="── 기타 인원 ──">
+              <optgroup label="── External ──">
                 {assetPeople.map(p => (
                   <option key={p.id} value={`ap:${p.id}`}>
                     {p.name}{p.company ? ` (${p.company})` : ''}
@@ -768,8 +768,8 @@ export default function AssetsPage() {
                               <span className="flex items-center gap-1.5">
                                 <span className="text-gray-700">{assigneeName}</span>
                                 {isHr
-                                  ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-500 font-medium">HR</span>
-                                  : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-400 font-medium">기타</span>
+                                  ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-500 font-medium">Office</span>
+                                  : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-400 font-medium">Ext</span>
                                 }
                               </span>
                             ) : (
