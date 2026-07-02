@@ -29,9 +29,11 @@ type Asset = {
   location: string | null
   notes: string | null
   employee_id: string | null
+  asset_people_id: string | null
 }
 
-type Employee = { id: string; name: string }
+type Employee   = { id: string; name: string }
+type AssetPerson = { id: string; name: string; email: string | null; company: string | null }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -41,6 +43,28 @@ function computeNextAssetId(assets: Asset[]): string {
     .filter((n): n is number => n !== null)
   const max = nums.length > 0 ? Math.max(...nums) : 0
   return `IT-${String(max + 1).padStart(3, '0')}`
+}
+
+function resolveAssigneeName(
+  asset: Asset,
+  employees: Employee[],
+  assetPeople: AssetPerson[],
+): string | null {
+  if (asset.employee_id)    return employees.find(e => e.id === asset.employee_id)?.name ?? null
+  if (asset.asset_people_id) return assetPeople.find(p => p.id === asset.asset_people_id)?.name ?? null
+  return null
+}
+
+// Encoded select value: "" | "hr:<id>" | "ap:<id>"
+function encodeAssignee(asset: Pick<Asset, 'employee_id' | 'asset_people_id'>): string {
+  if (asset.employee_id)     return `hr:${asset.employee_id}`
+  if (asset.asset_people_id) return `ap:${asset.asset_people_id}`
+  return ''
+}
+function decodeAssignee(val: string): { employee_id: string | null; asset_people_id: string | null } {
+  if (val.startsWith('hr:')) return { employee_id: val.slice(3), asset_people_id: null }
+  if (val.startsWith('ap:')) return { employee_id: null, asset_people_id: val.slice(3) }
+  return { employee_id: null, asset_people_id: null }
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -109,25 +133,115 @@ function DeleteDialog({ onCancel, onConfirm }: { onCancel: () => void; onConfirm
   )
 }
 
+// ── Add/Manage People Modal ───────────────────────────────────────────────────
+
+function ManagePeopleModal({
+  people, onClose, onSaved,
+}: {
+  people: AssetPerson[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [form, setForm] = useState({ name: '', email: '', company: '' })
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState('')
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  async function handleAdd() {
+    if (!form.name.trim()) { setError('이름을 입력해주세요.'); return }
+    setSaving(true); setError('')
+    const { error: err } = await supabase.from('asset_people').insert({
+      name: form.name.trim(),
+      email: form.email.trim() || null,
+      company: form.company.trim() || null,
+    })
+    setSaving(false)
+    if (err) { setError(err.message); return }
+    setForm({ name: '', email: '', company: '' })
+    onSaved()
+  }
+
+  async function handleDelete(id: string) {
+    setDeleting(id)
+    await supabase.from('asset_people').delete().eq('id', id)
+    setDeleting(null)
+    onSaved()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <h2 className="font-semibold text-gray-800 text-sm">인원 관리 (기타)</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-5 py-3">
+          {/* Add form */}
+          <div className="bg-gray-50 rounded-lg p-3 mb-4">
+            <p className="text-xs font-medium text-gray-500 mb-2">새 인원 추가</p>
+            {error && <p className="text-red-500 text-xs mb-2">{error}</p>}
+            <div className="grid grid-cols-3 gap-2 mb-2">
+              <input className={inputCls} placeholder="이름 *" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
+              <input className={inputCls} placeholder="이메일" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
+              <input className={inputCls} placeholder="소속" value={form.company} onChange={e => setForm(p => ({ ...p, company: e.target.value }))} />
+            </div>
+            <button onClick={handleAdd} disabled={saving}
+              className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              {saving ? '저장 중…' : '추가'}
+            </button>
+          </div>
+
+          {/* People list */}
+          <div className="space-y-1">
+            {people.length === 0 && <p className="text-gray-400 text-xs py-4 text-center">등록된 인원이 없습니다.</p>}
+            {people.map(p => (
+              <div key={p.id} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 border border-gray-100">
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{p.name}</p>
+                  <p className="text-xs text-gray-400">{[p.email, p.company].filter(Boolean).join(' · ') || '—'}</p>
+                </div>
+                <button
+                  onClick={() => handleDelete(p.id)}
+                  disabled={deleting === p.id}
+                  className="text-xs text-red-400 hover:text-red-600 disabled:opacity-40 ml-3 shrink-0">
+                  삭제
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="px-5 py-3 border-t">
+          <button onClick={onClose} className="w-full py-2 text-sm border rounded-lg hover:bg-gray-50">닫기</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Asset Modal ───────────────────────────────────────────────────────────────
 
 type AssetForm = {
   asset_id: string; company: string; category: string; item_name: string
   brand: string; model: string; chipset: string; serial_number: string; purchase_date: string
   purchase_price: string; vendor: string; warranty_end: string
-  condition: string; location: string; employee_id: string; notes: string
+  condition: string; location: string; assignee: string; notes: string
 }
 
 const emptyAssetForm: AssetForm = {
   asset_id: '', company: '', category: '', item_name: '',
   brand: '', model: '', chipset: '', serial_number: '', purchase_date: '',
   purchase_price: '', vendor: '', warranty_end: '',
-  condition: 'In Use', location: '', employee_id: '', notes: '',
+  condition: 'In Use', location: '', assignee: '', notes: '',
 }
 
-function AssetModal({ initial, clone, employees, nextAssetId, onClose, onSave }: {
-  initial?: Asset; clone?: Asset; employees: Employee[]
-  nextAssetId: string; onClose: () => void; onSave: () => void
+function AssetModal({ initial, clone, employees, assetPeople, nextAssetId, onClose, onSave, onPeopleChange }: {
+  initial?: Asset; clone?: Asset
+  employees: Employee[]
+  assetPeople: AssetPerson[]
+  nextAssetId: string
+  onClose: () => void
+  onSave: () => void
+  onPeopleChange: () => void
 }) {
   const { locale } = useLocale()
   const src = initial ?? clone
@@ -146,11 +260,12 @@ function AssetModal({ initial, clone, employees, nextAssetId, onClose, onSave }:
     warranty_end: src.warranty_end ?? '',
     condition: src.condition ?? 'In Use',
     location: src.location ?? '',
-    employee_id: src.employee_id ?? '',
+    assignee: encodeAssignee(src),
     notes: src.notes ?? '',
   } : { ...emptyAssetForm, asset_id: nextAssetId })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [showManagePeople, setShowManagePeople] = useState(false)
 
   const set = (k: keyof AssetForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -160,6 +275,7 @@ function AssetModal({ initial, clone, employees, nextAssetId, onClose, onSave }:
     if (!form.asset_id.trim()) { setError(t('assets.form.asset_id_req', locale)); return }
     if (!form.item_name.trim()) { setError(t('assets.form.item_name_req', locale)); return }
     setSaving(true)
+    const { employee_id, asset_people_id } = decodeAssignee(form.assignee)
     const payload = {
       asset_id: form.asset_id.trim(),
       company: form.company || null,
@@ -175,7 +291,8 @@ function AssetModal({ initial, clone, employees, nextAssetId, onClose, onSave }:
       warranty_end: form.warranty_end || null,
       condition: form.condition,
       location: form.location || null,
-      employee_id: form.employee_id || null,
+      employee_id,
+      asset_people_id,
       notes: form.notes || null,
     }
     const { error: err } = initial
@@ -193,52 +310,89 @@ function AssetModal({ initial, clone, employees, nextAssetId, onClose, onSave }:
       : t('assets.modal.add', locale)
 
   return (
-    <Modal title={title} onClose={onClose}>
-      {error && <p className="text-red-500 text-xs mb-3 bg-red-50 p-2 rounded">{error}</p>}
-      <div className="grid grid-cols-2 gap-x-3">
-        <Field label="Asset ID *"><input className={inputCls} value={form.asset_id} onChange={set('asset_id')} placeholder="IT-001" /></Field>
-        <Field label="Company">
-          <select className={selectCls} value={form.company} onChange={set('company')}>
-            <option value="">{t('common.select', locale)}</option>
-            {COMPANIES.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </Field>
-        <Field label="Item Name *"><input className={inputCls} value={form.item_name} onChange={set('item_name')} /></Field>
-        <Field label="Category">
-          <select className={selectCls} value={form.category} onChange={set('category')}>
-            <option value="">{t('common.select', locale)}</option>
-            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </Field>
-        <Field label="Brand"><input className={inputCls} value={form.brand} onChange={set('brand')} /></Field>
-        <Field label="Model"><input className={inputCls} value={form.model} onChange={set('model')} /></Field>
-        <Field label="Chipset"><input className={inputCls} value={form.chipset} onChange={set('chipset')} placeholder="e.g. Intel Core Ultra 7, Apple M4" /></Field>
-        <Field label="Serial Number"><input className={inputCls} value={form.serial_number} onChange={set('serial_number')} /></Field>
-        <Field label="Condition">
-          <select className={selectCls} value={form.condition} onChange={set('condition')}>
-            {CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </Field>
-        <Field label="Purchase Date"><input className={inputCls} type="date" value={form.purchase_date} onChange={set('purchase_date')} /></Field>
-        <Field label="Purchase Price (CAD)"><input className={inputCls} type="number" min="0" step="0.01" value={form.purchase_price} onChange={set('purchase_price')} /></Field>
-        <Field label="Vendor"><input className={inputCls} value={form.vendor} onChange={set('vendor')} /></Field>
-        <Field label="Warranty End"><input className={inputCls} type="date" value={form.warranty_end} onChange={set('warranty_end')} /></Field>
-        <Field label="Location"><input className={inputCls} value={form.location} onChange={set('location')} /></Field>
-        <Field label="Assigned To">
-          <select className={selectCls} value={form.employee_id} onChange={set('employee_id')}>
+    <>
+      <Modal title={title} onClose={onClose}>
+        {error && <p className="text-red-500 text-xs mb-3 bg-red-50 p-2 rounded">{error}</p>}
+        <div className="grid grid-cols-2 gap-x-3">
+          <Field label="Asset ID *"><input className={inputCls} value={form.asset_id} onChange={set('asset_id')} placeholder="IT-001" /></Field>
+          <Field label="Company">
+            <select className={selectCls} value={form.company} onChange={set('company')}>
+              <option value="">{t('common.select', locale)}</option>
+              {COMPANIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+          <Field label="Item Name *"><input className={inputCls} value={form.item_name} onChange={set('item_name')} /></Field>
+          <Field label="Category">
+            <select className={selectCls} value={form.category} onChange={set('category')}>
+              <option value="">{t('common.select', locale)}</option>
+              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+          <Field label="Brand"><input className={inputCls} value={form.brand} onChange={set('brand')} /></Field>
+          <Field label="Model"><input className={inputCls} value={form.model} onChange={set('model')} /></Field>
+          <Field label="Chipset"><input className={inputCls} value={form.chipset} onChange={set('chipset')} placeholder="e.g. Intel Core Ultra 7, Apple M4" /></Field>
+          <Field label="Serial Number"><input className={inputCls} value={form.serial_number} onChange={set('serial_number')} /></Field>
+          <Field label="Condition">
+            <select className={selectCls} value={form.condition} onChange={set('condition')}>
+              {CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+          <Field label="Purchase Date"><input className={inputCls} type="date" value={form.purchase_date} onChange={set('purchase_date')} /></Field>
+          <Field label="Purchase Price (CAD)"><input className={inputCls} type="number" min="0" step="0.01" value={form.purchase_price} onChange={set('purchase_price')} /></Field>
+          <Field label="Vendor"><input className={inputCls} value={form.vendor} onChange={set('vendor')} /></Field>
+          <Field label="Warranty End"><input className={inputCls} type="date" value={form.warranty_end} onChange={set('warranty_end')} /></Field>
+          <Field label="Location"><input className={inputCls} value={form.location} onChange={set('location')} /></Field>
+        </div>
+
+        {/* Assigned To — full width, grouped */}
+        <div className="mb-3">
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-gray-500">Assigned To</label>
+            <button
+              type="button"
+              onClick={() => setShowManagePeople(true)}
+              className="text-xs text-blue-500 hover:text-blue-700">
+              + 기타 인원 관리
+            </button>
+          </div>
+          <select className={selectCls} value={form.assignee} onChange={set('assignee')}>
             <option value="">{t('common.unassigned', locale)}</option>
-            {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            {employees.length > 0 && (
+              <optgroup label="── 출결 직원 (HR) ──">
+                {employees.map(e => (
+                  <option key={e.id} value={`hr:${e.id}`}>{e.name}</option>
+                ))}
+              </optgroup>
+            )}
+            {assetPeople.length > 0 && (
+              <optgroup label="── 기타 인원 ──">
+                {assetPeople.map(p => (
+                  <option key={p.id} value={`ap:${p.id}`}>
+                    {p.name}{p.company ? ` (${p.company})` : ''}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
-        </Field>
-      </div>
-      <Field label="Notes"><textarea className={inputCls} rows={2} value={form.notes} onChange={set('notes')} /></Field>
-      <div className="flex justify-end gap-2 mt-4">
-        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">{t('common.cancel', locale)}</button>
-        <button onClick={handleSubmit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
-          {saving ? t('common.saving', locale) : t('common.save', locale)}
-        </button>
-      </div>
-    </Modal>
+        </div>
+
+        <Field label="Notes"><textarea className={inputCls} rows={2} value={form.notes} onChange={set('notes')} /></Field>
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">{t('common.cancel', locale)}</button>
+          <button onClick={handleSubmit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
+            {saving ? t('common.saving', locale) : t('common.save', locale)}
+          </button>
+        </div>
+      </Modal>
+
+      {showManagePeople && (
+        <ManagePeopleModal
+          people={assetPeople}
+          onClose={() => setShowManagePeople(false)}
+          onSaved={() => { onPeopleChange(); }}
+        />
+      )}
+    </>
   )
 }
 
@@ -355,17 +509,18 @@ type AssetSortCol = 'asset_id' | 'category' | 'item_name' | 'purchase_date' | 'p
 
 export default function AssetsPage() {
   const { locale } = useLocale()
-  const [assets, setAssets] = useState<Asset[]>([])
-  const [employees, setEmployees] = useState<Employee[]>([])
-  const [loading, setLoading] = useState(true)
-  const [company, setCompany] = useState('')
-  const [view, setView] = useState<ViewTab>('dashboard')
-  const [search, setSearch] = useState('')
-  const [catFilter, setCatFilter] = useState('')
-  const [assetSort, setAssetSort] = useState<{ col: AssetSortCol; dir: 'asc' | 'desc' }>({ col: 'asset_id', dir: 'asc' })
-  const [modal, setModal] = useState<{ open: boolean; item?: Asset; clone?: Asset }>({ open: false })
+  const [assets, setAssets]         = useState<Asset[]>([])
+  const [employees, setEmployees]   = useState<Employee[]>([])
+  const [assetPeople, setAssetPeople] = useState<AssetPerson[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [company, setCompany]       = useState('')
+  const [view, setView]             = useState<ViewTab>('dashboard')
+  const [search, setSearch]         = useState('')
+  const [catFilter, setCatFilter]   = useState('')
+  const [assetSort, setAssetSort]   = useState<{ col: AssetSortCol; dir: 'asc' | 'desc' }>({ col: 'asset_id', dir: 'asc' })
+  const [modal, setModal]           = useState<{ open: boolean; item?: Asset; clone?: Asset }>({ open: false })
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
-  const [rowCtx, setRowCtx] = useState<{ asset: Asset; x: number; y: number } | null>(null)
+  const [rowCtx, setRowCtx]         = useState<{ asset: Asset; x: number; y: number } | null>(null)
   const rowCtxRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -376,18 +531,24 @@ export default function AssetsPage() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  const loadPeople = useCallback(async () => {
+    const { data } = await supabase.from('asset_people').select('id,name,email,company').order('name')
+    setAssetPeople((data as AssetPerson[]) ?? [])
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     const [{ data: a }, { data: e }] = await Promise.all([
       supabase.from('assets')
-        .select('id,asset_id,company,category,item_name,brand,model,chipset,serial_number,purchase_date,purchase_price,vendor,warranty_end,condition,location,notes,employee_id')
+        .select('id,asset_id,company,category,item_name,brand,model,chipset,serial_number,purchase_date,purchase_price,vendor,warranty_end,condition,location,notes,employee_id,asset_people_id')
         .order('asset_id'),
       supabase.from('employees').select('id,name').eq('is_active', true).order('name'),
     ])
     setAssets((a as Asset[]) ?? [])
     setEmployees((e as Employee[]) ?? [])
+    await loadPeople()
     setLoading(false)
-  }, [])
+  }, [loadPeople])
 
   useEffect(() => { load() }, [load])
 
@@ -401,11 +562,11 @@ export default function AssetsPage() {
   const cats = Array.from(new Set(assets.map(r => r.category).filter(Boolean))) as string[]
 
   const filtered = assets.filter(a => {
-    const matchCo = !company || a.company === company
+    const matchCo  = !company   || a.company === company
     const matchCat = !catFilter || a.category === catFilter
     const q = search.toLowerCase()
-    const empName = a.employee_id ? employees.find(e => e.id === a.employee_id)?.name : undefined
-    const matchQ = !q || [a.item_name, a.brand, a.model, a.asset_id, a.serial_number, empName]
+    const assigneeName = resolveAssigneeName(a, employees, assetPeople)
+    const matchQ = !q || [a.item_name, a.brand, a.model, a.asset_id, a.serial_number, assigneeName]
       .some(v => v?.toLowerCase().includes(q))
     return matchCo && matchCat && matchQ
   })
@@ -418,12 +579,12 @@ export default function AssetsPage() {
     const { col, dir } = assetSort
     let av: string | number = ''
     let bv: string | number = ''
-    if (col === 'asset_id')       { av = a.asset_id ?? '';         bv = b.asset_id ?? '' }
-    else if (col === 'category')  { av = a.category ?? '';         bv = b.category ?? '' }
-    else if (col === 'item_name') { av = a.item_name ?? '';        bv = b.item_name ?? '' }
-    else if (col === 'purchase_date') { av = a.purchase_date ?? ''; bv = b.purchase_date ?? '' }
-    else if (col === 'purchase_price') { av = a.purchase_price ?? 0; bv = b.purchase_price ?? 0 }
-    else if (col === 'condition') { av = a.condition ?? '';         bv = b.condition ?? '' }
+    if (col === 'asset_id')          { av = a.asset_id ?? '';         bv = b.asset_id ?? '' }
+    else if (col === 'category')     { av = a.category ?? '';         bv = b.category ?? '' }
+    else if (col === 'item_name')    { av = a.item_name ?? '';        bv = b.item_name ?? '' }
+    else if (col === 'purchase_date')  { av = a.purchase_date ?? '';  bv = b.purchase_date ?? '' }
+    else if (col === 'purchase_price') { av = a.purchase_price ?? 0;  bv = b.purchase_price ?? 0 }
+    else if (col === 'condition')    { av = a.condition ?? '';         bv = b.condition ?? '' }
     if (av < bv) return dir === 'asc' ? -1 : 1
     if (av > bv) return dir === 'asc' ? 1 : -1
     return 0
@@ -573,6 +734,8 @@ export default function AssetsPage() {
                         const diff = (new Date(r.warranty_end).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
                         return diff >= 0 && diff <= 60
                       })()
+                      const assigneeName = resolveAssigneeName(r, employees, assetPeople)
+                      const isHr = !!r.employee_id
                       return (
                         <tr key={r.id} className="hover:bg-gray-50 group cursor-context-menu"
                           onContextMenu={e => { e.preventDefault(); setRowCtx({ asset: r, x: e.clientX, y: e.clientY }) }}>
@@ -600,10 +763,18 @@ export default function AssetsPage() {
                           </td>
                           <td className="px-4 py-2 font-mono text-xs text-gray-500">{r.serial_number ?? '—'}</td>
                           <td className="px-4 py-2 text-gray-600">{r.company ?? '—'}</td>
-                          <td className="px-4 py-2 text-gray-600">
-                            {r.employee_id
-                              ? (employees.find(e => e.id === r.employee_id)?.name ?? r.employee_id)
-                              : <span className="text-gray-300">{t('common.unassigned', locale)}</span>}
+                          <td className="px-4 py-2">
+                            {assigneeName ? (
+                              <span className="flex items-center gap-1.5">
+                                <span className="text-gray-700">{assigneeName}</span>
+                                {isHr
+                                  ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-500 font-medium">HR</span>
+                                  : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-400 font-medium">기타</span>
+                                }
+                              </span>
+                            ) : (
+                              <span className="text-gray-300">{t('common.unassigned', locale)}</span>
+                            )}
                           </td>
                           <td className="px-4 py-2 text-gray-500 text-xs">{r.purchase_date ?? '—'}</td>
                           <td className="px-4 py-2 text-right text-gray-600">
@@ -634,9 +805,11 @@ export default function AssetsPage() {
           initial={modal.item}
           clone={modal.clone}
           employees={employees}
+          assetPeople={assetPeople}
           nextAssetId={computeNextAssetId(assets)}
           onClose={() => setModal({ open: false })}
           onSave={() => { setModal({ open: false }); load() }}
+          onPeopleChange={loadPeople}
         />
       )}
       {deleteTarget && (
