@@ -61,6 +61,8 @@ async function _postMail(accessToken: string, payload: MailPayload) {
   }
 }
 
+const READY_TOKEN_KEY = 'msal_ready_token'
+
 /** Called on HR page mount — sends any pending email left over from redirect auth */
 export async function sendPendingMailAfterRedirect(): Promise<{ sent: boolean; error?: string }> {
   const raw = sessionStorage.getItem(PENDING_MAIL_KEY)
@@ -71,6 +73,16 @@ export async function sendPendingMailAfterRedirect(): Promise<{ sent: boolean; e
 
   try {
     const payload = JSON.parse(raw) as MailPayload
+
+    // Primary: use the token stashed by /auth/callback
+    const readyToken = sessionStorage.getItem(READY_TOKEN_KEY)
+    if (readyToken) {
+      sessionStorage.removeItem(READY_TOKEN_KEY)
+      await _postMail(readyToken, payload)
+      return { sent: true }
+    }
+
+    // Fallback: try silent with cached account
     const msal    = await getMsal()
     const accounts = msal.getAllAccounts()
     if (!accounts.length) return { sent: false, error: '인증 후 계정을 찾을 수 없습니다' }
