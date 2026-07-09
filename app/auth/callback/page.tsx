@@ -11,7 +11,11 @@ export default function AuthCallback() {
   useEffect(() => {
     getMsal()
       .then(msal => msal.handleRedirectPromise())
-      .catch(() => {})
+      .then(result => {
+        // MSAL v5 does not auto-close the popup after redirect — do it manually
+        if (result || window.opener) window.close()
+      })
+      .catch(() => { if (window.opener) window.close() })
   }, [])
 
   return (
