@@ -9,12 +9,11 @@ import { getMsal } from '@/lib/msal'
 // processes the token, and automatically closes this popup window.
 export default function AuthCallback() {
   useEffect(() => {
+    // getMsal() calls initialize(), which detects popup mode, processes the
+    // auth code, and sends postMessage back to the opener window.
+    // Only after that completes do we close the popup.
     getMsal()
-      .then(msal => msal.handleRedirectPromise())
-      .then(result => {
-        // MSAL v5 does not auto-close the popup after redirect — do it manually
-        if (result || window.opener) window.close()
-      })
+      .then(() => { if (window.opener) window.close() })
       .catch(() => { if (window.opener) window.close() })
   }, [])
 
