@@ -22,11 +22,17 @@ export async function sendGraphMail(payload: MailPayload): Promise<void> {
       account: accounts[0],
     })
   } catch (e) {
+    // Clear any stuck interaction state before showing popup
+    clearMsalInteractionState()
     if (e instanceof InteractionRequiredAuthError || accounts.length === 0) {
-      // Popup login if no cached token
       tokenRes = await msal.acquireTokenPopup({ scopes: MAIL_SCOPES })
     } else {
-      throw e
+      // For other errors (including interaction_in_progress), try popup directly
+      try {
+        tokenRes = await msal.acquireTokenPopup({ scopes: MAIL_SCOPES })
+      } catch (e2) {
+        throw e2
+      }
     }
   }
 
@@ -54,6 +60,20 @@ export async function sendGraphMail(payload: MailPayload): Promise<void> {
     const err = await res.json().catch(() => ({}))
     throw new Error(err?.error?.message ?? `Graph API error ${res.status}`)
   }
+}
+
+export function clearMsalInteractionState() {
+  try {
+    // Remove MSAL interaction-in-progress lock keys from sessionStorage
+    const keysToRemove = []
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i) ?? ''
+      if (key.includes('msal') && (key.includes('interaction.status') || key.includes('request.params'))) {
+        keysToRemove.push(key)
+      }
+    }
+    keysToRemove.forEach(k => sessionStorage.removeItem(k))
+  } catch {}
 }
 
 export async function msalLogout() {

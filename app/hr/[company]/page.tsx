@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { sendGraphMail, msalLogout, getMsal, MAIL_SCOPES } from '@/lib/graphMail'
+import { sendGraphMail, msalLogout, getMsal, clearMsalInteractionState } from '@/lib/graphMail'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
@@ -691,7 +691,14 @@ export default function CompanyAttendancePage() {
                 )}
                 {sendResult === 'error' && (
                   <div className="mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
-                    ❌ 전송 실패: {sendError}
+                    <div>❌ 전송 실패: {sendError}</div>
+                    {sendError.includes('interaction') && (
+                      <button
+                        onClick={() => { clearMsalInteractionState(); setSendResult(null); setSendError('') }}
+                        className="mt-1.5 underline text-red-600 hover:text-red-800">
+                        팝업 상태 초기화 후 다시 시도
+                      </button>
+                    )}
                   </div>
                 )}
 
