@@ -12,6 +12,17 @@ export type MailPayload = {
 const PENDING_MAIL_KEY = 'msal_pending_mail'
 const RETURN_URL_KEY   = 'msal_return_url'
 
+function clearMsalInteractionState() {
+  try {
+    const keys: string[] = []
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i) ?? ''
+      if (k.includes('msal') && (k.includes('interaction.status') || k.includes('request.params'))) keys.push(k)
+    }
+    keys.forEach(k => sessionStorage.removeItem(k))
+  } catch {}
+}
+
 export async function sendGraphMail(payload: MailPayload): Promise<void> {
   const msal     = await getMsal()
   const accounts = msal.getAllAccounts()
@@ -27,7 +38,8 @@ export async function sendGraphMail(payload: MailPayload): Promise<void> {
     }
   }
 
-  // No cached token — save payload and redirect to Microsoft login
+  // No cached token — clear any stale interaction lock, then redirect
+  clearMsalInteractionState()
   sessionStorage.setItem(PENDING_MAIL_KEY, JSON.stringify(payload))
   sessionStorage.setItem(RETURN_URL_KEY, window.location.pathname)
   await msal.acquireTokenRedirect({ scopes: MAIL_SCOPES })
