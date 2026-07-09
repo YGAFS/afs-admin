@@ -9,7 +9,9 @@ import { getMsal } from '@/lib/msal'
 // processes the token, and automatically closes this popup window.
 export default function AuthCallback() {
   useEffect(() => {
-    getMsal().catch(() => {})
+    getMsal()
+      .then(msal => msal.handleRedirectPromise())
+      .catch(() => {})
   }, [])
 
   return (
