@@ -9,7 +9,7 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   const { user, loading } = useAuth()
   const pathname = usePathname()
   const router   = useRouter()
-  const isLogin  = pathname === '/login'
+  const isLogin  = pathname === '/login' || pathname.startsWith('/auth/')
 
   useEffect(() => {
     if (!loading && !user && !isLogin) {
