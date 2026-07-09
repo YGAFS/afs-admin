@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { sendGraphMail, msalLogout, getMsal, MAIL_SCOPES } from '@/lib/graphMail'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
@@ -165,6 +166,10 @@ export default function CompanyAttendancePage() {
   const [fromId,         setFromId]         = useState('')
   const [toId,           setToId]           = useState('')
   const [ccIds,          setCcIds]          = useState<Set<string>>(new Set())
+  const [msalUser,       setMsalUser]       = useState<string | null>(null)
+  const [sending,        setSending]        = useState(false)
+  const [sendResult,     setSendResult]     = useState<'ok' | 'error' | null>(null)
+  const [sendError,      setSendError]      = useState('')
   const now = new Date()
   const [year,           setYear]           = useState(now.getFullYear())
   const [month,          setMonth]          = useState(now.getMonth() + 1)
@@ -325,17 +330,27 @@ export default function CompanyAttendancePage() {
     return { subject, body: lines.join('\n') }
   }
 
-  function openMailto() {
+  async function sendEmail() {
     const { subject, body } = buildEmailBody()
     const recipient = emailRecips.find(r => r.id === toId)
     const toEmail   = recipient?.email ?? ''
-    const ccEmails  = [...ccIds].map(id => emailRecips.find(r => r.id === id)?.email ?? '').filter(Boolean).join(',')
-    // toEmail / ccEmails must NOT be encodeURIComponent'd — mailto: requires raw addresses; encoding @ → %40 breaks Outlook
-    const cc = ccEmails ? `&cc=${ccEmails}` : ''
-    window.open(
-      `mailto:${toEmail}?subject=${encodeURIComponent(subject)}${cc}&body=${encodeURIComponent(body)}`,
-      '_blank'
-    )
+    const ccEmails  = [...ccIds].map(id => emailRecips.find(r => r.id === id)?.email ?? '').filter(Boolean)
+    const sender    = emailSenders.find(s => s.id === fromId)
+
+    setSending(true)
+    setSendResult(null)
+    setSendError('')
+    try {
+      await sendGraphMail({ to: toEmail, cc: ccEmails, subject, body, fromName: sender?.name })
+      const msal = await getMsal()
+      setMsalUser(msal.getAllAccounts()[0]?.username ?? null)
+      setSendResult('ok')
+    } catch (e: unknown) {
+      setSendResult('error')
+      setSendError(e instanceof Error ? e.message : 'Unknown error')
+    } finally {
+      setSending(false)
+    }
   }
 
   function shiftMonth(delta: number) {
@@ -415,8 +430,14 @@ export default function CompanyAttendancePage() {
               setFromId('')
               setToId('')
               setCcIds(new Set())
+              setSendResult(null)
+              setSendError('')
               setShowEmailModal(true)
               loadEmailData(year, month)
+              getMsal().then(m => {
+                const accs = m.getAllAccounts()
+                setMsalUser(accs[0]?.username ?? null)
+              }).catch(() => {})
             }}
             disabled={!companyId}
             className="px-3 py-1.5 border rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 whitespace-nowrap">
@@ -647,11 +668,38 @@ export default function CompanyAttendancePage() {
                   </p>
                 )}
 
+                {/* Microsoft account status */}
+                <div className="flex items-center justify-between mb-3 text-xs">
+                  {msalUser ? (
+                    <span className="text-green-600 font-medium">✓ {msalUser}</span>
+                  ) : (
+                    <span className="text-gray-400">Microsoft 계정 미연결 — 전송 시 로그인 팝업 표시</span>
+                  )}
+                  {msalUser && (
+                    <button onClick={async () => { await msalLogout(); setMsalUser(null) }}
+                      className="text-gray-400 hover:text-red-500 underline">
+                      로그아웃
+                    </button>
+                  )}
+                </div>
+
+                {/* Send result feedback */}
+                {sendResult === 'ok' && (
+                  <div className="mb-3 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700 font-medium">
+                    ✅ 이메일이 전송됐어요.
+                  </div>
+                )}
+                {sendResult === 'error' && (
+                  <div className="mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
+                    ❌ 전송 실패: {sendError}
+                  </div>
+                )}
+
                 <div className="flex gap-2">
-                  <button onClick={openMailto}
-                    disabled={emailDates.size === 0 || !toId}
+                  <button onClick={sendEmail}
+                    disabled={emailDates.size === 0 || !toId || sending}
                     className="flex-1 bg-blue-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 transition-colors">
-                    📧 {locale === 'ko' ? '이메일 열기' : 'Open Email Client'}
+                    {sending ? '전송 중...' : '📧 Send Email'}
                   </button>
                   <button onClick={() => setShowEmailModal(false)}
                     className="px-5 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">

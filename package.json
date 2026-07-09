@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@azure/msal-browser": "^5.17.0",
     "@supabase/supabase-js": "^2.105.4",
     "@tailwindcss/postcss": "^4.3.0",
     "@types/node": "^25.7.0",
