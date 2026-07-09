@@ -16,19 +16,23 @@ export default function AuthCallback() {
 
     getMsal()
       .then(async msal => {
-        const result = await msal.handleRedirectPromise()
-        if (result?.accessToken) {
-          // Stash the token so sendPendingMailAfterRedirect can use it directly
-          sessionStorage.setItem('msal_ready_token', result.accessToken)
-        } else if (result?.account) {
-          // Got account but not the right scope — try silent
-          try {
+        try {
+          const result = await msal.handleRedirectPromise()
+          if (result?.accessToken) {
+            sessionStorage.setItem('msal_ready_token', result.accessToken)
+          } else if (result?.account) {
             const silent = await msal.acquireTokenSilent({ scopes: MAIL_SCOPES, account: result.account })
             sessionStorage.setItem('msal_ready_token', silent.accessToken)
-          } catch { /* will be retried on HR page */ }
+          } else {
+            sessionStorage.setItem('msal_cb_error', 'handleRedirectPromise returned null (no auth response in URL?)')
+          }
+        } catch (err) {
+          sessionStorage.setItem('msal_cb_error', err instanceof Error ? err.message : String(err))
         }
       })
-      .catch(() => {})
+      .catch((err) => {
+        sessionStorage.setItem('msal_cb_error', 'getMsal failed: ' + String(err))
+      })
       .finally(() => {
         router.replace(returnUrl)
       })
