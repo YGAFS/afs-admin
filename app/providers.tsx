@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState } from 'react'
+import { getMsal } from '@/lib/msal'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { User } from '@supabase/supabase-js'
 import type { Locale } from '@/lib/i18n'
@@ -35,6 +36,13 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const [user,    setUser]   = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [locale,  setLocaleState] = useState<Locale>('en')
+
+  useEffect(() => {
+    // Initialize MSAL on every page load so popup windows can process OAuth callbacks
+    if (process.env.NEXT_PUBLIC_AZURE_CLIENT_ID) {
+      getMsal().catch(() => {})
+    }
+  }, [])
 
   useEffect(() => {
     const sb = getSupabase()
