@@ -1,25 +1,30 @@
 'use client'
 
 import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { getMsal } from '@/lib/msal'
 
-// Dedicated MSAL redirect page.
-// MSAL opens a popup → Microsoft login → redirects here.
-// getMsal() calls initialize(), which detects the auth response,
-// processes the token, and automatically closes this popup window.
+// MSAL redirect flow callback page.
+// Microsoft redirects here after login; handleRedirectPromise() caches the token,
+// then we navigate back to wherever the user came from.
 export default function AuthCallback() {
+  const router = useRouter()
+
   useEffect(() => {
-    // getMsal() calls initialize(), which detects popup mode, processes the
-    // auth code, and sends postMessage back to the opener window.
-    // Only after that completes do we close the popup.
     getMsal()
-      .then(() => { if (window.opener) window.close() })
-      .catch(() => { if (window.opener) window.close() })
-  }, [])
+      .then(msal => msal.handleRedirectPromise())
+      .then(() => {
+        const returnUrl = sessionStorage.getItem('msal_return_url') || '/hr/afs'
+        router.replace(returnUrl)
+      })
+      .catch(() => {
+        router.replace('/hr/afs')
+      })
+  }, [router])
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'sans-serif', color: '#888' }}>
-      Authenticating…
+      인증 처리 중…
     </div>
   )
 }

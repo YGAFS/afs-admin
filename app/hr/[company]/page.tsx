@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { sendGraphMail, msalLogout, getMsal, clearMsalInteractionState } from '@/lib/graphMail'
+import { sendGraphMail, sendPendingMailAfterRedirect, msalLogout, getMsal } from '@/lib/graphMail'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
@@ -184,6 +184,24 @@ export default function CompanyAttendancePage() {
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // After Microsoft redirect login, pick up the pending email and send it
+  useEffect(() => {
+    sendPendingMailAfterRedirect().then(({ sent, error }) => {
+      if (sent) {
+        setSendResult('ok')
+        setShowEmailModal(true)
+      } else if (error) {
+        setSendResult('error')
+        setSendError(error)
+        setShowEmailModal(true)
+      }
+      if (sent || error) {
+        getMsal().then(m => setMsalUser(m.getAllAccounts()[0]?.username ?? null)).catch(() => {})
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -673,7 +691,7 @@ export default function CompanyAttendancePage() {
                   {msalUser ? (
                     <span className="text-green-600 font-medium">✓ {msalUser}</span>
                   ) : (
-                    <span className="text-gray-400">Microsoft 계정 미연결 — 전송 시 로그인 팝업 표시</span>
+                    <span className="text-gray-400">Microsoft 계정 미연결 — 전송 시 로그인 페이지로 이동</span>
                   )}
                   {msalUser && (
                     <button onClick={async () => { await msalLogout(); setMsalUser(null) }}
@@ -692,13 +710,6 @@ export default function CompanyAttendancePage() {
                 {sendResult === 'error' && (
                   <div className="mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
                     <div>❌ 전송 실패: {sendError}</div>
-                    {sendError.includes('interaction') && (
-                      <button
-                        onClick={() => { clearMsalInteractionState(); setSendResult(null); setSendError('') }}
-                        className="mt-1.5 underline text-red-600 hover:text-red-800">
-                        팝업 상태 초기화 후 다시 시도
-                      </button>
-                    )}
                   </div>
                 )}
 

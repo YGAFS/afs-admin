@@ -1,6 +1,5 @@
 export { getMsal, MAIL_SCOPES } from './msal'
 import { getMsal, MAIL_SCOPES } from './msal'
-import { InteractionRequiredAuthError } from '@azure/msal-browser'
 
 export type MailPayload = {
   to:      string
@@ -10,32 +9,32 @@ export type MailPayload = {
   fromName?: string
 }
 
+const PENDING_MAIL_KEY = 'msal_pending_mail'
+const RETURN_URL_KEY   = 'msal_return_url'
+
 export async function sendGraphMail(payload: MailPayload): Promise<void> {
   const msal     = await getMsal()
   const accounts = msal.getAllAccounts()
 
-  let tokenRes
-  try {
-    // Try silent token acquisition first (reuse cached token)
-    tokenRes = await msal.acquireTokenSilent({
-      scopes:  MAIL_SCOPES,
-      account: accounts[0],
-    })
-  } catch (e) {
-    // Clear any stuck interaction state before showing popup
-    clearMsalInteractionState()
-    if (e instanceof InteractionRequiredAuthError || accounts.length === 0) {
-      tokenRes = await msal.acquireTokenPopup({ scopes: MAIL_SCOPES })
-    } else {
-      // For other errors (including interaction_in_progress), try popup directly
-      try {
-        tokenRes = await msal.acquireTokenPopup({ scopes: MAIL_SCOPES })
-      } catch (e2) {
-        throw e2
-      }
+  // Try silent token first (cached)
+  if (accounts.length > 0) {
+    try {
+      const tokenRes = await msal.acquireTokenSilent({ scopes: MAIL_SCOPES, account: accounts[0] })
+      await _postMail(tokenRes.accessToken, payload)
+      return
+    } catch {
+      // Fall through to redirect
     }
   }
 
+  // No cached token — save payload and redirect to Microsoft login
+  sessionStorage.setItem(PENDING_MAIL_KEY, JSON.stringify(payload))
+  sessionStorage.setItem(RETURN_URL_KEY, window.location.pathname)
+  await msal.acquireTokenRedirect({ scopes: MAIL_SCOPES })
+  // Page navigates away here; execution stops
+}
+
+async function _postMail(accessToken: string, payload: MailPayload) {
   const ccRecipients = (payload.cc ?? []).map(email => ({
     emailAddress: { address: email },
   }))
@@ -43,7 +42,7 @@ export async function sendGraphMail(payload: MailPayload): Promise<void> {
   const res = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
     method:  'POST',
     headers: {
-      Authorization: `Bearer ${tokenRes.accessToken}`,
+      Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -62,18 +61,25 @@ export async function sendGraphMail(payload: MailPayload): Promise<void> {
   }
 }
 
-export function clearMsalInteractionState() {
+/** Called on HR page mount — sends any pending email left over from redirect auth */
+export async function sendPendingMailAfterRedirect(): Promise<{ sent: boolean; error?: string }> {
+  const raw = sessionStorage.getItem(PENDING_MAIL_KEY)
+  if (!raw) return { sent: false }
+
+  sessionStorage.removeItem(PENDING_MAIL_KEY)
+  sessionStorage.removeItem(RETURN_URL_KEY)
+
   try {
-    // Remove MSAL interaction-in-progress lock keys from sessionStorage
-    const keysToRemove = []
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const key = sessionStorage.key(i) ?? ''
-      if (key.includes('msal') && (key.includes('interaction.status') || key.includes('request.params'))) {
-        keysToRemove.push(key)
-      }
-    }
-    keysToRemove.forEach(k => sessionStorage.removeItem(k))
-  } catch {}
+    const payload = JSON.parse(raw) as MailPayload
+    const msal    = await getMsal()
+    const accounts = msal.getAllAccounts()
+    if (!accounts.length) return { sent: false, error: '인증 후 계정을 찾을 수 없습니다' }
+    const tokenRes = await msal.acquireTokenSilent({ scopes: MAIL_SCOPES, account: accounts[0] })
+    await _postMail(tokenRes.accessToken, payload)
+    return { sent: true }
+  } catch (e) {
+    return { sent: false, error: e instanceof Error ? e.message : 'Unknown error' }
+  }
 }
 
 export async function msalLogout() {
@@ -86,13 +92,11 @@ export async function msalLogout() {
 
 export function getMsalAccount() {
   if (typeof window === 'undefined') return null
-  // getMsal is async but account check after init is sync
   return _getCachedAccount()
 }
 
 function _getCachedAccount() {
   try {
-    // Read directly from sessionStorage to avoid async
     for (let i = 0; i < sessionStorage.length; i++) {
       const key = sessionStorage.key(i) ?? ''
       if (key.includes('login.windows.net') && key.includes('homeAccountId')) {
