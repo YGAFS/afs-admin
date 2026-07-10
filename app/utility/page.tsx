@@ -632,7 +632,7 @@ export default function UtilityPage() {
                 >
                   <option value="">— None —</option>
                   {methods
-                    .filter(m => editBill.company_id === 'all' || m.company_id === editBill.company_id)
+                    .filter(m => !editBill.company_id || m.company_id === editBill.company_id)
                     .map(m => (
                       <option key={m.id} value={m.id}>
                         {m.label}{m.holder_name ? ` (${m.holder_name})` : ''}
