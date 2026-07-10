@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useAuth } from '@/app/providers'
 
@@ -16,6 +16,7 @@ const supabase = createClient(
 type Company = 'afs' | 'tnt' | 'zfs'
 type Currency = 'CAD' | 'USD'
 type Role = 'admin' | 'ap'
+type MainTab = 'bills' | 'analytics' | 'calendar'
 
 interface PaymentMethod {
   id: string
@@ -35,9 +36,11 @@ interface Bill {
   provider: string | null
   amount: number | null
   currency: Currency
+  issue_date: string | null
   due_date: string | null
   billing_period: string | null
   billing_month: number | null
+  bill_number: string | null
   is_auto_pay: boolean
   payment_method_id: string | null
   onedrive_file_url: string | null
@@ -49,11 +52,11 @@ interface Bill {
   payment_methods?: PaymentMethod | null
 }
 
-const COMPANIES: { id: Company | 'all'; label: string; flag?: string }[] = [
+const COMPANIES: { id: Company | 'all'; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'afs', label: 'AFS' },
-  { id: 'tnt', label: 'TNT', flag: '🇨🇦' },
-  { id: 'zfs', label: 'ZFS', flag: '🇺🇸' },
+  { id: 'tnt', label: 'TNT' },
+  { id: 'zfs', label: 'ZFS' },
 ]
 
 const CO_COLORS: Record<Company, string> = {
@@ -84,7 +87,7 @@ function dueDateLabel(bill: Bill) {
   const days = daysUntilDue(bill)!
   const fmt = new Date(bill.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   if (bill.is_paid) return fmt
-  if (days < 0)  return `${fmt} (${Math.abs(days)}d overdue)`
+  if (days < 0)   return `${fmt} (${Math.abs(days)}d overdue)`
   if (days === 0) return `${fmt} (Today)`
   if (days <= 7)  return `${fmt} (${days}d left)`
   return fmt
@@ -94,10 +97,20 @@ function dueDateColor(bill: Bill) {
   if (bill.is_paid) return 'text-gray-400'
   const days = daysUntilDue(bill)
   if (days === null) return 'text-gray-500'
-  if (days < 0)  return 'text-red-600 font-semibold'
-  if (days <= 3) return 'text-red-500 font-medium'
-  if (days <= 7) return 'text-amber-600 font-medium'
+  if (days < 0)   return 'text-red-600 font-semibold'
+  if (days <= 3)  return 'text-red-500 font-medium'
+  if (days <= 7)  return 'text-amber-600 font-medium'
   return 'text-gray-700'
+}
+
+function fmtAmt(bill: Bill) {
+  if (bill.amount == null) return '—'
+  return `${bill.currency === 'USD' ? 'US$' : 'CA$'}${bill.amount.toFixed(2)}`
+}
+
+function fmtShortDate(d: string | null) {
+  if (!d) return '—'
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 const emptyBill: Omit<Bill, 'id' | 'created_at' | 'payment_methods'> = {
@@ -106,9 +119,11 @@ const emptyBill: Omit<Bill, 'id' | 'created_at' | 'payment_methods'> = {
   provider: '',
   amount: null,
   currency: 'CAD',
+  issue_date: '',
   due_date: '',
   billing_period: '',
   billing_month: null,
+  bill_number: '',
   is_auto_pay: false,
   payment_method_id: null,
   onedrive_file_url: '',
@@ -127,21 +142,19 @@ export default function UtilityPage() {
   const [methods, setMethods] = useState<PaymentMethod[]>([])
   const [loading, setLoading] = useState(true)
 
+  const [mainTab,      setMainTab]      = useState<MainTab>('bills')
   const [coFilter,     setCoFilter]     = useState<Company | 'all'>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [searchTerm,   setSearchTerm]   = useState('')
 
-  const [showModal,   setShowModal]   = useState(false)
-  const [editBill,    setEditBill]    = useState<Partial<Bill>>(emptyBill)
-  const [editingId,   setEditingId]   = useState<string | null>(null)
-  const [saving,      setSaving]      = useState(false)
-
-  const [noteEdit,    setNoteEdit]    = useState<{ id: string; value: string } | null>(null)
+  const [showModal,     setShowModal]     = useState(false)
+  const [editBill,      setEditBill]      = useState<Partial<Bill>>(emptyBill)
+  const [editingId,     setEditingId]     = useState<string | null>(null)
+  const [saving,        setSaving]        = useState(false)
+  const [noteEdit,      setNoteEdit]      = useState<{ id: string; value: string } | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [showPMModal,   setShowPMModal]   = useState(false)
 
-  const [showPMModal, setShowPMModal] = useState(false)
-
-  // Load user role
   useEffect(() => {
     if (!user) return
     supabase
@@ -149,9 +162,7 @@ export default function UtilityPage() {
       .select('role')
       .eq('user_id', user.id)
       .maybeSingle()
-      .then(({ data }) => {
-        setRole((data?.role as Role) ?? 'admin')
-      })
+      .then(({ data }) => setRole((data?.role as Role) ?? 'admin'))
   }, [user])
 
   const load = useCallback(async () => {
@@ -161,45 +172,50 @@ export default function UtilityPage() {
       .select('*, payment_methods(*)')
       .order('due_date', { ascending: true, nullsFirst: false })
     setBills((data as Bill[]) ?? [])
-    const { data: pm } = await supabase
-      .from('payment_methods')
-      .select('*')
-      .order('label')
+    const { data: pm } = await supabase.from('payment_methods').select('*').order('label')
     setMethods((pm as PaymentMethod[]) ?? [])
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
 
-  // ── Filtered bills ──────────────────────────────────────────────────────────
   const filtered = bills.filter(b => {
     if (coFilter !== 'all' && b.company_id !== coFilter) return false
-    if (statusFilter === 'paid'   && !b.is_paid) return false
-    if (statusFilter === 'unpaid' && (b.is_paid || isOverdue(b))) return false
+    if (statusFilter === 'paid'    && !b.is_paid) return false
+    if (statusFilter === 'unpaid'  && (b.is_paid || isOverdue(b))) return false
     if (statusFilter === 'overdue' && !isOverdue(b)) return false
     if (searchTerm) {
       const q = searchTerm.toLowerCase()
       if (!b.utility_name.toLowerCase().includes(q) &&
-          !(b.provider ?? '').toLowerCase().includes(q)) return false
+          !(b.provider ?? '').toLowerCase().includes(q) &&
+          !(b.bill_number ?? '').toLowerCase().includes(q)) return false
     }
     return true
   })
 
-  // ── Stats ───────────────────────────────────────────────────────────────────
+  const today = new Date(new Date().toDateString())
+  const inSevenDays = new Date(today.getTime() + 7 * 86400000)
+
+  const overdueBills  = bills.filter(isOverdue)
+  const upcomingBills = bills.filter(b => {
+    if (b.is_paid || isOverdue(b) || !b.due_date) return false
+    const due = new Date(b.due_date)
+    return due >= today && due <= inSevenDays
+  })
+
   const stats = {
     total:   bills.length,
     unpaid:  bills.filter(b => !b.is_paid && !isOverdue(b)).length,
-    overdue: bills.filter(isOverdue).length,
+    overdue: overdueBills.length,
     paid:    bills.filter(b => b.is_paid).length,
   }
 
-  // ── Paid toggle ─────────────────────────────────────────────────────────────
   async function togglePaid(bill: Bill) {
     const newPaid = !bill.is_paid
     await supabase.from('utility_bills').update({
       is_paid: newPaid,
-      paid_at:  newPaid ? new Date().toISOString() : null,
-      paid_by:  newPaid ? (user?.email ?? null) : null,
+      paid_at: newPaid ? new Date().toISOString() : null,
+      paid_by: newPaid ? (user?.email ?? null) : null,
     }).eq('id', bill.id)
     setBills(prev => prev.map(b =>
       b.id === bill.id
@@ -208,14 +224,12 @@ export default function UtilityPage() {
     ))
   }
 
-  // ── Save note ───────────────────────────────────────────────────────────────
   async function saveNote(id: string, notes: string) {
     await supabase.from('utility_bills').update({ notes }).eq('id', id)
     setBills(prev => prev.map(b => b.id === id ? { ...b, notes } : b))
     setNoteEdit(null)
   }
 
-  // ── Save bill (add/edit) ────────────────────────────────────────────────────
   async function saveBill() {
     if (!editBill.utility_name?.trim()) return
     setSaving(true)
@@ -225,11 +239,13 @@ export default function UtilityPage() {
       provider:          editBill.provider || null,
       amount:            editBill.amount ?? null,
       currency:          editBill.currency,
+      issue_date:        editBill.issue_date || null,
       due_date:          editBill.due_date || null,
       billing_period:    editBill.billing_period || null,
       billing_month:     editBill.due_date
                            ? new Date(editBill.due_date + 'T00:00:00').getMonth() + 1
                            : null,
+      bill_number:       editBill.bill_number || null,
       is_auto_pay:       editBill.is_auto_pay ?? false,
       payment_method_id: editBill.payment_method_id || null,
       onedrive_file_url: editBill.onedrive_file_url || null,
@@ -247,7 +263,6 @@ export default function UtilityPage() {
     load()
   }
 
-  // ── Delete bill ─────────────────────────────────────────────────────────────
   async function deleteBill(id: string) {
     await supabase.from('utility_bills').delete().eq('id', id)
     setBills(prev => prev.filter(b => b.id !== id))
@@ -260,17 +275,14 @@ export default function UtilityPage() {
     setShowModal(true)
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="p-6 min-h-full bg-gray-50">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Utility Bills</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            AFS · TNT · ZFS — {role === 'ap' ? 'AP View' : 'Admin'}
-          </p>
+          <p className="text-sm text-gray-400 mt-0.5">AFS · TNT · ZFS — {role === 'ap' ? 'AP View' : 'Admin'}</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -290,240 +302,270 @@ export default function UtilityPage() {
         </div>
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-4 gap-3 mb-5">
-        {[
-          { label: 'Total', value: stats.total,   color: 'text-gray-700', bg: 'bg-white' },
-          { label: 'Unpaid', value: stats.unpaid,  color: 'text-amber-600', bg: 'bg-amber-50' },
-          { label: 'Overdue', value: stats.overdue, color: 'text-red-600',   bg: 'bg-red-50' },
-          { label: 'Paid',    value: stats.paid,    color: 'text-emerald-600', bg: 'bg-emerald-50' },
-        ].map(s => (
-          <div key={s.label} className={`${s.bg} rounded-xl border border-gray-200 px-4 py-3`}>
-            <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
-            <div className="text-xs text-gray-500 mt-0.5">{s.label}</div>
-          </div>
+      {/* Main tabs */}
+      <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1 mb-5 w-fit">
+        {(['bills', 'analytics', 'calendar'] as MainTab[]).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setMainTab(tab)}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              mainTab === tab ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {tab === 'bills' ? '📋 Bills' : tab === 'analytics' ? '📊 Analytics' : '📅 Calendar'}
+          </button>
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
-        {/* Company tabs */}
-        <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
-          {COMPANIES.map(c => (
-            <button
-              key={c.id}
-              onClick={() => setCoFilter(c.id as Company | 'all')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
-                coFilter === c.id
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {c.flag ? `${c.flag} ${c.label}` : c.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Status filter */}
-        <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
-          {STATUS_FILTER.map(s => (
-            <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors capitalize ${
-                statusFilter === s
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Search utility / provider…"
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          className="ml-auto px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 w-52"
-        />
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {loading ? (
-          <div className="py-16 text-center text-sm text-gray-400">Loading…</div>
-        ) : filtered.length === 0 ? (
-          <div className="py-16 text-center text-sm text-gray-400">No bills found.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Co</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Utility</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Provider</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Amount</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Due Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Payment</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Paid</th>
-                  {role === 'admin' && (
-                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filtered.map(bill => (
-                  <tr key={bill.id} className={`hover:bg-gray-50 transition-colors ${bill.is_paid ? 'opacity-60' : ''}`}>
-                    {/* Company */}
-                    <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[bill.company_id]}`}>
-                        {bill.company_id.toUpperCase()}
-                      </span>
-                    </td>
-
-                    {/* Utility name */}
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900">{bill.utility_name}</div>
-                      {bill.billing_period && (
-                        <div className="text-xs text-gray-400">{bill.billing_period}</div>
-                      )}
-                    </td>
-
-                    {/* Provider */}
-                    <td className="px-4 py-3 text-gray-600 text-xs">{bill.provider ?? '—'}</td>
-
-                    {/* Amount */}
-                    <td className="px-4 py-3">
-                      {bill.amount != null ? (
-                        <span className="font-medium text-gray-900">
-                          {bill.currency === 'USD' ? 'US$' : 'CA$'}{bill.amount.toFixed(2)}
-                        </span>
-                      ) : '—'}
-                    </td>
-
-                    {/* Due date */}
-                    <td className={`px-4 py-3 text-xs ${dueDateColor(bill)}`}>
-                      {dueDateLabel(bill)}
-                    </td>
-
-                    {/* Payment method */}
-                    <td className="px-4 py-3">
-                      {bill.payment_methods ? (
-                        <div>
-                          <div className="text-xs font-medium text-gray-700">
-                            {bill.is_auto_pay && <span className="text-blue-500 mr-1">⟳</span>}
-                            {bill.payment_methods.label}
-                          </div>
-                          {bill.payment_methods.holder_name && (
-                            <div className="text-xs text-gray-400">{bill.payment_methods.holder_name}</div>
-                          )}
-                        </div>
-                      ) : bill.is_auto_pay ? (
-                        <span className="text-xs text-blue-500">⟳ Auto</span>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                    </td>
-
-                    {/* Notes */}
-                    <td className="px-4 py-3 max-w-[180px]">
-                      {noteEdit?.id === bill.id ? (
-                        <div className="flex gap-1">
-                          <input
-                            autoFocus
-                            value={noteEdit.value}
-                            onChange={e => setNoteEdit({ id: bill.id, value: e.target.value })}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') saveNote(bill.id, noteEdit.value)
-                              if (e.key === 'Escape') setNoteEdit(null)
-                            }}
-                            className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-900 min-w-0"
-                          />
-                          <button onClick={() => saveNote(bill.id, noteEdit.value)} className="text-emerald-600 text-xs font-bold">✓</button>
-                          <button onClick={() => setNoteEdit(null)} className="text-gray-400 text-xs">✕</button>
-                        </div>
-                      ) : (
-                        <div
-                          onClick={() => setNoteEdit({ id: bill.id, value: bill.notes ?? '' })}
-                          className="text-xs text-gray-500 cursor-pointer hover:text-gray-800 truncate group"
-                          title={bill.notes ?? 'Click to add note'}
-                        >
-                          {bill.notes
-                            ? <span>{bill.notes}</span>
-                            : <span className="text-gray-300 group-hover:text-gray-400">+ note</span>
-                          }
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Paid checkbox */}
-                    <td className="px-4 py-3 text-center">
-                      <input
-                        type="checkbox"
-                        checked={bill.is_paid}
-                        onChange={() => togglePaid(bill)}
-                        className="w-4 h-4 accent-emerald-600 cursor-pointer"
-                        title={bill.paid_at ? `Paid on ${new Date(bill.paid_at).toLocaleDateString()} by ${bill.paid_by ?? 'unknown'}` : 'Mark as paid'}
-                      />
-                    </td>
-
-                    {/* Admin actions */}
-                    {role === 'admin' && (
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          {bill.onedrive_file_url && (
-                            <a
-                              href={bill.onedrive_file_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="p-1 text-gray-400 hover:text-blue-500 transition-colors"
-                              title="Open file"
-                            >
-                              📎
-                            </a>
-                          )}
-                          <button
-                            onClick={() => openEdit(bill)}
-                            className="p-1 text-gray-400 hover:text-gray-700 transition-colors"
-                            title="Edit"
-                          >
-                            ✏️
-                          </button>
-                          {deleteConfirm === bill.id ? (
-                            <span className="flex items-center gap-1 text-xs">
-                              <button onClick={() => deleteBill(bill.id)} className="text-red-600 font-semibold">Del</button>
-                              <button onClick={() => setDeleteConfirm(null)} className="text-gray-400">✕</button>
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => setDeleteConfirm(bill.id)}
-                              className="p-1 text-gray-300 hover:text-red-400 transition-colors"
-                              title="Delete"
-                            >
-                              🗑
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* ── BILLS TAB ────────────────────────────────────────────────────────── */}
+      {mainTab === 'bills' && (
+        <>
+          {/* Stats row — clickable to filter */}
+          <div className="grid grid-cols-4 gap-3 mb-5">
+            {[
+              { label: 'Total',   value: stats.total,   color: 'text-gray-700',    bg: 'bg-white',      sf: 'all'     as StatusFilter },
+              { label: 'Unpaid',  value: stats.unpaid,  color: 'text-amber-600',   bg: 'bg-amber-50',   sf: 'unpaid'  as StatusFilter },
+              { label: 'Overdue', value: stats.overdue, color: 'text-red-600',     bg: 'bg-red-50',     sf: 'overdue' as StatusFilter },
+              { label: 'Paid',    value: stats.paid,    color: 'text-emerald-600', bg: 'bg-emerald-50', sf: 'paid'    as StatusFilter },
+            ].map(s => (
+              <button
+                key={s.label}
+                onClick={() => setStatusFilter(s.sf)}
+                className={`${s.bg} rounded-xl border border-gray-200 px-4 py-3 text-left hover:shadow-sm transition-shadow ${statusFilter === s.sf ? 'ring-2 ring-gray-900' : ''}`}
+              >
+                <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{s.label}</div>
+              </button>
+            ))}
           </div>
-        )}
-      </div>
 
-      {/* AP view notice */}
-      {role === 'ap' && (
-        <p className="text-xs text-gray-400 mt-3 text-center">
-          AP view — you can mark bills as paid and add notes. Contact admin to add or edit bills.
-        </p>
+          {/* Overdue + Upcoming alert panels */}
+          {(overdueBills.length > 0 || upcomingBills.length > 0) && (
+            <div className={`grid gap-3 mb-5 ${overdueBills.length > 0 && upcomingBills.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
+              {overdueBills.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <div className="text-red-600 font-semibold text-sm mb-2.5">🚨 Overdue ({overdueBills.length})</div>
+                  <div className="space-y-2">
+                    {overdueBills.map(b => (
+                      <div key={b.id} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+                          <span className="text-xs font-medium text-gray-800 truncate">{b.utility_name}</span>
+                          {b.provider && <span className="text-xs text-gray-400 hidden sm:inline">· {b.provider}</span>}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs font-semibold text-red-600">{fmtAmt(b)}</span>
+                          <span className="text-xs text-red-500">{dueDateLabel(b)}</span>
+                          <input type="checkbox" checked={false} onChange={() => togglePaid(b)} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" title="Mark paid" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {upcomingBills.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <div className="text-amber-700 font-semibold text-sm mb-2.5">⏰ Due This Week ({upcomingBills.length})</div>
+                  <div className="space-y-2">
+                    {upcomingBills.map(b => (
+                      <div key={b.id} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+                          <span className="text-xs font-medium text-gray-800 truncate">{b.utility_name}</span>
+                          {b.provider && <span className="text-xs text-gray-400 hidden sm:inline">· {b.provider}</span>}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs font-medium text-gray-800">{fmtAmt(b)}</span>
+                          <span className={`text-xs ${dueDateColor(b)}`}>{dueDateLabel(b)}</span>
+                          <input type="checkbox" checked={false} onChange={() => togglePaid(b)} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" title="Mark paid" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Filters */}
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
+              {COMPANIES.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => setCoFilter(c.id as Company | 'all')}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                    coFilter === c.id ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
+              {STATUS_FILTER.map(s => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors capitalize ${
+                    statusFilter === s ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              placeholder="Search utility / provider / bill #…"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="ml-auto px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 w-60"
+            />
+          </div>
+
+          {/* Table */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            {loading ? (
+              <div className="py-16 text-center text-sm text-gray-400">Loading…</div>
+            ) : filtered.length === 0 ? (
+              <div className="py-16 text-center text-sm text-gray-400">No bills found.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Co</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Utility</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Bill #</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Provider</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Amount</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Issued</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Due Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Payment</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Paid</th>
+                      {role === 'admin' && <th className="px-4 py-3" />}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filtered.map(bill => (
+                      <tr key={bill.id} className={`hover:bg-gray-50 transition-colors ${bill.is_paid ? 'opacity-60' : ''}`}>
+                        <td className="px-4 py-3">
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[bill.company_id]}`}>
+                            {bill.company_id.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-gray-900">{bill.utility_name}</div>
+                          {bill.billing_period && <div className="text-xs text-gray-400">{bill.billing_period}</div>}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 font-mono">{bill.bill_number ?? '—'}</td>
+                        <td className="px-4 py-3 text-gray-600 text-xs">{bill.provider ?? '—'}</td>
+                        <td className="px-4 py-3">
+                          {bill.amount != null
+                            ? <span className="font-medium text-gray-900">{fmtAmt(bill)}</span>
+                            : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{fmtShortDate(bill.issue_date)}</td>
+                        <td className={`px-4 py-3 text-xs ${dueDateColor(bill)}`}>{dueDateLabel(bill)}</td>
+                        <td className="px-4 py-3">
+                          {bill.payment_methods ? (
+                            <div>
+                              <div className="text-xs font-medium text-gray-700">
+                                {bill.is_auto_pay && <span className="text-blue-500 mr-1">⟳</span>}
+                                {bill.payment_methods.label}
+                              </div>
+                              {bill.payment_methods.holder_name && (
+                                <div className="text-xs text-gray-400">{bill.payment_methods.holder_name}</div>
+                              )}
+                            </div>
+                          ) : bill.is_auto_pay ? (
+                            <span className="text-xs text-blue-500">⟳ Auto</span>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 max-w-[180px]">
+                          {noteEdit?.id === bill.id ? (
+                            <div className="flex gap-1">
+                              <input
+                                autoFocus
+                                value={noteEdit.value}
+                                onChange={e => setNoteEdit({ id: bill.id, value: e.target.value })}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') saveNote(bill.id, noteEdit.value)
+                                  if (e.key === 'Escape') setNoteEdit(null)
+                                }}
+                                className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-900 min-w-0"
+                              />
+                              <button onClick={() => saveNote(bill.id, noteEdit.value)} className="text-emerald-600 text-xs font-bold">✓</button>
+                              <button onClick={() => setNoteEdit(null)} className="text-gray-400 text-xs">✕</button>
+                            </div>
+                          ) : (
+                            <div
+                              onClick={() => setNoteEdit({ id: bill.id, value: bill.notes ?? '' })}
+                              className="text-xs text-gray-500 cursor-pointer hover:text-gray-800 truncate group"
+                              title={bill.notes ?? 'Click to add note'}
+                            >
+                              {bill.notes
+                                ? <span>{bill.notes}</span>
+                                : <span className="text-gray-300 group-hover:text-gray-400">+ note</span>}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={bill.is_paid}
+                            onChange={() => togglePaid(bill)}
+                            className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                            title={bill.paid_at
+                              ? `Paid on ${new Date(bill.paid_at).toLocaleDateString()} by ${bill.paid_by ?? 'unknown'}`
+                              : 'Mark as paid'}
+                          />
+                        </td>
+                        {role === 'admin' && (
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1">
+                              {bill.onedrive_file_url && (
+                                <a href={bill.onedrive_file_url} target="_blank" rel="noreferrer"
+                                  className="p-1 text-gray-400 hover:text-blue-500 transition-colors" title="Open file">📎</a>
+                              )}
+                              <button onClick={() => openEdit(bill)} className="p-1 text-gray-400 hover:text-gray-700 transition-colors" title="Edit">✏️</button>
+                              {deleteConfirm === bill.id ? (
+                                <span className="flex items-center gap-1 text-xs">
+                                  <button onClick={() => deleteBill(bill.id)} className="text-red-600 font-semibold">Del</button>
+                                  <button onClick={() => setDeleteConfirm(null)} className="text-gray-400">✕</button>
+                                </span>
+                              ) : (
+                                <button onClick={() => setDeleteConfirm(bill.id)} className="p-1 text-gray-300 hover:text-red-400 transition-colors" title="Delete">🗑</button>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {role === 'ap' && (
+            <p className="text-xs text-gray-400 mt-3 text-center">
+              AP view — you can mark bills as paid and add notes. Contact admin to add or edit bills.
+            </p>
+          )}
+        </>
       )}
+
+      {/* ── ANALYTICS TAB ──────────────────────────────────────────────────── */}
+      {mainTab === 'analytics' && <AnalyticsTab bills={bills} />}
+
+      {/* ── CALENDAR TAB ───────────────────────────────────────────────────── */}
+      {mainTab === 'calendar' && <CalendarTab bills={bills} onTogglePaid={togglePaid} />}
 
       {/* ── Add/Edit Bill Modal ─────────────────────────────────────────────── */}
       {showModal && (
@@ -535,7 +577,7 @@ export default function UtilityPage() {
             </div>
             <div className="px-6 py-4 space-y-4">
 
-              {/* Company + Currency row */}
+              {/* Company + Currency */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Company</label>
@@ -545,8 +587,8 @@ export default function UtilityPage() {
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                   >
                     <option value="afs">AFS</option>
-                    <option value="tnt">TNT 🇨🇦</option>
-                    <option value="zfs">ZFS 🇺🇸</option>
+                    <option value="tnt">TNT</option>
+                    <option value="zfs">ZFS</option>
                   </select>
                 </div>
                 <div>
@@ -574,28 +616,51 @@ export default function UtilityPage() {
                 />
               </div>
 
-              {/* Provider */}
+              {/* Provider + Bill number */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Provider</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. BC Hydro"
+                    value={editBill.provider ?? ''}
+                    onChange={e => setEditBill(b => ({ ...b, provider: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Bill Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. INV-2026-001"
+                    value={editBill.bill_number ?? ''}
+                    onChange={e => setEditBill(b => ({ ...b, bill_number: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+              </div>
+
+              {/* Amount */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Provider</label>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Amount</label>
                 <input
-                  type="text"
-                  placeholder="e.g. BC Hydro, Enbridge, Comcast"
-                  value={editBill.provider ?? ''}
-                  onChange={e => setEditBill(b => ({ ...b, provider: e.target.value }))}
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={editBill.amount ?? ''}
+                  onChange={e => setEditBill(b => ({ ...b, amount: e.target.value ? parseFloat(e.target.value) : null }))}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                 />
               </div>
 
-              {/* Amount + Due date */}
+              {/* Issue date + Due date */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Amount</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Issue Date</label>
                   <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={editBill.amount ?? ''}
-                    onChange={e => setEditBill(b => ({ ...b, amount: e.target.value ? parseFloat(e.target.value) : null }))}
+                    type="date"
+                    value={editBill.issue_date ?? ''}
+                    onChange={e => setEditBill(b => ({ ...b, issue_date: e.target.value }))}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                   />
                 </div>
@@ -635,15 +700,14 @@ export default function UtilityPage() {
                     .filter(m => !editBill.company_id || m.company_id === editBill.company_id)
                     .map(m => (
                       <option key={m.id} value={m.id}>
-                        {m.label}{m.holder_name ? ` (${m.holder_name})` : ''}
-                        {m.is_auto ? ' ⟳' : ''}
+                        {m.label}{m.holder_name ? ` (${m.holder_name})` : ''}{m.is_auto ? ' ⟳' : ''}
                       </option>
                     ))
                   }
                 </select>
               </div>
 
-              {/* Auto pay toggle */}
+              {/* Auto pay */}
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -699,7 +763,6 @@ export default function UtilityPage() {
         </div>
       )}
 
-      {/* ── Payment Methods Modal ──────────────────────────────────────────── */}
       {showPMModal && (
         <PaymentMethodsModal
           methods={methods}
@@ -708,6 +771,323 @@ export default function UtilityPage() {
           onSave={() => { setShowPMModal(false); load() }}
         />
       )}
+    </div>
+  )
+}
+
+// ── Analytics Tab ──────────────────────────────────────────────────────────────
+
+function AnalyticsTab({ bills }: { bills: Bill[] }) {
+  const utilities = useMemo(() => {
+    const map = new Map<string, Bill[]>()
+    for (const b of bills) {
+      const key = `${b.company_id}::${b.utility_name}`
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(b)
+    }
+    return Array.from(map.entries()).map(([key, bs]) => {
+      const sorted = [...bs].sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+      const overdueCount = bs.filter(b => {
+        if (!b.due_date) return false
+        if (b.is_paid && b.paid_at) return b.paid_at > b.due_date
+        return !b.is_paid && new Date(b.due_date) < new Date()
+      }).length
+      const amounts = sorted.filter(b => b.amount != null).map(b => b.amount!)
+      const maxAmt = amounts.length ? Math.max(...amounts) : 0
+      const minAmt = amounts.length ? Math.min(...amounts) : 0
+      const avgAmt = amounts.length ? amounts.reduce((s, v) => s + v, 0) / amounts.length : 0
+      return { key, company_id: bs[0].company_id as Company, utility_name: bs[0].utility_name, provider: bs[0].provider, bills: sorted, overdueCount, maxAmt, minAmt, avgAmt }
+    })
+  }, [bills])
+
+  if (bills.length === 0) {
+    return <div className="py-16 text-center text-sm text-gray-400">No bills data yet.</div>
+  }
+
+  return (
+    <div className="space-y-4">
+      {utilities.map(({ key, company_id, utility_name, provider, bills: bs, overdueCount, maxAmt, minAmt, avgAmt }) => (
+        <div key={key} className="bg-white rounded-xl border border-gray-200 p-5">
+          {/* Utility header */}
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[company_id]}`}>
+                {company_id.toUpperCase()}
+              </span>
+              <span className="font-semibold text-gray-900">{utility_name}</span>
+              {provider && <span className="text-xs text-gray-400">· {provider}</span>}
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              {overdueCount > 0 && (
+                <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-semibold">
+                  ⚠ {overdueCount}x overdue
+                </span>
+              )}
+              {bs.some(b => b.is_auto_pay) && (
+                <span className="text-blue-500 font-medium">⟳ Auto-pay</span>
+              )}
+            </div>
+          </div>
+
+          {/* Summary stats */}
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            {[
+              { label: 'Avg Amount', value: avgAmt > 0 ? `${bs[0].currency === 'USD' ? 'US$' : 'CA$'}${avgAmt.toFixed(2)}` : '—' },
+              { label: 'Range', value: maxAmt > 0 ? `${bs[0].currency === 'USD' ? 'US$' : 'CA$'}${minAmt.toFixed(2)} – ${maxAmt.toFixed(2)}` : '—' },
+              { label: 'Entries', value: bs.length },
+            ].map(s => (
+              <div key={s.label} className="bg-gray-50 rounded-lg px-3 py-2">
+                <div className="text-xs text-gray-500 mb-0.5">{s.label}</div>
+                <div className="text-sm font-semibold text-gray-800">{s.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Amount history table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-400 border-b border-gray-100">
+                  <th className="text-left pb-2 pr-3 font-medium">Period</th>
+                  <th className="text-left pb-2 pr-3 font-medium">Bill #</th>
+                  <th className="text-left pb-2 pr-3 font-medium">Issued</th>
+                  <th className="text-left pb-2 pr-3 font-medium">Due</th>
+                  <th className="text-right pb-2 pr-4 font-medium">Amount</th>
+                  <th className="pb-2 font-medium w-36">Trend</th>
+                  <th className="text-center pb-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {bs.slice(-10).map(b => {
+                  const pct = maxAmt > 0 && b.amount != null ? (b.amount / maxAmt) * 100 : 0
+                  const wasLate = b.is_paid && b.paid_at && b.due_date && b.paid_at > b.due_date
+                  const isCurrentlyOverdue = !b.is_paid && b.due_date && new Date(b.due_date) < new Date()
+                  return (
+                    <tr key={b.id}>
+                      <td className="py-2 pr-3 text-gray-600">{b.billing_period ?? '—'}</td>
+                      <td className="py-2 pr-3 font-mono text-gray-500">{b.bill_number ?? '—'}</td>
+                      <td className="py-2 pr-3 text-gray-500">{fmtShortDate(b.issue_date)}</td>
+                      <td className="py-2 pr-3 text-gray-500">{fmtShortDate(b.due_date)}</td>
+                      <td className="py-2 pr-4 text-right font-semibold text-gray-800">
+                        {b.amount != null ? fmtAmt(b) : '—'}
+                      </td>
+                      <td className="py-2 pr-2">
+                        <div className="bg-gray-100 rounded-full h-2 w-36">
+                          <div
+                            className="h-2 rounded-full bg-blue-400 transition-all"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </td>
+                      <td className="py-2 text-center">
+                        {b.is_paid && !wasLate  && <span className="text-emerald-600 font-bold" title="Paid on time">✓</span>}
+                        {wasLate                 && <span className="text-amber-500 font-bold"   title="Paid late">⚠</span>}
+                        {isCurrentlyOverdue      && <span className="text-red-600 font-bold"     title="Overdue">!</span>}
+                        {!b.is_paid && !isCurrentlyOverdue && <span className="text-gray-400" title="Pending">·</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Calendar Tab ───────────────────────────────────────────────────────────────
+
+function CalendarTab({ bills, onTogglePaid }: { bills: Bill[]; onTogglePaid: (b: Bill) => void }) {
+  const todayReal = new Date()
+  const [year,     setYear]     = useState(todayReal.getFullYear())
+  const [month,    setMonth]    = useState(todayReal.getMonth())
+  const [selected, setSelected] = useState<number | null>(null)
+
+  const firstDow   = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+
+  const cells: (number | null)[] = []
+  for (let i = 0; i < firstDow; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  function dateKey(day: number) {
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  }
+
+  const billsByDue = useMemo(() => {
+    const map = new Map<string, Bill[]>()
+    for (const b of bills) {
+      if (b.due_date) {
+        if (!map.has(b.due_date)) map.set(b.due_date, [])
+        map.get(b.due_date)!.push(b)
+      }
+    }
+    return map
+  }, [bills])
+
+  const billsByIssue = useMemo(() => {
+    const map = new Map<string, Bill[]>()
+    for (const b of bills) {
+      if (b.issue_date) {
+        if (!map.has(b.issue_date)) map.set(b.issue_date, [])
+        map.get(b.issue_date)!.push(b)
+      }
+    }
+    return map
+  }, [bills])
+
+  function prevMonth() {
+    if (month === 0) { setMonth(11); setYear(y => y - 1) }
+    else setMonth(m => m - 1)
+    setSelected(null)
+  }
+  function nextMonth() {
+    if (month === 11) { setMonth(0); setYear(y => y + 1) }
+    else setMonth(m => m + 1)
+    setSelected(null)
+  }
+
+  const monthLabel = new Date(year, month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
+  const selectedDue    = selected ? (billsByDue.get(dateKey(selected))    ?? []) : []
+  const selectedIssued = selected ? (billsByIssue.get(dateKey(selected))  ?? []) : []
+
+  return (
+    <div>
+      {/* Month nav */}
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={prevMonth} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">‹</button>
+        <span className="font-semibold text-gray-800 text-base">{monthLabel}</span>
+        <button onClick={nextMonth} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">›</button>
+      </div>
+
+      {/* Grid */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {/* Day headers */}
+        <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+            <div key={d} className="py-2 text-center text-xs font-semibold text-gray-500">{d}</div>
+          ))}
+        </div>
+
+        {/* Day cells */}
+        <div className="grid grid-cols-7">
+          {cells.map((day, i) => {
+            if (day === null) {
+              return <div key={i} className="border-r border-b border-gray-100 min-h-[80px] bg-gray-50/50" />
+            }
+            const key = dateKey(day)
+            const dueBills    = billsByDue.get(key)    ?? []
+            const issuedBills = billsByIssue.get(key)  ?? []
+            const isToday = day === todayReal.getDate() && month === todayReal.getMonth() && year === todayReal.getFullYear()
+            const isSelected = selected === day
+
+            return (
+              <div
+                key={i}
+                onClick={() => setSelected(isSelected ? null : day)}
+                className={`border-r border-b border-gray-100 min-h-[80px] p-1.5 cursor-pointer transition-colors ${
+                  isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                }`}
+              >
+                <div className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full ${
+                  isToday ? 'bg-gray-900 text-white' : 'text-gray-600'
+                }`}>
+                  {day}
+                </div>
+                {issuedBills.slice(0, 2).map(b => (
+                  <div key={`i-${b.id}`}
+                    className="text-[9px] leading-tight px-1 py-0.5 mb-0.5 rounded bg-blue-100 text-blue-700 truncate"
+                    title={`Issued: ${b.utility_name}`}
+                  >
+                    ● {b.utility_name}
+                  </div>
+                ))}
+                {dueBills.slice(0, 3 - issuedBills.slice(0,2).length).map(b => (
+                  <div key={`d-${b.id}`}
+                    className={`text-[9px] leading-tight px-1 py-0.5 mb-0.5 rounded truncate ${
+                      b.is_paid ? 'bg-emerald-100 text-emerald-700' :
+                      isOverdue(b) ? 'bg-red-100 text-red-700' :
+                      'bg-amber-100 text-amber-700'
+                    }`}
+                    title={`Due: ${b.utility_name}${b.amount != null ? ` (${fmtAmt(b)})` : ''}`}
+                  >
+                    ⏰ {b.utility_name}
+                  </div>
+                ))}
+                {(dueBills.length + issuedBills.length) > 3 && (
+                  <div className="text-[9px] text-gray-400 px-1">+{dueBills.length + issuedBills.length - 3} more</div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Selected day detail */}
+      {selected !== null && (selectedDue.length > 0 || selectedIssued.length > 0) && (
+        <div className="mt-4 bg-white rounded-xl border border-gray-200 p-4">
+          <div className="font-semibold text-gray-800 mb-3 text-sm">
+            {new Date(year, month, selected).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+          </div>
+
+          {selectedIssued.length > 0 && (
+            <div className="mb-4">
+              <div className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Issued</div>
+              <div className="space-y-2">
+                {selectedIssued.map(b => (
+                  <div key={b.id} className="flex items-center gap-2 text-sm">
+                    <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+                    <span className="font-medium text-gray-900">{b.utility_name}</span>
+                    {b.provider && <span className="text-gray-400 text-xs">· {b.provider}</span>}
+                    {b.bill_number && <span className="text-gray-400 text-xs font-mono">#{b.bill_number}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {selectedDue.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2">Due</div>
+              <div className="space-y-2">
+                {selectedDue.map(b => (
+                  <div key={b.id} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm min-w-0">
+                      <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+                      <span className="font-medium text-gray-900 truncate">{b.utility_name}</span>
+                      {b.provider && <span className="text-gray-400 text-xs hidden sm:inline">· {b.provider}</span>}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-sm font-medium text-gray-800">{fmtAmt(b)}</span>
+                      <span className={`text-xs font-medium ${b.is_paid ? 'text-emerald-600' : isOverdue(b) ? 'text-red-600' : 'text-amber-600'}`}>
+                        {b.is_paid ? '✓ Paid' : isOverdue(b) ? 'Overdue' : 'Unpaid'}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={b.is_paid}
+                        onChange={() => onTogglePaid(b)}
+                        className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-500">
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-100 inline-block" />Issued</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-amber-100 inline-block" />Due (unpaid)</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-100 inline-block" />Overdue</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-100 inline-block" />Paid</span>
+      </div>
     </div>
   )
 }
@@ -725,8 +1105,8 @@ function PaymentMethodsModal({
   const emptyPM: Omit<PaymentMethod, 'id'> = {
     company_id: 'afs', label: '', holder_name: '', card_brand: '', bank_name: '', is_auto: false, notes: ''
   }
-  const [form, setForm] = useState<Omit<PaymentMethod, 'id'>>(emptyPM)
-  const [saving, setSaving] = useState(false)
+  const [form,     setForm]    = useState<Omit<PaymentMethod, 'id'>>(emptyPM)
+  const [saving,   setSaving]  = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   async function addMethod() {
@@ -736,8 +1116,8 @@ function PaymentMethodsModal({
       company_id:  form.company_id,
       label:       form.label,
       holder_name: form.holder_name || null,
-      card_brand:  form.card_brand || null,
-      bank_name:   form.bank_name || null,
+      card_brand:  form.card_brand  || null,
+      bank_name:   form.bank_name   || null,
       is_auto:     form.is_auto,
       notes:       form.notes || null,
     })
@@ -760,7 +1140,6 @@ function PaymentMethodsModal({
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
         </div>
 
-        {/* List */}
         <div className="px-6 py-3">
           {methods.length === 0 ? (
             <p className="text-sm text-gray-400 py-4 text-center">No payment methods yet.</p>
@@ -770,9 +1149,7 @@ function PaymentMethodsModal({
                 <div key={m.id} className="flex items-start justify-between gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${CO_COLORS[m.company_id]}`}>
-                        {m.company_id.toUpperCase()}
-                      </span>
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${CO_COLORS[m.company_id]}`}>{m.company_id.toUpperCase()}</span>
                       <span className="text-sm font-medium text-gray-900">{m.label}</span>
                       {m.is_auto && <span className="text-xs text-blue-500">⟳ Auto</span>}
                     </div>
@@ -797,7 +1174,6 @@ function PaymentMethodsModal({
           )}
         </div>
 
-        {/* Add form (admin only) */}
         {role === 'admin' && (
           <div className="px-6 pb-4 border-t border-gray-100 pt-4 space-y-3">
             <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Add Payment Method</h3>
