@@ -92,6 +92,14 @@ export async function sendPendingMailAfterRedirect(): Promise<{ sent: boolean; e
 
     // Primary: use the token stashed by /auth/callback
     const readyToken = sessionStorage.getItem(READY_TOKEN_KEY)
+
+    // Debug: list all msal-related sessionStorage keys
+    const msalKeys = []
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i) ?? ''
+      if (k.startsWith('msal') || k.includes('msal')) msalKeys.push(k)
+    }
+
     if (readyToken) {
       sessionStorage.removeItem(READY_TOKEN_KEY)
       await _postMail(readyToken, payload)
@@ -101,7 +109,8 @@ export async function sendPendingMailAfterRedirect(): Promise<{ sent: boolean; e
     // Fallback: try silent with cached account
     const msal    = await getMsal()
     const accounts = msal.getAllAccounts()
-    if (!accounts.length) return { sent: false, error: cbError ? `[CB오류] ${cbError}` : '인증 후 계정을 찾을 수 없습니다' }
+    const debugMsg = `[readyToken=${readyToken ? 'O' : 'X'} | cb=${cbError || 'none'} | accounts=${accounts.length} | msalKeys=${msalKeys.join(',')}]`
+    if (!accounts.length) return { sent: false, error: debugMsg }
     const tokenRes = await msal.acquireTokenSilent({ scopes: MAIL_SCOPES, account: accounts[0] })
     await _postMail(tokenRes.accessToken, payload)
     return { sent: true }
