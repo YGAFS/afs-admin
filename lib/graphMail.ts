@@ -46,10 +46,38 @@ export async function sendGraphMail(payload: MailPayload): Promise<void> {
   // Page navigates away here; execution stops
 }
 
+const SIGNATURE_HTML = `
+<div style="font-family: Aptos, Arial, sans-serif; font-size: 13px; color: #212121;">
+  <p style="margin: 0 0 12px 0;">Best regards,</p>
+  <p style="margin: 0;">
+    <strong>Yun Gyeong Jang</strong><br>
+    <strong><em>Office Administrator</em></strong>
+  </p>
+  <p style="margin: 14px 0;">
+    <strong>Email:</strong>
+    <a href="mailto:yungyeong.j@afstransco.com">yungyeong.j@afstransco.com</a>
+  </p>
+  <p style="margin: 0;">
+    <strong>Mobile:</strong> (604) 780-9448<br>
+    <strong>Office:</strong> (604) 674-4930<br>
+    <strong>Address:</strong> 103 - 15030 54A Ave, Surrey, BC, V3S 5X7
+  </p>
+  <p style="margin: 14px 0 0 0;">
+    <strong>Communication you can trust | Competitive rates | Service you can rely on</strong><br>
+    <em>See us online at <a href="https://www.afstransco.com/">www.afstransco.com</a></em>
+  </p>
+</div>`
+
 async function _postMail(accessToken: string, payload: MailPayload) {
   const ccRecipients = (payload.cc ?? []).map(email => ({
     emailAddress: { address: email },
   }))
+
+  // Convert plain text body to HTML and append signature
+  const bodyHtml = payload.body
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>')
+  const fullHtml = `<div style="font-family: Aptos, Arial, sans-serif; font-size: 13px;">${bodyHtml}</div><br>${SIGNATURE_HTML}`
 
   const res = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
     method:  'POST',
@@ -60,7 +88,7 @@ async function _postMail(accessToken: string, payload: MailPayload) {
     body: JSON.stringify({
       message: {
         subject: payload.subject,
-        body:    { contentType: 'Text', content: payload.body },
+        body:    { contentType: 'HTML', content: fullHtml },
         toRecipients: [{ emailAddress: { address: payload.to } }],
         ...(ccRecipients.length ? { ccRecipients } : {}),
       },
