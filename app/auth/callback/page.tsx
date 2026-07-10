@@ -18,19 +18,26 @@ export default function AuthCallback() {
         const result = await msal.handleRedirectPromise()
         setStatus(`결과: ${result ? '토큰 있음' : 'null (응답 없음)'}`)
 
+        // In MSAL v5, initialize() may have already consumed the redirect response.
+        // handleRedirectPromise() returns null in that case, but the token is in cache.
+        const account = result?.account ?? msal.getAllAccounts()[0]
+
         if (result?.accessToken) {
+          // Got token directly from handleRedirectPromise
           sessionStorage.setItem('msal_ready_token', result.accessToken)
           setStatus('토큰 저장 완료, 이동 중…')
           router.replace(returnUrl)
-        } else if (result?.account) {
-          setStatus('계정은 있으나 토큰 없음, silent 시도 중…')
-          const silent = await msal.acquireTokenSilent({ scopes: MAIL_SCOPES, account: result.account })
+        } else if (account) {
+          // Token was processed by initialize() — acquire silently from cache
+          setStatus(`계정 발견 (${account.username}), silent 토큰 획득 중…`)
+          const silent = await msal.acquireTokenSilent({ scopes: MAIL_SCOPES, account })
           sessionStorage.setItem('msal_ready_token', silent.accessToken)
+          setStatus('토큰 저장 완료, 이동 중…')
           router.replace(returnUrl)
         } else {
-          // No auth response — just go back (user may have cancelled)
-          setStatus('인증 응답 없음, 이동 중…')
-          setTimeout(() => router.replace(returnUrl), 1500)
+          setStatus(`인증 응답 없음 — URL: ${window.location.search || window.location.hash || '(없음)'}`)
+          // Wait so user can read the status before navigating
+          setTimeout(() => router.replace(returnUrl), 3000)
         }
       })
       .catch((err: unknown) => {
