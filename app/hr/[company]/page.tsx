@@ -339,7 +339,6 @@ export default function CompanyAttendancePage() {
     }
 
     lines.push('Please update your records accordingly.', '', 'Thank you.')
-    if (sender) lines.push('', sender.name)
 
     const shortDays = selected.map(iso => { const [y,m,d] = iso.split('-').map(Number); return `${MONTHS[m-1]} ${d}` }).join(', ')
     const subject   = `Employee Leave Notification - ${shortDays}`
