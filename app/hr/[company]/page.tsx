@@ -194,9 +194,11 @@ export default function CompanyAttendancePage() {
         setShowEmailModal(true)
         getMsal().then(m => setMsalUser(m.getAllAccounts()[0]?.username ?? null)).catch(() => {})
       }
-      // On error: don't auto-open modal — stale sessionStorage state causes infinite loop.
-      // User can press the email button to retry.
-      if (error) console.warn('[pendingMail] auth error after redirect:', error)
+      if (error) {
+        setSendResult('error')
+        setSendError(error)
+        setShowEmailModal(true)
+      }
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
