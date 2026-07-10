@@ -3,3 +3,6 @@
 
 ALTER TABLE utility_bills ADD COLUMN IF NOT EXISTS issue_date date;
 ALTER TABLE utility_bills ADD COLUMN IF NOT EXISTS bill_number text;
+
+-- Add account_number for multi-account providers
+ALTER TABLE utility_bills ADD COLUMN IF NOT EXISTS account_number text;

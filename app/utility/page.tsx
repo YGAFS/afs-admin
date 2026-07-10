@@ -41,6 +41,7 @@ interface Bill {
   billing_period: string | null
   billing_month: number | null
   bill_number: string | null
+  account_number: string | null
   is_auto_pay: boolean
   payment_method_id: string | null
   onedrive_file_url: string | null
@@ -124,6 +125,7 @@ const emptyBill: Omit<Bill, 'id' | 'created_at' | 'payment_methods'> = {
   billing_period: '',
   billing_month: null,
   bill_number: '',
+  account_number: '',
   is_auto_pay: false,
   payment_method_id: null,
   onedrive_file_url: '',
@@ -246,6 +248,7 @@ export default function UtilityPage() {
                            ? new Date(editBill.due_date + 'T00:00:00').getMonth() + 1
                            : null,
       bill_number:       editBill.bill_number || null,
+      account_number:    editBill.account_number || null,
       is_auto_pay:       editBill.is_auto_pay ?? false,
       payment_method_id: editBill.payment_method_id || null,
       onedrive_file_url: editBill.onedrive_file_url || null,
@@ -440,6 +443,7 @@ export default function UtilityPage() {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Utility</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Bill #</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Provider</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Account</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Amount</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Issued</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Due Date</th>
@@ -463,6 +467,7 @@ export default function UtilityPage() {
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">{bill.bill_number ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-600 text-xs">{bill.provider ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 font-mono">{bill.account_number ?? '—'}</td>
                         <td className="px-4 py-3">
                           {bill.amount != null
                             ? <span className="font-medium text-gray-900">{fmtAmt(bill)}</span>
@@ -616,7 +621,7 @@ export default function UtilityPage() {
                 />
               </div>
 
-              {/* Provider + Bill number */}
+              {/* Provider + Account Number */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Provider</label>
@@ -629,15 +634,27 @@ export default function UtilityPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Bill Number</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Account Number</label>
                   <input
                     type="text"
-                    placeholder="e.g. INV-2026-001"
-                    value={editBill.bill_number ?? ''}
-                    onChange={e => setEditBill(b => ({ ...b, bill_number: e.target.value }))}
+                    placeholder="e.g. 1234567890"
+                    value={editBill.account_number ?? ''}
+                    onChange={e => setEditBill(b => ({ ...b, account_number: e.target.value }))}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                   />
                 </div>
+              </div>
+
+              {/* Bill Number */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Bill Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. INV-2026-001"
+                  value={editBill.bill_number ?? ''}
+                  onChange={e => setEditBill(b => ({ ...b, bill_number: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
               </div>
 
               {/* Amount */}
@@ -781,7 +798,7 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
   const utilities = useMemo(() => {
     const map = new Map<string, Bill[]>()
     for (const b of bills) {
-      const key = `${b.company_id}::${b.utility_name}`
+      const key = `${b.company_id}::${b.utility_name}::${b.account_number ?? ''}`
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(b)
     }
@@ -796,7 +813,7 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
       const maxAmt = amounts.length ? Math.max(...amounts) : 0
       const minAmt = amounts.length ? Math.min(...amounts) : 0
       const avgAmt = amounts.length ? amounts.reduce((s, v) => s + v, 0) / amounts.length : 0
-      return { key, company_id: bs[0].company_id as Company, utility_name: bs[0].utility_name, provider: bs[0].provider, bills: sorted, overdueCount, maxAmt, minAmt, avgAmt }
+      return { key, company_id: bs[0].company_id as Company, utility_name: bs[0].utility_name, provider: bs[0].provider, account_number: bs[0].account_number, bills: sorted, overdueCount, maxAmt, minAmt, avgAmt }
     })
   }, [bills])
 
@@ -806,7 +823,7 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
 
   return (
     <div className="space-y-4">
-      {utilities.map(({ key, company_id, utility_name, provider, bills: bs, overdueCount, maxAmt, minAmt, avgAmt }) => (
+      {utilities.map(({ key, company_id, utility_name, provider, account_number, bills: bs, overdueCount, maxAmt, minAmt, avgAmt }) => (
         <div key={key} className="bg-white rounded-xl border border-gray-200 p-5">
           {/* Utility header */}
           <div className="flex items-start justify-between mb-4">
@@ -816,6 +833,7 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
               </span>
               <span className="font-semibold text-gray-900">{utility_name}</span>
               {provider && <span className="text-xs text-gray-400">· {provider}</span>}
+              {account_number && <span className="text-xs text-gray-400 font-mono">({account_number})</span>}
             </div>
             <div className="flex items-center gap-2 text-xs">
               {overdueCount > 0 && (
