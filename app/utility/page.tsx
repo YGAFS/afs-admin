@@ -16,7 +16,7 @@ const supabase = createClient(
 type Company = 'afs' | 'tnt' | 'zfs'
 type Currency = 'CAD' | 'USD'
 type Role = 'admin' | 'ap'
-type MainTab = 'bills' | 'analytics' | 'calendar'
+type MainTab = 'bills' | 'calendar' | 'vendor' | 'analytics'
 
 interface PaymentMethod {
   id: string
@@ -307,15 +307,20 @@ export default function UtilityPage() {
 
       {/* Main tabs */}
       <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1 mb-5 w-fit">
-        {(['bills', 'analytics', 'calendar'] as MainTab[]).map(tab => (
+        {([
+          ['bills',     '📋 Bills'],
+          ['calendar',  '📅 Calendar'],
+          ['vendor',    '🏢 Vendors'],
+          ['analytics', '📊 Analytics'],
+        ] as [MainTab, string][]).map(([tab, label]) => (
           <button
             key={tab}
             onClick={() => setMainTab(tab)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            className={`px-5 py-2 rounded-md text-base font-medium transition-colors ${
               mainTab === tab ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
             }`}
           >
-            {tab === 'bills' ? '📋 Bills' : tab === 'analytics' ? '📊 Analytics' : '📅 Calendar'}
+            {label}
           </button>
         ))}
       </div>
@@ -566,11 +571,14 @@ export default function UtilityPage() {
         </>
       )}
 
-      {/* ── ANALYTICS TAB ──────────────────────────────────────────────────── */}
-      {mainTab === 'analytics' && <AnalyticsTab bills={bills} />}
-
       {/* ── CALENDAR TAB ───────────────────────────────────────────────────── */}
       {mainTab === 'calendar' && <CalendarTab bills={bills} onTogglePaid={togglePaid} />}
+
+      {/* ── VENDOR TAB ─────────────────────────────────────────────────────── */}
+      {mainTab === 'vendor' && <VendorTab role={role} />}
+
+      {/* ── ANALYTICS TAB ──────────────────────────────────────────────────── */}
+      {mainTab === 'analytics' && <AnalyticsTab bills={bills} />}
 
       {/* ── Add/Edit Bill Modal ─────────────────────────────────────────────── */}
       {showModal && (
@@ -977,9 +985,9 @@ function CalendarTab({ bills, onTogglePaid }: { bills: Bill[]; onTogglePaid: (b:
     <div>
       {/* Month nav */}
       <div className="flex items-center justify-between mb-4">
-        <button onClick={prevMonth} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">‹</button>
-        <span className="font-semibold text-gray-800 text-base">{monthLabel}</span>
-        <button onClick={nextMonth} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">›</button>
+        <button onClick={prevMonth} className="px-4 py-2 text-base border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">‹</button>
+        <span className="font-semibold text-gray-800 text-xl">{monthLabel}</span>
+        <button onClick={nextMonth} className="px-4 py-2 text-base border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">›</button>
       </div>
 
       {/* Grid */}
@@ -987,7 +995,7 @@ function CalendarTab({ bills, onTogglePaid }: { bills: Bill[]; onTogglePaid: (b:
         {/* Day headers */}
         <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-            <div key={d} className="py-2 text-center text-xs font-semibold text-gray-500">{d}</div>
+            <div key={d} className="py-3 text-center text-sm font-semibold text-gray-500">{d}</div>
           ))}
         </div>
 
@@ -1007,18 +1015,18 @@ function CalendarTab({ bills, onTogglePaid }: { bills: Bill[]; onTogglePaid: (b:
               <div
                 key={i}
                 onClick={() => setSelected(isSelected ? null : day)}
-                className={`border-r border-b border-gray-100 min-h-[80px] p-1.5 cursor-pointer transition-colors ${
+                className={`border-r border-b border-gray-100 min-h-[100px] p-2 cursor-pointer transition-colors ${
                   isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
                 }`}
               >
-                <div className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full ${
+                <div className={`text-sm font-semibold mb-1 w-7 h-7 flex items-center justify-center rounded-full ${
                   isToday ? 'bg-gray-900 text-white' : 'text-gray-600'
                 }`}>
                   {day}
                 </div>
                 {issuedBills.slice(0, 2).map(b => (
                   <div key={`i-${b.id}`}
-                    className="text-[9px] leading-tight px-1 py-0.5 mb-0.5 rounded bg-blue-100 text-blue-700 truncate"
+                    className="text-xs leading-tight px-1 py-0.5 mb-0.5 rounded bg-blue-100 text-blue-700 truncate"
                     title={`Issued: ${b.utility_name}`}
                   >
                     ● {b.utility_name}
@@ -1026,7 +1034,7 @@ function CalendarTab({ bills, onTogglePaid }: { bills: Bill[]; onTogglePaid: (b:
                 ))}
                 {dueBills.slice(0, 3 - issuedBills.slice(0,2).length).map(b => (
                   <div key={`d-${b.id}`}
-                    className={`text-[9px] leading-tight px-1 py-0.5 mb-0.5 rounded truncate ${
+                    className={`text-xs leading-tight px-1 py-0.5 mb-0.5 rounded truncate ${
                       b.is_paid ? 'bg-emerald-100 text-emerald-700' :
                       isOverdue(b) ? 'bg-red-100 text-red-700' :
                       'bg-amber-100 text-amber-700'
@@ -1037,7 +1045,7 @@ function CalendarTab({ bills, onTogglePaid }: { bills: Bill[]; onTogglePaid: (b:
                   </div>
                 ))}
                 {(dueBills.length + issuedBills.length) > 3 && (
-                  <div className="text-[9px] text-gray-400 px-1">+{dueBills.length + issuedBills.length - 3} more</div>
+                  <div className="text-xs text-gray-400 px-1">+{dueBills.length + issuedBills.length - 3} more</div>
                 )}
               </div>
             )
@@ -1048,20 +1056,20 @@ function CalendarTab({ bills, onTogglePaid }: { bills: Bill[]; onTogglePaid: (b:
       {/* Selected day detail */}
       {selected !== null && (selectedDue.length > 0 || selectedIssued.length > 0) && (
         <div className="mt-4 bg-white rounded-xl border border-gray-200 p-4">
-          <div className="font-semibold text-gray-800 mb-3 text-sm">
+          <div className="font-semibold text-gray-800 mb-3 text-base">
             {new Date(year, month, selected).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
           </div>
 
           {selectedIssued.length > 0 && (
             <div className="mb-4">
-              <div className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Issued</div>
+              <div className="text-sm font-semibold text-blue-600 uppercase tracking-wide mb-2">Issued</div>
               <div className="space-y-2">
                 {selectedIssued.map(b => (
-                  <div key={b.id} className="flex items-center gap-2 text-sm">
-                    <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+                  <div key={b.id} className="flex items-center gap-2 text-base">
+                    <span className={`px-2 py-0.5 rounded-full text-sm font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
                     <span className="font-medium text-gray-900">{b.utility_name}</span>
-                    {b.provider && <span className="text-gray-400 text-xs">· {b.provider}</span>}
-                    {b.bill_number && <span className="text-gray-400 text-xs font-mono">#{b.bill_number}</span>}
+                    {b.provider && <span className="text-gray-400 text-sm">· {b.provider}</span>}
+                    {b.bill_number && <span className="text-gray-400 text-sm font-mono">#{b.bill_number}</span>}
                   </div>
                 ))}
               </div>
@@ -1070,18 +1078,18 @@ function CalendarTab({ bills, onTogglePaid }: { bills: Bill[]; onTogglePaid: (b:
 
           {selectedDue.length > 0 && (
             <div>
-              <div className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2">Due</div>
+              <div className="text-sm font-semibold text-amber-600 uppercase tracking-wide mb-2">Due</div>
               <div className="space-y-2">
                 {selectedDue.map(b => (
                   <div key={b.id} className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-sm min-w-0">
-                      <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+                    <div className="flex items-center gap-2 text-base min-w-0">
+                      <span className={`shrink-0 px-2 py-0.5 rounded-full text-sm font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
                       <span className="font-medium text-gray-900 truncate">{b.utility_name}</span>
-                      {b.provider && <span className="text-gray-400 text-xs hidden sm:inline">· {b.provider}</span>}
+                      {b.provider && <span className="text-gray-400 text-sm hidden sm:inline">· {b.provider}</span>}
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-sm font-medium text-gray-800">{fmtAmt(b)}</span>
-                      <span className={`text-xs font-medium ${b.is_paid ? 'text-emerald-600' : isOverdue(b) ? 'text-red-600' : 'text-amber-600'}`}>
+                      <span className="text-base font-medium text-gray-800">{fmtAmt(b)}</span>
+                      <span className={`text-sm font-medium ${b.is_paid ? 'text-emerald-600' : isOverdue(b) ? 'text-red-600' : 'text-amber-600'}`}>
                         {b.is_paid ? '✓ Paid' : isOverdue(b) ? 'Overdue' : 'Unpaid'}
                       </span>
                       <input
@@ -1270,6 +1278,367 @@ function PaymentMethodsModal({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── VendorTab ──────────────────────────────────────────────────────────────────
+
+interface Vendor {
+  id: string
+  company_id: Company
+  name: string
+  service_type: string | null
+  contact_name: string | null
+  contact_email: string | null
+  contact_phone: string | null
+  contract_start: string | null
+  contract_end: string | null
+  onedrive_url: string | null
+  notes: string | null
+}
+
+const emptyVendor: Omit<Vendor, 'id'> = {
+  company_id: 'afs',
+  name: '',
+  service_type: '',
+  contact_name: '',
+  contact_email: '',
+  contact_phone: '',
+  contract_start: '',
+  contract_end: '',
+  onedrive_url: '',
+  notes: '',
+}
+
+const CO_FILTER_LIST: { id: Company | 'all'; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'afs', label: 'AFS' },
+  { id: 'tnt', label: 'TNT' },
+  { id: 'zfs', label: 'ZFS' },
+]
+
+function VendorTab({ role }: { role: Role }) {
+  const [vendors,    setVendors]    = useState<Vendor[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [coFilter,   setCoFilter]   = useState<Company | 'all'>('all')
+  const [search,     setSearch]     = useState('')
+  const [showModal,  setShowModal]  = useState(false)
+  const [form,       setForm]       = useState<Omit<Vendor, 'id'>>(emptyVendor)
+  const [editId,     setEditId]     = useState<string | null>(null)
+  const [saving,     setSaving]     = useState(false)
+  const [delConfirm, setDelConfirm] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase.from('utility_vendors').select('*').order('name')
+    setVendors((data as Vendor[]) ?? [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const filtered = useMemo(() => vendors.filter(v => {
+    if (coFilter !== 'all' && v.company_id !== coFilter) return false
+    if (search) {
+      const q = search.toLowerCase()
+      return v.name.toLowerCase().includes(q) ||
+        (v.service_type ?? '').toLowerCase().includes(q) ||
+        (v.contact_name ?? '').toLowerCase().includes(q)
+    }
+    return true
+  }), [vendors, coFilter, search])
+
+  function openAdd() {
+    setForm(emptyVendor)
+    setEditId(null)
+    setShowModal(true)
+  }
+
+  function openEdit(v: Vendor) {
+    const { id, ...rest } = v
+    setForm(rest)
+    setEditId(id)
+    setShowModal(true)
+  }
+
+  async function save() {
+    if (!form.name.trim()) return
+    setSaving(true)
+    if (editId) {
+      await supabase.from('utility_vendors').update(form).eq('id', editId)
+    } else {
+      await supabase.from('utility_vendors').insert(form)
+    }
+    setSaving(false)
+    setShowModal(false)
+    load()
+  }
+
+  async function del(id: string) {
+    await supabase.from('utility_vendors').delete().eq('id', id)
+    setDelConfirm(null)
+    load()
+  }
+
+  return (
+    <div>
+      {/* Top bar */}
+      <div className="flex items-center gap-3 mb-5 flex-wrap">
+        <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
+          {CO_FILTER_LIST.map(c => (
+            <button
+              key={c.id}
+              onClick={() => setCoFilter(c.id as Company | 'all')}
+              className={`px-4 py-1.5 rounded-md text-base font-medium transition-colors ${
+                coFilter === c.id ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          placeholder="Search vendors…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="flex-1 min-w-[160px] border border-gray-200 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-gray-900"
+        />
+        {role === 'admin' && (
+          <button
+            onClick={openAdd}
+            className="px-4 py-2 text-base text-white bg-gray-900 rounded-lg hover:bg-gray-700 transition-colors"
+          >
+            + Add Vendor
+          </button>
+        )}
+      </div>
+
+      {loading ? (
+        <p className="text-base text-gray-400 py-10 text-center">Loading…</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-base text-gray-400 py-10 text-center">No vendors found.</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filtered.map(v => (
+            <div key={v.id} className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-2 shadow-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-lg font-semibold text-gray-900">{v.name}</p>
+                  {v.service_type && (
+                    <p className="text-sm text-gray-500">{v.service_type}</p>
+                  )}
+                </div>
+                <span className={`text-sm px-2.5 py-0.5 rounded-full font-medium ${CO_COLORS[v.company_id]}`}>
+                  {v.company_id.toUpperCase()}
+                </span>
+              </div>
+
+              {(v.contact_name || v.contact_email || v.contact_phone) && (
+                <div className="text-sm text-gray-700 space-y-0.5 border-t border-gray-100 pt-2">
+                  {v.contact_name  && <p>👤 {v.contact_name}</p>}
+                  {v.contact_email && <p>✉️ {v.contact_email}</p>}
+                  {v.contact_phone && <p>📞 {v.contact_phone}</p>}
+                </div>
+              )}
+
+              {(v.contract_start || v.contract_end) && (
+                <p className="text-sm text-gray-500">
+                  📄 Contract: {v.contract_start ? fmtShortDate(v.contract_start) : '?'} → {v.contract_end ? fmtShortDate(v.contract_end) : 'ongoing'}
+                </p>
+              )}
+
+              {v.onedrive_url && (
+                <a
+                  href={v.onedrive_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  ☁️ View Contract on OneDrive
+                </a>
+              )}
+
+              {v.notes && <p className="text-sm text-gray-500 italic">{v.notes}</p>}
+
+              {role === 'admin' && (
+                <div className="flex gap-2 mt-1 pt-2 border-t border-gray-100">
+                  <button
+                    onClick={() => openEdit(v)}
+                    className="flex-1 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    Edit
+                  </button>
+                  {delConfirm === v.id ? (
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => del(v.id)}
+                        className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        onClick={() => setDelConfirm(null)}
+                        className="px-3 py-1.5 text-sm bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDelConfirm(v.id)}
+                      className="px-3 py-1.5 text-sm text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">{editId ? 'Edit Vendor' : 'Add Vendor'}</h3>
+              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Company */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-500 mb-1">Company *</label>
+                <div className="flex gap-2">
+                  {(['afs', 'tnt', 'zfs'] as Company[]).map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setForm(f => ({ ...f, company_id: c }))}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                        form.company_id === c ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {c.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Name */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-500 mb-1">Vendor Name *</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. BC Hydro"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </div>
+              {/* Service type */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-500 mb-1">Service Type</label>
+                <input
+                  type="text"
+                  value={form.service_type ?? ''}
+                  onChange={e => setForm(f => ({ ...f, service_type: e.target.value }))}
+                  placeholder="e.g. Electricity, Gas, Internet"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </div>
+              {/* Contact */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-500 mb-1">Contact Name</label>
+                  <input
+                    type="text"
+                    value={form.contact_name ?? ''}
+                    onChange={e => setForm(f => ({ ...f, contact_name: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-500 mb-1">Phone</label>
+                  <input
+                    type="text"
+                    value={form.contact_phone ?? ''}
+                    onChange={e => setForm(f => ({ ...f, contact_phone: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-500 mb-1">Contact Email</label>
+                <input
+                  type="email"
+                  value={form.contact_email ?? ''}
+                  onChange={e => setForm(f => ({ ...f, contact_email: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </div>
+              {/* Contract dates */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-500 mb-1">Contract Start</label>
+                  <input
+                    type="date"
+                    value={form.contract_start ?? ''}
+                    onChange={e => setForm(f => ({ ...f, contract_start: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-500 mb-1">Contract End</label>
+                  <input
+                    type="date"
+                    value={form.contract_end ?? ''}
+                    onChange={e => setForm(f => ({ ...f, contract_end: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+              </div>
+              {/* OneDrive URL */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-500 mb-1">OneDrive Contract URL</label>
+                <input
+                  type="url"
+                  value={form.onedrive_url ?? ''}
+                  onChange={e => setForm(f => ({ ...f, onedrive_url: e.target.value }))}
+                  placeholder="https://onedrive.live.com/…"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </div>
+              {/* Notes */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-500 mb-1">Notes</label>
+                <textarea
+                  rows={2}
+                  value={form.notes ?? ''}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+                />
+              </div>
+            </div>
+            <div className="px-6 pb-6 flex gap-3">
+              <button
+                onClick={() => setShowModal(false)}
+                className="flex-1 px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={save}
+                disabled={saving || !form.name.trim()}
+                className="flex-1 px-4 py-2 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors"
+              >
+                {saving ? 'Saving…' : editId ? 'Save Changes' : 'Add Vendor'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
