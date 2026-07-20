@@ -14,7 +14,7 @@ const supabase = createClient(
 
 const NAV = [
   { href: '/hr',       key: 'nav.hr',       icon: '📅' },
-  { href: '/utility',  key: 'nav.utility',  icon: '💡' },
+  { href: '/utilities', key: 'nav.utility',  icon: '💡' },
   { href: '/licenses', key: 'nav.licenses',  icon: '📋' },
   { href: '/assets',   key: 'nav.assets',    icon: '💻' },
   { href: '/supplies', key: 'nav.supplies',  icon: '☕' },
