@@ -4,9 +4,10 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const INNER_NAV = [
-  { href: '/utilities/overview', label: 'Overview' },
-  { href: '/utilities/vendors',  label: 'Vendors' },
-  { href: '/utilities/bills',    label: 'Bills' },
+  { href: '/utilities/overview',   label: 'Overview' },
+  { href: '/utilities/locations',  label: 'Locations' },
+  { href: '/utilities/vendors',    label: 'Vendors' },
+  { href: '/utilities/bills',      label: 'Bills' },
 ]
 
 export default function UtilityShell({ children }: { children: React.ReactNode }) {
