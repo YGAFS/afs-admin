@@ -447,7 +447,7 @@ function OverviewContent() {
     const paidThisMonAmt = paidThisMonthBills.reduce((s, b) => s + totalDueCAD(b), 0)
 
     // Avg monthly based on current_charges last 3 months
-    const last3Keys = []
+    const last3Keys: string[] = []
     for (let i = 1; i <= 3; i++) {
       const m = thisMon - i <= 0 ? thisMon - i + 12 : thisMon - i
       const y = thisMon - i <= 0 ? thisYear - 1 : thisYear
