@@ -35,11 +35,14 @@ interface Bill {
   utility_name: string
   provider: string | null
   amount: number | null
+  previous_balance: number | null
+  current_charges: number | null
   currency: Currency
   issue_date: string | null
   due_date: string | null
   billing_period: string | null
   billing_month: number | null
+  billing_year: number | null
   bill_number: string | null
   account_number: string | null
   is_auto_pay: boolean
@@ -74,6 +77,36 @@ type StatusFilter = typeof STATUS_FILTER[number]
 function isOverdue(bill: Bill) {
   if (bill.is_paid || !bill.due_date) return false
   return new Date(bill.due_date) < new Date(new Date().toDateString())
+}
+
+function isAbnormalBill(bill: Bill, allBills: Bill[]): boolean {
+  const charges = bill.current_charges ?? bill.amount
+  if (charges == null || charges <= 0) return false
+  const key = `${bill.provider ?? bill.utility_name}|${bill.account_number ?? ''}`
+  const billKey = bill.billing_year && bill.billing_month
+    ? `${bill.billing_year}-${String(bill.billing_month).padStart(2, '0')}`
+    : bill.due_date?.slice(0, 7) ?? null
+  if (!billKey) return false
+  const peers = allBills
+    .filter(b => {
+      if (b.id === bill.id) return false
+      if (`${b.provider ?? b.utility_name}|${b.account_number ?? ''}` !== key) return false
+      const bKey = b.billing_year && b.billing_month
+        ? `${b.billing_year}-${String(b.billing_month).padStart(2, '0')}`
+        : b.due_date?.slice(0, 7) ?? null
+      return bKey !== null && bKey < billKey
+    })
+    .sort((a, b) => {
+      const aK = a.billing_year && a.billing_month ? `${a.billing_year}-${String(a.billing_month).padStart(2,'0')}` : a.due_date?.slice(0,7) ?? ''
+      const bK = b.billing_year && b.billing_month ? `${b.billing_year}-${String(b.billing_month).padStart(2,'0')}` : b.due_date?.slice(0,7) ?? ''
+      return bK.localeCompare(aK)
+    })
+    .slice(0, 3)
+  if (peers.length < 2) return false
+  const avg = peers.reduce((s, b) => s + (b.current_charges ?? b.amount ?? 0), 0) / peers.length
+  if (avg === 0) return false
+  const ratio = charges / avg
+  return ratio > 1.25 || ratio < 0.75
 }
 
 function daysUntilDue(bill: Bill): number | null {
@@ -119,11 +152,14 @@ const emptyBill: Omit<Bill, 'id' | 'created_at' | 'payment_methods'> = {
   utility_name: '',
   provider: '',
   amount: null,
+  previous_balance: null,
+  current_charges: null,
   currency: 'CAD',
   issue_date: '',
   due_date: '',
   billing_period: '',
   billing_month: null,
+  billing_year: null,
   bill_number: '',
   account_number: '',
   is_auto_pay: false,
@@ -235,18 +271,25 @@ export default function UtilityPage() {
   async function saveBill() {
     if (!editBill.utility_name?.trim()) return
     setSaving(true)
+    const issueDate = editBill.issue_date || editBill.due_date || null
+    const billingDate = issueDate ? new Date(issueDate + 'T00:00:00') : null
+
     const payload = {
       company_id:        editBill.company_id,
       utility_name:      editBill.utility_name,
       provider:          editBill.provider || null,
-      amount:            editBill.amount ?? null,
+      previous_balance:  editBill.previous_balance ?? null,
+      current_charges:   editBill.current_charges ?? null,
+      // amount = total due: previous_balance + current_charges if both set, else manual amount
+      amount:            (editBill.previous_balance != null && editBill.current_charges != null)
+                           ? (editBill.previous_balance + editBill.current_charges)
+                           : (editBill.amount ?? null),
       currency:          editBill.currency,
       issue_date:        editBill.issue_date || null,
       due_date:          editBill.due_date || null,
       billing_period:    editBill.billing_period || null,
-      billing_month:     editBill.due_date
-                           ? new Date(editBill.due_date + 'T00:00:00').getMonth() + 1
-                           : null,
+      billing_month:     billingDate ? billingDate.getMonth() + 1 : null,
+      billing_year:      editBill.billing_year ?? (billingDate ? billingDate.getFullYear() : null),
       bill_number:       editBill.bill_number || null,
       account_number:    editBill.account_number || null,
       is_auto_pay:       editBill.is_auto_pay ?? false,
@@ -467,16 +510,33 @@ export default function UtilityPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="font-medium text-gray-900">{bill.utility_name}</div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-medium text-gray-900">{bill.utility_name}</span>
+                            {isAbnormalBill(bill, bills) && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium shrink-0">±25%</span>
+                            )}
+                          </div>
                           {bill.billing_period && <div className="text-xs text-gray-400">{bill.billing_period}</div>}
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">{bill.bill_number ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-600 text-xs">{bill.provider ?? '—'}</td>
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">{bill.account_number ?? '—'}</td>
                         <td className="px-4 py-3">
-                          {bill.amount != null
-                            ? <span className="font-medium text-gray-900">{fmtAmt(bill)}</span>
-                            : '—'}
+                          {bill.current_charges != null ? (
+                            <div>
+                              <span className="font-medium text-gray-900">
+                                {bill.currency === 'USD' ? 'US$' : 'CA$'}{((bill.previous_balance ?? 0) + bill.current_charges).toFixed(2)}
+                              </span>
+                              <div className="text-[10px] text-gray-400 mt-0.5 space-x-1.5">
+                                {(bill.previous_balance ?? 0) > 0 && (
+                                  <span>prev {bill.currency === 'USD' ? 'US$' : 'CA$'}{bill.previous_balance!.toFixed(2)}</span>
+                                )}
+                                <span>curr {bill.currency === 'USD' ? 'US$' : 'CA$'}{bill.current_charges.toFixed(2)}</span>
+                              </div>
+                            </div>
+                          ) : bill.amount != null ? (
+                            <span className="font-medium text-gray-900">{fmtAmt(bill)}</span>
+                          ) : '—'}
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500">{fmtShortDate(bill.issue_date)}</td>
                         <td className={`px-4 py-3 text-xs ${dueDateColor(bill)}`}>{dueDateLabel(bill)}</td>
@@ -665,17 +725,53 @@ export default function UtilityPage() {
                 />
               </div>
 
-              {/* Amount */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Amount</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={editBill.amount ?? ''}
-                  onChange={e => setEditBill(b => ({ ...b, amount: e.target.value ? parseFloat(e.target.value) : null }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                />
+              {/* Charges breakdown */}
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Previous Balance</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={editBill.previous_balance ?? ''}
+                      onChange={e => setEditBill(b => ({ ...b, previous_balance: e.target.value ? parseFloat(e.target.value) : null }))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Current Charges</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={editBill.current_charges ?? ''}
+                      onChange={e => setEditBill(b => ({ ...b, current_charges: e.target.value ? parseFloat(e.target.value) : null }))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Total Due
+                    {editBill.previous_balance != null && editBill.current_charges != null && (
+                      <span className="ml-2 text-gray-400 font-normal">
+                        (auto: {editBill.currency === 'USD' ? 'US$' : 'CA$'}{((editBill.previous_balance ?? 0) + (editBill.current_charges ?? 0)).toFixed(2)})
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00 — or auto-calculated above"
+                    value={editBill.previous_balance != null && editBill.current_charges != null
+                      ? (editBill.previous_balance + editBill.current_charges).toFixed(2)
+                      : (editBill.amount ?? '')}
+                    disabled={editBill.previous_balance != null && editBill.current_charges != null}
+                    onChange={e => setEditBill(b => ({ ...b, amount: e.target.value ? parseFloat(e.target.value) : null }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
+                  />
+                </div>
               </div>
 
               {/* Issue date + Due date */}
