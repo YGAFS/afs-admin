@@ -107,6 +107,7 @@ export default function ReportsPage() {
   if (loading) return <div className="p-6 text-sm text-gray-400">Loading...</div>
 
   return (
+    <div className="h-full overflow-auto">
     <div className="p-6 space-y-6">
       {/* YTD Summary */}
       <div className="grid grid-cols-4 gap-4">
@@ -175,6 +176,7 @@ export default function ReportsPage() {
           })}
         </div>
       </div>
+    </div>
     </div>
   )
 }

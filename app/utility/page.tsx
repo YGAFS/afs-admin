@@ -382,7 +382,8 @@ export default function UtilityPage() {
   }
 
   return (
-    <div className="p-6 min-h-full bg-gray-50">
+    <div className="h-full overflow-auto bg-gray-50">
+    <div className="p-6">
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
@@ -981,6 +982,7 @@ export default function UtilityPage() {
           }}
         />
       )}
+    </div>
     </div>
   )
 }

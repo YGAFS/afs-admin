@@ -593,6 +593,7 @@ function OverviewContent() {
   }
 
   return (
+    <div className="h-full overflow-auto">
     <div className="p-6 space-y-5">
 
       {/* ── Alert bar ─────────────────────────────────────────────────────── */}
@@ -869,6 +870,7 @@ function OverviewContent() {
           )}
         </div>
       </div>
+    </div>
     </div>
   )
 }

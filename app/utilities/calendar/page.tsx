@@ -123,6 +123,7 @@ export default function CalendarPage() {
   }
 
   return (
+    <div className="h-full overflow-auto">
     <div className="p-6">
       {/* Month nav */}
       <div className="flex items-center justify-between mb-4">
@@ -234,6 +235,7 @@ export default function CalendarPage() {
         <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-100 inline-block" />Overdue</span>
         <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-100 inline-block" />Paid</span>
       </div>
+    </div>
     </div>
   )
 }
