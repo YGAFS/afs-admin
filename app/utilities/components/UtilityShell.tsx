@@ -1,18 +1,6 @@
 'use client'
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-
-const INNER_NAV = [
-  { href: '/utilities/overview',  label: 'Overview' },
-  { href: '/utilities/bills',     label: 'Utility Bills' },
-  { href: '/utilities/vendors',   label: 'Vendors' },
-  { href: '/utilities/locations', label: 'Contracts' },
-]
-
 export default function UtilityShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
-
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Page header */}
@@ -42,26 +30,6 @@ export default function UtilityShell({ children }: { children: React.ReactNode }
             Add Utility Bill
           </button>
         </div>
-      </div>
-
-      {/* Inner nav tabs */}
-      <div className="bg-white border-b border-gray-200 px-6 flex">
-        {INNER_NAV.map(nav => {
-          const active = pathname.startsWith(nav.href)
-          return (
-            <Link
-              key={nav.href}
-              href={nav.href}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                active
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              {nav.label}
-            </Link>
-          )
-        })}
       </div>
 
       {/* Scrollable content */}

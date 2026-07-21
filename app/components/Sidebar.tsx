@@ -57,8 +57,6 @@ const UTILITY_NAV = [
   { href: '/utilities/vendors',    label: 'Vendors',       icon: BuildingIcon },
   { href: '/utilities/calendar',   label: 'Calendar',      icon: CalendarIcon },
   { href: '/utilities/reports',    label: 'Reports',       icon: ChartIcon },
-  { href: '/utilities/documents',  label: 'Documents',     icon: FolderIcon },
-  { href: '/utilities/alerts',     label: 'Alerts',        icon: BellIcon,  badge: 5 },
   { href: '/utilities/settings',   label: 'Settings',      icon: GearIcon },
 ]
 
