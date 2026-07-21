@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
@@ -51,7 +51,7 @@ const UTILITY_COMPANIES: CompanyNode[] = [
   },
 ]
 
-const UTILITY_NAV = [
+const UTILITY_NAV: { href: string; label: string; icon: () => React.ReactElement; badge?: number }[] = [
   { href: '/utilities/overview',   label: 'Overview',      icon: HomeIcon },
   { href: '/utilities/bills',      label: 'Utility Bills', icon: FileIcon },
   { href: '/utilities/vendors',    label: 'Vendors',       icon: BuildingIcon },
