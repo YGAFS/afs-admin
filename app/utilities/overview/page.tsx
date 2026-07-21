@@ -6,6 +6,8 @@ import { useEffect, useMemo, useState, Suspense } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { computeBillStatus, isActiveOutstanding } from '@/lib/billStatus'
+import type { BalanceStatus, InvoiceStatus } from '@/lib/billStatus'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
@@ -35,6 +37,10 @@ interface Bill {
   onedrive_file_url: string | null
   account_number: string | null
   location_id: string | null
+  balance_status: BalanceStatus
+  invoice_status: InvoiceStatus | null
+  total_due: number | null
+  remaining_balance: number | null
 }
 
 interface Vendor {
@@ -73,11 +79,6 @@ function totalDueCAD(b: Bill): number {
     return toCAD(prev + b.current_charges, b.currency)
   }
   return toCAD(b.amount, b.currency)
-}
-
-function isOverdue(b: Bill) {
-  if (b.is_paid || !b.due_date) return false
-  return new Date(b.due_date + 'T00:00:00') < new Date(new Date().toDateString())
 }
 
 function fmtAmt(n: number, prefix = 'CA$') {
@@ -378,7 +379,7 @@ function OverviewContent() {
     async function load() {
       setLoading(true)
       const [{ data: b }, { data: v }, { data: l }] = await Promise.all([
-        supabase.from('utility_bills').select('*').order('due_date', { ascending: false, nullsFirst: false }),
+        supabase.from('utility_bills').select('*,balance_status,invoice_status,total_due,remaining_balance').order('due_date', { ascending: false, nullsFirst: false }),
         supabase.from('utility_vendors').select('id,company_id,name,service_type'),
         supabase.from('utility_locations').select('id,company_id,name,city'),
       ])
@@ -425,11 +426,11 @@ function OverviewContent() {
       return k === thisMonKey
     })
 
-    const overdueBills  = filtered.filter(isOverdue)
+    const overdueBills  = filtered.filter(b => computeBillStatus(b) === 'overdue')
 
     const nextWeek = new Date(today); nextWeek.setDate(today.getDate() + 7)
     const dueThisWeekBills = filtered.filter(b => {
-      if (b.is_paid || !b.due_date) return false
+      if (!isActiveOutstanding(b) || !b.due_date) return false
       const d = new Date(b.due_date + 'T00:00:00')
       return d >= today && d <= nextWeek
     })
@@ -442,8 +443,15 @@ function OverviewContent() {
 
     // Current-charges based spend (exclude previous_balance from monthly calc)
     const thisMonthSpend = thisMonthBills.reduce((s, b) => s + currentChargesCAD(b), 0)
-    const overdueAmt     = overdueBills.reduce((s, b) => s + totalDueCAD(b), 0)
-    const dueThisWeekAmt = dueThisWeekBills.reduce((s, b) => s + totalDueCAD(b), 0)
+    // Active outstanding = remaining_balance for bills where isActiveOutstanding
+    const activeOutstandingAmt = filtered
+      .filter(b => isActiveOutstanding(b))
+      .reduce((s, b) => s + (b.remaining_balance != null ? b.remaining_balance : totalDueCAD(b)), 0)
+    const overdueAmt     = overdueBills.reduce((s, b) => s + (b.remaining_balance != null ? b.remaining_balance : totalDueCAD(b)), 0)
+    const carriedFwdAmt  = filtered
+      .filter(b => b.balance_status === 'carried_forward')
+      .reduce((s, b) => s + totalDueCAD(b), 0)
+    const dueThisWeekAmt = dueThisWeekBills.reduce((s, b) => s + (b.remaining_balance != null ? b.remaining_balance : totalDueCAD(b)), 0)
     const paidThisMonAmt = paidThisMonthBills.reduce((s, b) => s + totalDueCAD(b), 0)
 
     // Avg monthly based on current_charges last 3 months
@@ -465,8 +473,10 @@ function OverviewContent() {
 
     return {
       thisMonthSpend,
+      activeOutstandingAmt,
       overdueAmt,
       overdueCount: overdueBills.length,
+      carriedFwdAmt,
       dueThisWeekAmt,
       dueThisWeekCount: dueThisWeekBills.length,
       paidThisMonAmt,
@@ -497,9 +507,10 @@ function OverviewContent() {
   // ── Bill status (donut) ───────────────────────────────────────────────────
 
   const billStatus = useMemo(() => ({
-    paid:     filtered.filter(b => b.is_paid).length,
-    overdue:  filtered.filter(isOverdue).length,
-    upcoming: filtered.filter(b => !b.is_paid && !isOverdue(b)).length,
+    paid:            filtered.filter(b => computeBillStatus(b) === 'paid').length,
+    overdue:         filtered.filter(b => computeBillStatus(b) === 'overdue' || computeBillStatus(b) === 'overdue_partial').length,
+    upcoming:        filtered.filter(b => computeBillStatus(b) === 'upcoming' || computeBillStatus(b) === 'due_today' || computeBillStatus(b) === 'open').length,
+    carriedForward:  filtered.filter(b => computeBillStatus(b) === 'carried_forward').length,
   }), [filtered])
 
   // ── Abnormal charges ──────────────────────────────────────────────────────
@@ -556,14 +567,20 @@ function OverviewContent() {
 
   const upcomingBills = useMemo(() =>
     filtered
-      .filter(b => !b.is_paid && !isOverdue(b) && b.due_date)
+      .filter(b => {
+        const s = computeBillStatus(b)
+        return (s === 'upcoming' || s === 'due_today' || s === 'open') && b.due_date
+      })
       .sort((a, b) => a.due_date!.localeCompare(b.due_date!))
       .slice(0, 5),
     [filtered]
   )
 
   const overdueBills = useMemo(() =>
-    filtered.filter(isOverdue).sort((a, b) => a.due_date!.localeCompare(b.due_date!)).slice(0, 5),
+    filtered
+      .filter(b => computeBillStatus(b) === 'overdue' || computeBillStatus(b) === 'overdue_partial')
+      .sort((a, b) => a.due_date!.localeCompare(b.due_date!))
+      .slice(0, 5),
     [filtered]
   )
 
@@ -675,17 +692,19 @@ function OverviewContent() {
           <h2 className="font-semibold text-gray-900 mb-4">Bill Status</h2>
           <div className="flex items-center gap-4">
             <DonutChart segments={[
-              { value: billStatus.paid,     color: '#10b981', label: 'Paid' },
-              { value: billStatus.upcoming, color: '#f59e0b', label: 'Upcoming' },
-              { value: billStatus.overdue,  color: '#ef4444', label: 'Overdue' },
+              { value: billStatus.paid,           color: '#10b981', label: 'Paid' },
+              { value: billStatus.upcoming,        color: '#f59e0b', label: 'Upcoming' },
+              { value: billStatus.overdue,         color: '#ef4444', label: 'Overdue' },
+              { value: billStatus.carriedForward,  color: '#a855f7', label: 'Carried Fwd' },
             ]} />
             <div className="space-y-2 text-sm">
               {[
-                { label: 'Paid',     count: billStatus.paid,     color: 'bg-emerald-500' },
-                { label: 'Upcoming', count: billStatus.upcoming, color: 'bg-amber-400' },
-                { label: 'Overdue',  count: billStatus.overdue,  color: 'bg-red-500' },
-                { label: 'Missing',  count: missingBills.length, color: 'bg-orange-400' },
-                { label: 'Abnormal', count: abnormalBills.length, color: 'bg-yellow-400' },
+                { label: 'Paid',          count: billStatus.paid,           color: 'bg-emerald-500' },
+                { label: 'Upcoming',      count: billStatus.upcoming,        color: 'bg-amber-400' },
+                { label: 'Overdue',       count: billStatus.overdue,         color: 'bg-red-500' },
+                { label: 'Carried Fwd',   count: billStatus.carriedForward,  color: 'bg-purple-400' },
+                { label: 'Missing',       count: missingBills.length,        color: 'bg-orange-400' },
+                { label: 'Abnormal',      count: abnormalBills.length,       color: 'bg-yellow-400' },
               ].map(item => (
                 <div key={item.label} className="flex items-center gap-2">
                   <span className={`w-2.5 h-2.5 rounded-full ${item.color} shrink-0`} />

@@ -32,8 +32,8 @@ export default function UtilityShell({ children }: { children: React.ReactNode }
         </div>
       </div>
 
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-auto bg-gray-50">
+      {/* Content — children manage their own scroll */}
+      <div className="flex-1 overflow-hidden bg-gray-50">
         {children}
       </div>
     </div>

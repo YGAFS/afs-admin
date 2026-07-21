@@ -4,6 +4,8 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, useMemo } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { computeBillStatus, STATUS_BADGE } from '@/lib/billStatus'
+import type { BalanceStatus, InvoiceStatus } from '@/lib/billStatus'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
@@ -23,17 +25,14 @@ interface Bill {
   due_date: string | null
   bill_number: string | null
   is_paid: boolean
+  balance_status: BalanceStatus
+  invoice_status: InvoiceStatus | null
 }
 
 const CO_COLORS: Record<Company, string> = {
   afs: 'bg-blue-100 text-blue-700',
   tnt: 'bg-amber-100 text-amber-700',
   zfs: 'bg-emerald-100 text-emerald-700',
-}
-
-function isOverdue(bill: Bill) {
-  if (bill.is_paid || !bill.due_date) return false
-  return new Date(bill.due_date) < new Date(new Date().toDateString())
 }
 
 function fmtAmt(bill: Bill) {
@@ -53,7 +52,7 @@ export default function CalendarPage() {
   useEffect(() => {
     supabase
       .from('utility_bills')
-      .select('id,company_id,utility_name,provider,amount,currency,issue_date,due_date,bill_number,is_paid')
+      .select('id,company_id,utility_name,provider,amount,currency,issue_date,due_date,bill_number,is_paid,balance_status,invoice_status')
       .then(({ data }) => {
         setBills((data as Bill[]) ?? [])
         setLoading(false)
@@ -61,12 +60,14 @@ export default function CalendarPage() {
   }, [])
 
   async function togglePaid(bill: Bill) {
-    const newVal = !bill.is_paid
-    await supabase
-      .from('utility_bills')
-      .update({ is_paid: newVal, paid_at: newVal ? new Date().toISOString() : null })
-      .eq('id', bill.id)
-    setBills(bs => bs.map(b => b.id === bill.id ? { ...b, is_paid: newVal } : b))
+    const newPaid = bill.balance_status !== 'paid'
+    const patch = {
+      is_paid: newPaid,
+      balance_status: newPaid ? 'paid' : 'open',
+      paid_at: newPaid ? new Date().toISOString() : null,
+    }
+    await supabase.from('utility_bills').update(patch).eq('id', bill.id)
+    setBills(bs => bs.map(b => b.id === bill.id ? { ...b, ...patch, balance_status: patch.balance_status as BalanceStatus } : b))
   }
 
   const firstDow = new Date(year, month, 1).getDay()
@@ -164,7 +165,7 @@ export default function CalendarPage() {
                 ))}
                 {dueBills.slice(0, 3 - issuedBills.slice(0, 2).length).map(b => (
                   <div key={`d-${b.id}`}
-                    className={`text-xs leading-tight px-1 py-0.5 mb-0.5 rounded truncate ${b.is_paid ? 'bg-emerald-100 text-emerald-700' : isOverdue(b) ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}
+                    className={`text-xs leading-tight px-1 py-0.5 mb-0.5 rounded truncate ${STATUS_BADGE[computeBillStatus(b)].className}`}
                     title={`Due: ${b.utility_name}${b.amount != null ? ` (${fmtAmt(b)})` : ''}`}
                   >
                     ⏰ {b.utility_name}
@@ -213,8 +214,8 @@ export default function CalendarPage() {
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <span className="text-base font-medium text-gray-800">{fmtAmt(b)}</span>
-                      <span className={`text-sm font-medium ${b.is_paid ? 'text-emerald-600' : isOverdue(b) ? 'text-red-600' : 'text-amber-600'}`}>
-                        {b.is_paid ? '✓ Paid' : isOverdue(b) ? 'Overdue' : 'Unpaid'}
+                      <span className={`text-sm font-medium px-1.5 py-0.5 rounded ${STATUS_BADGE[computeBillStatus(b)].className}`}>
+                        {STATUS_BADGE[computeBillStatus(b)].label}
                       </span>
                       <input type="checkbox" checked={b.is_paid} onChange={() => togglePaid(b)} className="w-4 h-4 accent-emerald-600 cursor-pointer" />
                     </div>

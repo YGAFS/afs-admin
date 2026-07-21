@@ -2,9 +2,13 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useAuth } from '@/app/providers'
+import {
+  computeBillStatus, isActiveOutstanding, STATUS_BADGE,
+  type BalanceStatus, type InvoiceStatus,
+} from '@/lib/billStatus'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
@@ -17,6 +21,7 @@ type Company = 'afs' | 'tnt' | 'zfs'
 type Currency = 'CAD' | 'USD'
 type Role = 'admin' | 'ap'
 type MainTab = 'bills' | 'calendar' | 'vendor' | 'analytics'
+type StatusFilter = 'all' | 'open' | 'overdue' | 'overdue_partial' | 'due_today' | 'upcoming' | 'partially_paid' | 'paid' | 'carried_forward' | 'waived' | 'void'
 
 interface PaymentMethod {
   id: string
@@ -54,6 +59,18 @@ interface Bill {
   notes: string | null
   created_at: string
   payment_methods?: PaymentMethod | null
+  // new balance fields
+  balance_status: BalanceStatus
+  invoice_status: InvoiceStatus | null
+  total_due: number | null
+  amount_paid: number | null
+  remaining_balance: number | null
+  late_fee: number | null
+  tax: number | null
+  adjustments: number | null
+  needs_amount_review: boolean
+  carried_forward_to_bill_id: string | null
+  carried_forward_amount: number | null
 }
 
 const COMPANIES: { id: Company | 'all'; label: string }[] = [
@@ -69,15 +86,21 @@ const CO_COLORS: Record<Company, string> = {
   zfs: 'bg-emerald-100 text-emerald-700',
 }
 
-const STATUS_FILTER = ['all', 'unpaid', 'paid', 'overdue'] as const
-type StatusFilter = typeof STATUS_FILTER[number]
+const STATUS_FILTER_OPTIONS: { id: StatusFilter; label: string }[] = [
+  { id: 'all',            label: 'All' },
+  { id: 'open',           label: 'Open' },
+  { id: 'overdue',        label: 'Overdue' },
+  { id: 'overdue_partial',label: 'Overdue (Partial)' },
+  { id: 'due_today',      label: 'Due Today' },
+  { id: 'upcoming',       label: 'Upcoming' },
+  { id: 'partially_paid', label: 'Partial' },
+  { id: 'paid',           label: 'Paid' },
+  { id: 'carried_forward',label: 'Carried Fwd' },
+  { id: 'waived',         label: 'Waived' },
+  { id: 'void',           label: 'Void' },
+]
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-
-function isOverdue(bill: Bill) {
-  if (bill.is_paid || !bill.due_date) return false
-  return new Date(bill.due_date) < new Date(new Date().toDateString())
-}
 
 function isAbnormalBill(bill: Bill, allBills: Bill[]): boolean {
   const charges = bill.current_charges ?? bill.amount
@@ -119,8 +142,9 @@ function daysUntilDue(bill: Bill): number | null {
 function dueDateLabel(bill: Bill) {
   if (!bill.due_date) return '—'
   const days = daysUntilDue(bill)!
-  const fmt = new Date(bill.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  if (bill.is_paid) return fmt
+  const fmt = new Date(bill.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const s = computeBillStatus(bill)
+  if (s === 'paid' || s === 'carried_forward' || s === 'waived' || s === 'void') return fmt
   if (days < 0)   return `${fmt} (${Math.abs(days)}d overdue)`
   if (days === 0) return `${fmt} (Today)`
   if (days <= 7)  return `${fmt} (${days}d left)`
@@ -128,7 +152,8 @@ function dueDateLabel(bill: Bill) {
 }
 
 function dueDateColor(bill: Bill) {
-  if (bill.is_paid) return 'text-gray-400'
+  const s = computeBillStatus(bill)
+  if (s === 'paid' || s === 'carried_forward' || s === 'waived' || s === 'void') return 'text-gray-400'
   const days = daysUntilDue(bill)
   if (days === null) return 'text-gray-500'
   if (days < 0)   return 'text-red-600 font-semibold'
@@ -169,6 +194,17 @@ const emptyBill: Omit<Bill, 'id' | 'created_at' | 'payment_methods'> = {
   paid_at: null,
   paid_by: null,
   notes: '',
+  balance_status: 'open',
+  invoice_status: 'active',
+  total_due: null,
+  amount_paid: null,
+  remaining_balance: null,
+  late_fee: null,
+  tax: null,
+  adjustments: null,
+  needs_amount_review: false,
+  carried_forward_to_bill_id: null,
+  carried_forward_amount: null,
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────────
@@ -207,7 +243,7 @@ export default function UtilityPage() {
     setLoading(true)
     const { data } = await supabase
       .from('utility_bills')
-      .select('*, payment_methods(*)')
+      .select('*, payment_methods(*), balance_status, invoice_status, total_due, amount_paid, remaining_balance, late_fee, tax, adjustments, needs_amount_review, carried_forward_to_bill_id, carried_forward_amount')
       .order('due_date', { ascending: true, nullsFirst: false })
     setBills((data as Bill[]) ?? [])
     const { data: pm } = await supabase.from('payment_methods').select('*').order('label')
@@ -219,9 +255,7 @@ export default function UtilityPage() {
 
   const filtered = bills.filter(b => {
     if (coFilter !== 'all' && b.company_id !== coFilter) return false
-    if (statusFilter === 'paid'    && !b.is_paid) return false
-    if (statusFilter === 'unpaid'  && (b.is_paid || isOverdue(b))) return false
-    if (statusFilter === 'overdue' && !isOverdue(b)) return false
+    if (statusFilter !== 'all' && computeBillStatus(b) !== statusFilter) return false
     if (searchTerm) {
       const q = searchTerm.toLowerCase()
       if (!b.utility_name.toLowerCase().includes(q) &&
@@ -234,33 +268,59 @@ export default function UtilityPage() {
   const today = new Date(new Date().toDateString())
   const inSevenDays = new Date(today.getTime() + 7 * 86400000)
 
-  const overdueBills  = bills.filter(isOverdue)
+  const overdueBills  = bills.filter(b => {
+    const s = computeBillStatus(b)
+    return s === 'overdue' || s === 'overdue_partial'
+  })
   const upcomingBills = bills.filter(b => {
-    if (b.is_paid || isOverdue(b) || !b.due_date) return false
-    const due = new Date(b.due_date)
+    if (!isActiveOutstanding(b) || !b.due_date) return false
+    const due = new Date(b.due_date + 'T00:00:00')
     return due >= today && due <= inSevenDays
   })
 
   const stats = {
-    total:   bills.length,
-    unpaid:  bills.filter(b => !b.is_paid && !isOverdue(b)).length,
-    overdue: overdueBills.length,
-    paid:    bills.filter(b => b.is_paid).length,
+    total:           bills.length,
+    outstanding:     bills.filter(b => isActiveOutstanding(b)).length,
+    overdue:         overdueBills.length,
+    paid:            bills.filter(b => computeBillStatus(b) === 'paid').length,
+    carriedForward:  bills.filter(b => computeBillStatus(b) === 'carried_forward').length,
   }
 
   async function togglePaid(bill: Bill) {
     const newPaid = !bill.is_paid
     await supabase.from('utility_bills').update({
       is_paid: newPaid,
+      balance_status: newPaid ? 'paid' : 'open',
       paid_at: newPaid ? new Date().toISOString() : null,
       paid_by: newPaid ? (user?.email ?? null) : null,
     }).eq('id', bill.id)
     setBills(prev => prev.map(b =>
       b.id === bill.id
-        ? { ...b, is_paid: newPaid, paid_at: newPaid ? new Date().toISOString() : null, paid_by: newPaid ? (user?.email ?? null) : null }
+        ? { ...b, is_paid: newPaid, balance_status: newPaid ? 'paid' as BalanceStatus : 'open' as BalanceStatus, paid_at: newPaid ? new Date().toISOString() : null, paid_by: newPaid ? (user?.email ?? null) : null }
         : b
     ))
   }
+
+  async function updateBillStatus(bill: Bill, newStatus: BalanceStatus) {
+    const patch: Partial<Bill> = { balance_status: newStatus }
+    if (newStatus === 'paid') {
+      patch.amount_paid = bill.total_due ?? bill.amount ?? 0
+      patch.remaining_balance = 0
+      patch.paid_at = new Date().toISOString()
+      patch.paid_by = user?.email ?? null
+      patch.is_paid = true
+    } else if (newStatus === 'open') {
+      patch.amount_paid = 0
+      patch.remaining_balance = bill.total_due ?? bill.amount ?? 0
+      patch.is_paid = false
+      patch.paid_at = null
+      patch.paid_by = null
+    }
+    await supabase.from('utility_bills').update(patch).eq('id', bill.id)
+    setBills(prev => prev.map(b => b.id === bill.id ? { ...b, ...patch } : b))
+  }
+
+  const [carryForwardBill, setCarryForwardBill] = useState<Bill | null>(null)
 
   async function saveNote(id: string, notes: string) {
     await supabase.from('utility_bills').update({ notes }).eq('id', id)
@@ -372,12 +432,13 @@ export default function UtilityPage() {
       {mainTab === 'bills' && (
         <>
           {/* Stats row — clickable to filter */}
-          <div className="grid grid-cols-4 gap-3 mb-5">
+          <div className="grid grid-cols-5 gap-3 mb-5">
             {[
-              { label: 'Total',   value: stats.total,   color: 'text-gray-700',    bg: 'bg-white',      sf: 'all'     as StatusFilter },
-              { label: 'Unpaid',  value: stats.unpaid,  color: 'text-amber-600',   bg: 'bg-amber-50',   sf: 'unpaid'  as StatusFilter },
-              { label: 'Overdue', value: stats.overdue, color: 'text-red-600',     bg: 'bg-red-50',     sf: 'overdue' as StatusFilter },
-              { label: 'Paid',    value: stats.paid,    color: 'text-emerald-600', bg: 'bg-emerald-50', sf: 'paid'    as StatusFilter },
+              { label: 'Total',        value: stats.total,          color: 'text-gray-700',    bg: 'bg-white',       sf: 'all'            as StatusFilter },
+              { label: 'Outstanding',  value: stats.outstanding,    color: 'text-amber-600',   bg: 'bg-amber-50',    sf: 'open'           as StatusFilter },
+              { label: 'Overdue',      value: stats.overdue,        color: 'text-red-600',     bg: 'bg-red-50',      sf: 'overdue'        as StatusFilter },
+              { label: 'Paid',         value: stats.paid,           color: 'text-emerald-600', bg: 'bg-emerald-50',  sf: 'paid'           as StatusFilter },
+              { label: 'Carried Fwd',  value: stats.carriedForward, color: 'text-purple-600',  bg: 'bg-purple-50',   sf: 'carried_forward' as StatusFilter },
             ].map(s => (
               <button
                 key={s.label}
@@ -407,7 +468,7 @@ export default function UtilityPage() {
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="text-xs font-semibold text-red-600">{fmtAmt(b)}</span>
                           <span className="text-xs text-red-500">{dueDateLabel(b)}</span>
-                          <input type="checkbox" checked={false} onChange={() => togglePaid(b)} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" title="Mark paid" />
+                          <button onClick={() => updateBillStatus(b, 'paid')} className="text-xs px-2 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors" title="Mark paid">✓ Paid</button>
                         </div>
                       </div>
                     ))}
@@ -429,7 +490,7 @@ export default function UtilityPage() {
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="text-xs font-medium text-gray-800">{fmtAmt(b)}</span>
                           <span className={`text-xs ${dueDateColor(b)}`}>{dueDateLabel(b)}</span>
-                          <input type="checkbox" checked={false} onChange={() => togglePaid(b)} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" title="Mark paid" />
+                          <button onClick={() => updateBillStatus(b, 'paid')} className="text-xs px-2 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors" title="Mark paid">✓ Paid</button>
                         </div>
                       </div>
                     ))}
@@ -454,16 +515,16 @@ export default function UtilityPage() {
                 </button>
               ))}
             </div>
-            <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
-              {STATUS_FILTER.map(s => (
+            <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1 flex-wrap">
+              {STATUS_FILTER_OPTIONS.map(s => (
                 <button
-                  key={s}
-                  onClick={() => setStatusFilter(s)}
-                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors capitalize ${
-                    statusFilter === s ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
+                  key={s.id}
+                  onClick={() => setStatusFilter(s.id)}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                    statusFilter === s.id ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  {s}
+                  {s.label}
                 </button>
               ))}
             </div>
@@ -497,13 +558,13 @@ export default function UtilityPage() {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Due Date</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Payment</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Paid</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                       {role === 'admin' && <th className="px-4 py-3" />}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {filtered.map(bill => (
-                      <tr key={bill.id} className={`hover:bg-gray-50 transition-colors ${bill.is_paid ? 'opacity-60' : ''}`}>
+                      <tr key={bill.id} className={`hover:bg-gray-50 transition-colors ${computeBillStatus(bill) === 'paid' || computeBillStatus(bill) === 'waived' || computeBillStatus(bill) === 'void' ? 'opacity-60' : ''}`}>
                         <td className="px-4 py-3">
                           <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[bill.company_id]}`}>
                             {bill.company_id.toUpperCase()}
@@ -585,16 +646,8 @@ export default function UtilityPage() {
                             </div>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={bill.is_paid}
-                            onChange={() => togglePaid(bill)}
-                            className="w-4 h-4 accent-emerald-600 cursor-pointer"
-                            title={bill.paid_at
-                              ? `Paid on ${new Date(bill.paid_at).toLocaleDateString()} by ${bill.paid_by ?? 'unknown'}`
-                              : 'Mark as paid'}
-                          />
+                        <td className="px-4 py-3">
+                          <StatusDropdown bill={bill} onUpdate={updateBillStatus} onCarryForward={setCarryForwardBill} />
                         </td>
                         {role === 'admin' && (
                           <td className="px-4 py-3">
@@ -892,6 +945,188 @@ export default function UtilityPage() {
           onSave={() => { setShowPMModal(false); load() }}
         />
       )}
+
+      {carryForwardBill && (
+        <CarryForwardModal
+          bill={carryForwardBill}
+          allBills={bills}
+          onClose={() => setCarryForwardBill(null)}
+          onSave={async (sourceId, targetId, amount, notes) => {
+            const patch = {
+              balance_status: 'carried_forward' as BalanceStatus,
+              carried_forward_amount: amount,
+              carried_forward_to_bill_id: targetId ?? null,
+            }
+            await supabase.from('utility_bills').update(patch).eq('id', sourceId)
+            await supabase.from('bill_carryovers').insert({
+              source_bill_id: sourceId,
+              target_bill_id: targetId ?? null,
+              amount,
+              notes: notes || null,
+            })
+            if (targetId) {
+              const target = bills.find(b => b.id === targetId)
+              if (target) {
+                const newPrevBal = (target.previous_balance ?? 0) + amount
+                const newTotalDue = newPrevBal + (target.current_charges ?? target.amount ?? 0)
+                await supabase.from('utility_bills').update({
+                  previous_balance: newPrevBal,
+                  total_due: newTotalDue,
+                  remaining_balance: newTotalDue - (target.amount_paid ?? 0),
+                }).eq('id', targetId)
+              }
+            }
+            setCarryForwardBill(null)
+            load()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── StatusDropdown ─────────────────────────────────────────────────────────────
+
+function StatusDropdown({
+  bill, onUpdate, onCarryForward,
+}: {
+  bill: Bill
+  onUpdate: (bill: Bill, status: BalanceStatus) => void
+  onCarryForward: (bill: Bill) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const status = computeBillStatus(bill)
+  const badge = STATUS_BADGE[status]
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    if (open) document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const options: { status: BalanceStatus; label: string }[] = [
+    { status: 'open',           label: 'Open' },
+    { status: 'partially_paid', label: 'Partially Paid' },
+    { status: 'paid',           label: 'Paid ✓' },
+    { status: 'waived',         label: 'Waived' },
+  ]
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className={`px-2 py-0.5 rounded text-xs font-medium ${badge.className} hover:opacity-80 transition-opacity whitespace-nowrap`}
+      >
+        {badge.label} ▾
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[150px]">
+          {options.map(opt => (
+            <button
+              key={opt.status}
+              className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+              onClick={() => { onUpdate(bill, opt.status); setOpen(false) }}
+            >
+              {opt.label}
+            </button>
+          ))}
+          <button
+            className="w-full text-left px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 transition-colors border-t border-gray-100"
+            onClick={() => { onCarryForward(bill); setOpen(false) }}
+          >
+            Carried Forward →
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── CarryForwardModal ──────────────────────────────────────────────────────────
+
+function CarryForwardModal({
+  bill, allBills, onClose, onSave,
+}: {
+  bill: Bill
+  allBills: Bill[]
+  onClose: () => void
+  onSave: (sourceId: string, targetId: string | null, amount: number, notes: string) => Promise<void>
+}) {
+  const defaultAmt = bill.remaining_balance ?? bill.total_due ?? bill.amount ?? 0
+  const [amount, setAmount] = useState(String(defaultAmt))
+  const [targetId, setTargetId] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const candidates = allBills.filter(b =>
+    b.id !== bill.id &&
+    b.account_number === bill.account_number &&
+    b.balance_status !== 'carried_forward' &&
+    (b.due_date ?? '') > (bill.due_date ?? '')
+  ).sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+
+  async function handle() {
+    const amt = parseFloat(amount)
+    if (isNaN(amt) || amt <= 0) return
+    setSaving(true)
+    await onSave(bill.id, targetId || null, amt, notes)
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-900">Carry Forward Balance</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-gray-600">
+            Moving balance from: <span className="font-medium">{bill.utility_name}</span>
+            {bill.due_date ? ` (due ${bill.due_date})` : ''}
+          </p>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Carryover Amount</label>
+            <input
+              type="number" step="0.01" value={amount}
+              onChange={e => setAmount(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Target Bill (same account)</label>
+            <select
+              value={targetId}
+              onChange={e => setTargetId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+            >
+              <option value="">— None —</option>
+              {candidates.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.utility_name} · {b.due_date ?? 'no date'} · {b.account_number}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
+            <textarea
+              rows={2} value={notes} onChange={e => setNotes(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+            />
+          </div>
+        </div>
+        <div className="px-6 pb-6 flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
+          <button onClick={handle} disabled={saving}
+            className="flex-1 px-4 py-2 text-sm text-white bg-purple-700 rounded-lg hover:bg-purple-800 disabled:bg-gray-300 transition-colors">
+            {saving ? 'Saving…' : 'Carry Forward'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -909,9 +1144,8 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
     return Array.from(map.entries()).map(([key, bs]) => {
       const sorted = [...bs].sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
       const overdueCount = bs.filter(b => {
-        if (!b.due_date) return false
-        if (b.is_paid && b.paid_at) return b.paid_at > b.due_date
-        return !b.is_paid && new Date(b.due_date) < new Date()
+        const s = computeBillStatus(b)
+        return s === 'overdue' || s === 'overdue_partial'
       }).length
       const amounts = sorted.filter(b => b.amount != null).map(b => b.amount!)
       const maxAmt = amounts.length ? Math.max(...amounts) : 0
@@ -982,8 +1216,8 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
               <tbody className="divide-y divide-gray-50">
                 {bs.slice(-10).map(b => {
                   const pct = maxAmt > 0 && b.amount != null ? (b.amount / maxAmt) * 100 : 0
-                  const wasLate = b.is_paid && b.paid_at && b.due_date && b.paid_at > b.due_date
-                  const isCurrentlyOverdue = !b.is_paid && b.due_date && new Date(b.due_date) < new Date()
+                  const wasLate = computeBillStatus(b) === 'paid' && b.paid_at && b.due_date && b.paid_at > b.due_date
+                  const isCurrentlyOverdue = computeBillStatus(b) === 'overdue' || computeBillStatus(b) === 'overdue_partial'
                   return (
                     <tr key={b.id}>
                       <td className="py-2 pr-3 text-gray-600">{b.billing_period ?? '—'}</td>
@@ -1132,7 +1366,7 @@ function CalendarTab({ bills, onTogglePaid }: { bills: Bill[]; onTogglePaid: (b:
                   <div key={`d-${b.id}`}
                     className={`text-xs leading-tight px-1 py-0.5 mb-0.5 rounded truncate ${
                       b.is_paid ? 'bg-emerald-100 text-emerald-700' :
-                      isOverdue(b) ? 'bg-red-100 text-red-700' :
+                      computeBillStatus(b) === 'overdue' || computeBillStatus(b) === 'overdue_partial' ? 'bg-red-100 text-red-700' :
                       'bg-amber-100 text-amber-700'
                     }`}
                     title={`Due: ${b.utility_name}${b.amount != null ? ` (${fmtAmt(b)})` : ''}`}
@@ -1185,8 +1419,8 @@ function CalendarTab({ bills, onTogglePaid }: { bills: Bill[]; onTogglePaid: (b:
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <span className="text-base font-medium text-gray-800">{fmtAmt(b)}</span>
-                      <span className={`text-sm font-medium ${b.is_paid ? 'text-emerald-600' : isOverdue(b) ? 'text-red-600' : 'text-amber-600'}`}>
-                        {b.is_paid ? '✓ Paid' : isOverdue(b) ? 'Overdue' : 'Unpaid'}
+                      <span className={`text-sm font-medium px-1.5 py-0.5 rounded ${STATUS_BADGE[computeBillStatus(b)].className}`}>
+                        {STATUS_BADGE[computeBillStatus(b)].label}
                       </span>
                       <input
                         type="checkbox"

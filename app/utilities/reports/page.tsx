@@ -25,6 +25,8 @@ interface Bill {
   billing_year: number | null
   is_paid: boolean
   due_date: string | null
+  balance_status: string
+  invoice_status: string | null
 }
 
 const USD_RATE = 1.36
@@ -55,7 +57,7 @@ export default function ReportsPage() {
   useEffect(() => {
     supabase
       .from('utility_bills')
-      .select('id,company_id,utility_name,provider,amount,current_charges,previous_balance,currency,billing_month,billing_year,is_paid,due_date')
+      .select('id,company_id,utility_name,provider,amount,current_charges,previous_balance,currency,billing_month,billing_year,is_paid,due_date,balance_status,invoice_status')
       .then(({ data }) => {
         setBills((data as Bill[]) ?? [])
         setLoading(false)
@@ -65,35 +67,38 @@ export default function ReportsPage() {
   const now = new Date()
   const thisYear = now.getFullYear()
 
-  // Monthly spend by company (this year, by billing_month)
+  // Exclude void bills from all calculations
+  const activeBills = useMemo(() => bills.filter(b => b.invoice_status !== 'void'), [bills])
+
+  // Monthly spend by company (this year, by billing_month) — current_charges only
   const monthlyByCompany = useMemo(() => {
     const result: Record<Company, number[]> = { afs: Array(12).fill(0), tnt: Array(12).fill(0), zfs: Array(12).fill(0) }
-    for (const b of bills) {
+    for (const b of activeBills) {
       if (b.billing_year === thisYear && b.billing_month != null) {
         result[b.company_id][b.billing_month - 1] += effectiveCharges(b)
       }
     }
     return result
-  }, [bills, thisYear])
+  }, [activeBills, thisYear])
 
   // Spend by utility type
   const byUtility = useMemo(() => {
     const map = new Map<string, number>()
-    for (const b of bills) {
+    for (const b of activeBills) {
       const key = b.utility_name
       map.set(key, (map.get(key) ?? 0) + effectiveCharges(b))
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)
-  }, [bills])
+  }, [activeBills])
 
   // YTD totals by company
   const ytdByCompany = useMemo(() => {
     const map: Record<Company, number> = { afs: 0, tnt: 0, zfs: 0 }
-    for (const b of bills) {
+    for (const b of activeBills) {
       if (b.billing_year === thisYear) map[b.company_id] += effectiveCharges(b)
     }
     return map
-  }, [bills, thisYear])
+  }, [activeBills, thisYear])
 
   const totalYTD = Object.values(ytdByCompany).reduce((a, b) => a + b, 0)
 
