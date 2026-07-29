@@ -292,7 +292,7 @@ export default function CompanyAttendancePage() {
       return `${MONTHS[m - 1]} ${d} (${DOW[dow]})`
     }
 
-    // W / B / O are not reported; L→Paid Leave, S→Sick Leave, T→Unpaid Leave
+    // W / B / O are not reported; L→Paid Leave, S→Sick Leave, T→Unpaid Leave, C→Special Leave
     const SKIP = new Set(['W','W1','W2','W3','B','O'])
     const codeLabel = (code: string, hours: number | null): string | null => {
       if (SKIP.has(code)) return null
@@ -300,6 +300,7 @@ export default function CompanyAttendancePage() {
         L:'Paid Leave',   L1:'Paid Leave (AM Half)',   L2:'Paid Leave (PM Half)',   L3:'Paid Leave (Hourly)',
         S:'Sick Leave',   S1:'Sick Leave (AM Half)',   S2:'Sick Leave (PM Half)',   S3:'Sick Leave (Hourly)',
         T:'Unpaid Leave', T1:'Unpaid Leave (AM Half)', T2:'Unpaid Leave (PM Half)', T3:'Unpaid Leave (Hourly)',
+        C:'Special Leave',
       }
       const base = map[code] ?? code
       return hours ? `${base} (${hours}h)` : base

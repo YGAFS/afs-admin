@@ -10,7 +10,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
 )
 
-type LeaveCode = 'L'|'L1'|'L2'|'L3'|'S'|'S1'|'S2'|'S3'|'W'|'W1'|'W2'|'W3'|'T'|'T1'|'T2'|'T3'|'B'|'O'
+type LeaveCode = 'L'|'L1'|'L2'|'L3'|'S'|'S1'|'S2'|'S3'|'W'|'W1'|'W2'|'W3'|'T'|'T1'|'T2'|'T3'|'B'|'O'|'C'
 type Employee  = {
   id: string; name: string; team: string; manager_name: string
   vacation_allowance: number; position: string | null; sort_order: number
@@ -20,6 +20,7 @@ type Employee  = {
 }
 type LeaveCell = { code: LeaveCode; hours?: number }
 type YS        = { vacTaken: number; sick: number; wfh: number; ot: number }
+const DAY_HOURS = 8
 
 const CODE_COLOR: Record<string, string> = {
   L:  'bg-green-200 text-green-800',  L1: 'bg-green-100 text-green-700',
@@ -32,6 +33,7 @@ const CODE_COLOR: Record<string, string> = {
   T1: 'bg-gray-100  text-gray-600',   T2: 'bg-gray-100  text-gray-600',
   T3: 'bg-gray-50   text-gray-500',   B:  'bg-gray-100  text-gray-500',
   O:  'bg-orange-200 text-orange-800',
+  C:  'bg-purple-200 text-purple-800',
 }
 
 const CODE_OPTIONS: { code: LeaveCode; needsHours?: boolean }[] = [
@@ -41,6 +43,7 @@ const CODE_OPTIONS: { code: LeaveCode; needsHours?: boolean }[] = [
   { code: 'T' }, { code: 'T1' }, { code: 'T2' }, { code: 'T3', needsHours: true },
   { code: 'B' },
   { code: 'O', needsHours: true },
+  { code: 'C' },
 ]
 
 const TEAM_ORDER = ['Team Sales','Team Accounting','Team Operations','Department 1','Department 2','Department 3']
@@ -99,10 +102,10 @@ function vacDisplay(emp: Employee, vs: EmpVacStat | null, calYearTaken: number) 
   if (emp.uses_accrual && vs) {
     const total = Math.round((vs.accrued + vs.carryIn) * 10) / 10
     const left  = Math.max(0, Math.round((total - vs.periodUsed) * 10) / 10)
-    return { text: `${left}/${total}`, alert: left <= 1 }
+    return { text: `${left}/${total}`, hours: Math.round(left * DAY_HOURS * 10) / 10, alert: left <= 1 }
   }
   const left = emp.vacation_allowance - calYearTaken
-  return { text: `${left}/${emp.vacation_allowance}`, alert: left <= 5 }
+  return { text: `${left}/${emp.vacation_allowance}`, hours: Math.round(left * DAY_HOURS * 10) / 10, alert: left <= 5 }
 }
 function fmtDate(iso: string) {
   const [, m, d] = iso.split('-'); return `${+m}. ${+d}.`
@@ -132,7 +135,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
 }) {
   const { locale } = useLocale()
   const [employees,    setEmployees]    = useState<Employee[]>([])
-  const [leaveMap,     setLeaveMap]     = useState<Record<string, LeaveCell>>({})
+  const [leaveMap,     setLeaveMap]     = useState<Record<string, LeaveCell[]>>({})
   const [ys,           setYS]           = useState<Record<string, YS>>({})
   const [vacStatMap,   setVacStatMap]   = useState<Record<string, EmpVacStat>>({})
   const [editing,      setEditing]      = useState<{ empId: string; day: number } | null>(null)
@@ -218,9 +221,11 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
         .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
     ])
 
-    const lm: Record<string, LeaveCell> = {}
-    for (const e of (me ?? []))
-      lm[`${e.employee_id}_${parseInt(e.date.split('-')[2], 10)}`] = { code: e.leave_code as LeaveCode, hours: e.hours ?? undefined }
+    const lm: Record<string, LeaveCell[]> = {}
+    for (const e of (me ?? [])) {
+      const key = `${e.employee_id}_${parseInt(e.date.split('-')[2], 10)}`
+      ;(lm[key] ??= []).push({ code: e.leave_code as LeaveCode, hours: e.hours ?? undefined })
+    }
     setLeaveMap(lm)
 
     const nm: Record<string, string> = {}
@@ -257,19 +262,38 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     setVacStatMap(vsMap)
   }
 
-  async function setCode(empId: string, day: number, code: LeaveCode | null, hours?: number) {
+  async function addEntry(empId: string, day: number, code: LeaveCode, hours?: number) {
     setSaving(true)
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
-    if (code === null) {
-      const { error } = await supabase.from('leave_entries').delete().eq('employee_id', empId).eq('date', dateStr)
-      if (!error) setLeaveMap(p => { const n = { ...p }; delete n[key]; return n })
-    } else {
-      const { error } = await supabase.from('leave_entries')
-        .upsert({ employee_id: empId, date: dateStr, leave_code: code, hours: hours ?? null }, { onConflict: 'employee_id,date' })
-      if (error) { alert(`저장 실패: ${error.message}`); setSaving(false); return }
-      setLeaveMap(p => ({ ...p, [key]: { code, hours } }))
-    }
+    const { error } = await supabase.from('leave_entries')
+      .upsert({ employee_id: empId, date: dateStr, leave_code: code, hours: hours ?? null }, { onConflict: 'employee_id,date,leave_code' })
+    if (error) { alert(`저장 실패: ${error.message}`); setSaving(false); return }
+    setLeaveMap(p => {
+      const existing = (p[key] ?? []).filter(e => e.code !== code)
+      return { ...p, [key]: [...existing, { code, hours }] }
+    })
+    setSaving(false); setPendingCode(null); setPendingHours('')
+    load()
+  }
+
+  async function removeEntry(empId: string, day: number, code: LeaveCode) {
+    setSaving(true)
+    const dateStr = `${year}-${pad(month)}-${pad(day)}`
+    const key     = `${empId}_${day}`
+    const { error } = await supabase.from('leave_entries')
+      .delete().eq('employee_id', empId).eq('date', dateStr).eq('leave_code', code)
+    if (!error) setLeaveMap(p => ({ ...p, [key]: (p[key] ?? []).filter(e => e.code !== code) }))
+    setSaving(false)
+    load()
+  }
+
+  async function clearCell(empId: string, day: number) {
+    setSaving(true)
+    const dateStr = `${year}-${pad(month)}-${pad(day)}`
+    const key     = `${empId}_${day}`
+    const { error } = await supabase.from('leave_entries').delete().eq('employee_id', empId).eq('date', dateStr)
+    if (!error) setLeaveMap(p => { const n = { ...p }; delete n[key]; return n })
     setSaving(false); setEditing(null); setPendingCode(null); setPendingHours('')
     load()
   }
@@ -294,10 +318,13 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     })
     if (targets.length) {
       const rows = targets.map(emp => ({ employee_id: emp.id, date: dateStr, leave_code: 'B', hours: null }))
-      await supabase.from('leave_entries').upsert(rows, { onConflict: 'employee_id,date' })
+      await supabase.from('leave_entries').upsert(rows, { onConflict: 'employee_id,date,leave_code' })
       setLeaveMap(prev => {
         const next = { ...prev }
-        for (const emp of targets) next[`${emp.id}_${day}`] = { code: 'B' as LeaveCode }
+        for (const emp of targets) {
+          const key = `${emp.id}_${day}`
+          next[key] = [...(next[key] ?? []).filter(e => e.code !== 'B'), { code: 'B' as LeaveCode }]
+        }
         return next
       })
     }
@@ -482,8 +509,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                       </td>
 
                       {days.map(d => {
-                        const entry         = leaveMap[`${emp.id}_${d}`]
-                        const code          = entry?.code
+                        const entries       = leaveMap[`${emp.id}_${d}`] ?? []
                         const dow           = new Date(year, month - 1, d).getDay()
                         const isToday       = isCurrentMonth && d === today.getDate()
                         const isEdit        = editing?.empId === emp.id && editing?.day === d
@@ -532,10 +558,14 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                             )}
                             {blocked ? (
                               <span className="text-gray-300 text-xs">—</span>
-                            ) : code ? (
-                              <div className={`inline-flex flex-col items-center px-0.5 rounded font-medium ${CODE_COLOR[code]}`}>
-                                <span className="leading-4">{code}</span>
-                                {entry.hours && <span style={{ fontSize: 8 }}>{entry.hours}h</span>}
+                            ) : entries.length ? (
+                              <div className="flex flex-col items-center gap-0.5 py-0.5">
+                                {entries.map(en => (
+                                  <div key={en.code} className={`inline-flex flex-col items-center px-0.5 rounded font-medium ${CODE_COLOR[en.code]}`}>
+                                    <span className="leading-4" style={entries.length > 1 ? { fontSize: 9 } : undefined}>{en.code}</span>
+                                    {en.hours && <span style={{ fontSize: 8 }}>{en.hours}h</span>}
+                                  </div>
+                                ))}
                               </div>
                             ) : null}
                           </td>
@@ -544,7 +574,12 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
 
                       <td className="border border-gray-300 text-center px-1">
                         {isUpcoming || isTerminated ? <span className="text-xs text-gray-300">—</span>
-                          : vacInfo ? <span className={`text-xs font-semibold ${vacInfo.alert ? 'text-red-600' : 'text-green-700'}`}>{vacInfo.text}</span>
+                          : vacInfo ? (
+                            <div>
+                              <span className={`text-xs font-semibold ${vacInfo.alert ? 'text-red-600' : 'text-green-700'}`}>{vacInfo.text}</span>
+                              <div className="text-gray-400 leading-none" style={{ fontSize: 9 }}>{vacInfo.hours}h</div>
+                            </div>
+                          )
                           : <span className="text-xs text-gray-300">—</span>}
                       </td>
                       <td className="border border-gray-300 text-center px-1">
@@ -585,53 +620,71 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
         </table>
       </div>
 
-      {/* Code picker dropdown — fixed overlay, never clipped by overflow */}
-      {editing && dropPos && (
-        <div ref={dropRef}
-          style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, zIndex: 9999 }}
-          className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 w-52 max-h-80 overflow-y-auto">
-          <button onClick={e => { e.stopPropagation(); setCode(editing.empId, editing.day, null) }}
-            className="w-full text-left px-3 py-1 text-xs hover:bg-gray-100 text-gray-400">
-            {t('grid.clear_cell', locale)}
-          </button>
-          <div className="border-t border-gray-100 my-1" />
-          {CODE_OPTIONS.map(opt => {
-            const label = t(`grid.code.${opt.code}`, locale)
-            if (opt.needsHours && pendingCode === opt.code) {
-              return (
-                <div key={opt.code} className="px-3 py-2 bg-gray-50">
-                  <div className="text-xs text-gray-600 mb-1.5">{label}</div>
-                  <div className="flex gap-1 items-center">
-                    <input type="number" value={pendingHours}
-                      onChange={e => setPendingHours(e.target.value)}
-                      placeholder={t('grid.hours_placeholder', locale)}
-                      min="0.5" max="24" step="0.5" autoFocus
-                      className="w-16 border rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-                      onClick={e => e.stopPropagation()} />
-                    <span className="text-xs text-gray-500">{t('grid.hours', locale)}</span>
-                    <button disabled={!pendingHours}
-                      onClick={e => { e.stopPropagation(); if (pendingHours) setCode(editing.empId, editing.day, opt.code, parseFloat(pendingHours)) }}
-                      className="bg-blue-500 disabled:bg-gray-300 text-white px-2 py-0.5 rounded text-xs ml-1">
-                      {t('grid.confirm', locale)}
-                    </button>
+      {/* Code picker dropdown — fixed overlay, never clipped by overflow — multi-select per day */}
+      {editing && dropPos && (() => {
+        const dayEntries = leaveMap[`${editing.empId}_${editing.day}`] ?? []
+        const selectedCodes = new Set(dayEntries.map(e => e.code))
+        return (
+          <div ref={dropRef}
+            style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, zIndex: 9999 }}
+            className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 w-52 max-h-96 overflow-y-auto">
+            {dayEntries.length > 0 && (
+              <>
+                {dayEntries.map(en => (
+                  <div key={en.code} className={`flex items-center justify-between px-3 py-1 text-xs ${CODE_COLOR[en.code]}`}>
+                    <span className="font-medium">{en.code}{en.hours ? ` — ${en.hours}h` : ''}</span>
+                    <button onClick={e => { e.stopPropagation(); removeEntry(editing.empId, editing.day, en.code) }}
+                      className="text-current opacity-60 hover:opacity-100 font-bold px-1">✕</button>
                   </div>
-                </div>
+                ))}
+                <div className="border-t border-gray-100 my-1" />
+              </>
+            )}
+            <button onClick={e => { e.stopPropagation(); clearCell(editing.empId, editing.day) }}
+              className="w-full text-left px-3 py-1 text-xs hover:bg-gray-100 text-gray-400">
+              {t('grid.clear_cell', locale)}
+            </button>
+            <div className="border-t border-gray-100 my-1" />
+            {CODE_OPTIONS.map(opt => {
+              const label = t(`grid.code.${opt.code}`, locale)
+              const isSelected = selectedCodes.has(opt.code)
+              if (opt.needsHours && pendingCode === opt.code) {
+                return (
+                  <div key={opt.code} className="px-3 py-2 bg-gray-50">
+                    <div className="text-xs text-gray-600 mb-1.5">{label}</div>
+                    <div className="flex gap-1 items-center">
+                      <input type="number" value={pendingHours}
+                        onChange={e => setPendingHours(e.target.value)}
+                        placeholder={t('grid.hours_placeholder', locale)}
+                        min="0.5" max="24" step="0.5" autoFocus
+                        className="w-16 border rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        onClick={e => e.stopPropagation()} />
+                      <span className="text-xs text-gray-500">{t('grid.hours', locale)}</span>
+                      <button disabled={!pendingHours}
+                        onClick={e => { e.stopPropagation(); if (pendingHours) addEntry(editing.empId, editing.day, opt.code, parseFloat(pendingHours)) }}
+                        className="bg-blue-500 disabled:bg-gray-300 text-white px-2 py-0.5 rounded text-xs ml-1">
+                        {t('grid.confirm', locale)}
+                      </button>
+                    </div>
+                  </div>
+                )
+              }
+              return (
+                <button key={opt.code}
+                  onClick={e => {
+                    e.stopPropagation()
+                    if (opt.needsHours) { setPendingCode(opt.code); setPendingHours('') }
+                    else addEntry(editing.empId, editing.day, opt.code)
+                  }}
+                  className={`w-full text-left px-3 py-1 text-xs hover:opacity-80 flex items-center justify-between ${CODE_COLOR[opt.code]} ${isSelected ? 'ring-1 ring-inset ring-black/20' : ''}`}>
+                  <span>{label}</span>
+                  {isSelected && <span className="font-bold">✓</span>}
+                </button>
               )
-            }
-            return (
-              <button key={opt.code}
-                onClick={e => {
-                  e.stopPropagation()
-                  if (opt.needsHours) { setPendingCode(opt.code); setPendingHours('') }
-                  else setCode(editing.empId, editing.day, opt.code)
-                }}
-                className={`w-full text-left px-3 py-1 text-xs hover:opacity-80 ${CODE_COLOR[opt.code]}`}>
-                {label}
-              </button>
-            )
-          })}
-        </div>
-      )}
+            })}
+          </div>
+        )
+      })()}
 
       {/* ⋮ dropdown — fixed overlay, never clipped */}
       {managingEmp && menuPos && (

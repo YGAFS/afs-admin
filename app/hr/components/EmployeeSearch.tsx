@@ -452,6 +452,11 @@ export default function EmployeeSearch() {
   }
 
   const days = (n: number) => locale === 'ko' ? `${n.toFixed(2)}일` : `${n.toFixed(2)} days`
+  const DAY_HOURS = 8
+  const hoursLabel = (n: number) => {
+    const h = Math.round(n * DAY_HOURS * 10) / 10
+    return locale === 'ko' ? `${h}시간` : `${h}h`
+  }
 
   return (
     <div>
@@ -800,6 +805,7 @@ export default function EmployeeSearch() {
                       <span className={`ml-2 font-bold text-base ${vacStats.remaining <= 1 ? 'text-red-700' : 'text-green-900'}`}>
                         {days(vacStats.remaining)}
                       </span>
+                      <span className="ml-1 text-xs text-gray-400 font-normal">({hoursLabel(vacStats.remaining)})</span>
                     </div>
                   </div>
                   {vacStats.isAccrual && (
@@ -844,6 +850,7 @@ export default function EmployeeSearch() {
                       <span className="ml-2 font-bold text-base text-gray-900">
                         {days(Math.round((5 - paidSick) * 10) / 10)}
                       </span>
+                      <span className="ml-1 text-xs text-gray-400 font-normal">({hoursLabel(Math.round((5 - paidSick) * 10) / 10)})</span>
                     </div>
                   )}
                   {unpaidSick > 0 && (

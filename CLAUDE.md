@@ -69,15 +69,18 @@ Do NOT use bash `cat <<'EOF'` — it causes parser errors in PowerShell.
 | T1–T3 | Unpaid variants | same pattern |
 | B | Holiday (공휴일) | No |
 | O | Overtime (초과근무) | Yes — requires hours |
+| C | Special Leave (특별휴가, company-granted e.g. 위문 휴가) — does NOT deduct from annual leave | No |
 
 **O code**: Added in commit `eec61d1`. Supabase CHECK constraint must be updated via `supabase/add_overtime_leave_code.sql` before OT saves will work.
+
+**C code + multi-status days**: A single day can now hold more than one leave code (e.g. AM Paid Leave + PM WFH) — `leave_entries` uniqueness is per `(employee_id, date, leave_code)` instead of `(employee_id, date)`. Requires `supabase/allow_multi_leave_per_day.sql` and `supabase/add_special_leave_code.sql` to be run manually before these saves will work.
 
 ---
 
 ## Supabase Tables
 
 - **employees** — `id, company_id, name, start_date, end_date`
-- **leave_entries** — `employee_id, date, leave_code, hours` — upserted on cell change
+- **leave_entries** — `employee_id, date, leave_code, hours` — upserted on cell change; unique on `(employee_id, date, leave_code)`, so multiple codes per day are allowed
 
 `company_id` values: `'afs'`, `'tnt'`, `'zfs'`
 
@@ -114,6 +117,7 @@ Thank you.
 - L / L1-L3 → "Paid Leave" / "Paid Leave (AM Half)" etc.
 - S / S1-S3 → "Sick Leave" / "Sick Leave (AM Half)" etc.
 - T / T1-T3 → "Unpaid Leave" / "Unpaid Leave (AM Half)" etc.
+- C → "Special Leave"
 - **W, B, O → excluded from email (not reported)**
 
 ---
@@ -121,4 +125,6 @@ Thank you.
 ## Pending (manual actions required)
 
 - [ ] Run `supabase/add_overtime_leave_code.sql` in Supabase SQL Editor to enable OT saves
+- [ ] Run `supabase/allow_multi_leave_per_day.sql` in Supabase SQL Editor to enable multiple leave codes per day
+- [ ] Run `supabase/add_special_leave_code.sql` in Supabase SQL Editor to enable the 'C' Special Leave code
 - [ ] Add ZFS employee data to Supabase `employees` table

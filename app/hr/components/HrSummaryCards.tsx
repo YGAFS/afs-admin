@@ -29,16 +29,16 @@ export default function HrSummaryCards() {
 
       if (!emps) return
 
-      const entryMap: Record<string, string> = {}
-      for (const e of (todayEntries ?? [])) entryMap[e.employee_id] = e.leave_code
+      const entryMap: Record<string, string[]> = {}
+      for (const e of (todayEntries ?? [])) (entryMap[e.employee_id] ??= []).push(e.leave_code)
 
       let absent = 0, wfh = 0
 
       for (const emp of emps) {
-        const code = entryMap[emp.id]
-        if (!code) continue
-        if (['L','L1','L2','L3','S','S1','S2','S3','T'].includes(code)) absent++
-        if (code === 'W') wfh++
+        const codes = entryMap[emp.id]
+        if (!codes) continue
+        if (codes.some(c => ['L','L1','L2','L3','S','S1','S2','S3','T'].includes(c))) absent++
+        if (codes.includes('W')) wfh++
       }
 
       // High vacation usage: used >= 18 days this year

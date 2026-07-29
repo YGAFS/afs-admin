@@ -269,6 +269,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'grid.code.T3': 'T3 — Unpaid Hourly',
     'grid.code.B':  'B  — Holiday',
     'grid.code.O':  'O  — Overtime (hours)',
+    'grid.code.C':  'C  — Special Leave (no deduction)',
     // Cell dropdown
     'grid.clear_cell':       '✕ Clear',
     'grid.hours_placeholder':'e.g. 2',
@@ -674,6 +675,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'grid.code.T3': 'T3 — Unpaid 시간',
     'grid.code.B':  'B  — 공휴일',
     'grid.code.O':  'O  — 초과근무 (시간)',
+    'grid.code.C':  'C  — 특별휴가 (연차 차감 없음)',
     'grid.clear_cell':        '✕ 비우기',
     'grid.hours_placeholder': '예) 2',
     'grid.hours':             '시간',
