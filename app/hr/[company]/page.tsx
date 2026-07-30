@@ -170,6 +170,8 @@ export default function CompanyAttendancePage() {
   const [sending,        setSending]        = useState(false)
   const [sendResult,     setSendResult]     = useState<'ok' | 'error' | null>(null)
   const [sendError,      setSendError]      = useState('')
+  const [subjectEdit,    setSubjectEdit]    = useState<string | null>(null)
+  const [bodyEdit,       setBodyEdit]       = useState<string | null>(null)
   const now = new Date()
   const [year,           setYear]           = useState(now.getFullYear())
   const [month,          setMonth]          = useState(now.getMonth() + 1)
@@ -214,6 +216,15 @@ export default function CompanyAttendancePage() {
     if (!showTerminated || !companyId) return
     loadTerminated()
   }, [showTerminated, companyId])
+
+  // Regenerate the subject/body draft whenever the selected dates or recipient
+  // change — any manual edits the user made are for the previous selection.
+  useEffect(() => {
+    if (!showEmailModal) return
+    setSubjectEdit(null)
+    setBodyEdit(null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEmailModal, Array.from(emailDates).sort().join(','), toId])
 
   async function loadTerminated() {
     const { data } = await supabase.from('employees')
@@ -348,7 +359,9 @@ export default function CompanyAttendancePage() {
   }
 
   async function sendEmail() {
-    const { subject, body } = buildEmailBody()
+    const auto    = buildEmailBody()
+    const subject = subjectEdit ?? auto.subject
+    const body    = bodyEdit ?? auto.body
     const recipient = emailRecips.find(r => r.id === toId)
     const toEmail   = recipient?.email ?? ''
     const ccEmails  = [...ccIds].map(id => emailRecips.find(r => r.id === id)?.email ?? '').filter(Boolean)
@@ -449,6 +462,8 @@ export default function CompanyAttendancePage() {
               setCcIds(new Set())
               setSendResult(null)
               setSendError('')
+              setSubjectEdit(null)
+              setBodyEdit(null)
               setShowEmailModal(true)
               loadEmailData(year, month)
               getMsal().then(m => {
@@ -669,15 +684,24 @@ export default function CompanyAttendancePage() {
                   </div>
                 )}
 
-                {/* Preview */}
+                {/* Preview — editable before sending */}
                 {emailDates.size > 0 ? (
                   <div className="mb-4">
                     <p className="text-xs font-medium text-gray-500 mb-1.5">
-                      {locale === 'ko' ? '미리보기' : 'Preview'}
+                      {locale === 'ko' ? '제목 (수정 가능)' : 'Subject (editable)'}
                     </p>
-                    <pre className="bg-gray-50 border rounded-lg p-3 text-xs text-gray-700 whitespace-pre-wrap max-h-52 overflow-y-auto font-mono leading-relaxed">
-                      {buildEmailBody().body}
-                    </pre>
+                    <input type="text"
+                      value={subjectEdit ?? buildEmailBody().subject}
+                      onChange={e => setSubjectEdit(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 mb-2" />
+                    <p className="text-xs font-medium text-gray-500 mb-1.5">
+                      {locale === 'ko' ? '메시지 (수정 가능)' : 'Message (editable)'}
+                    </p>
+                    <textarea
+                      value={bodyEdit ?? buildEmailBody().body}
+                      onChange={e => setBodyEdit(e.target.value)}
+                      rows={8}
+                      className="w-full bg-gray-50 border rounded-lg p-3 text-xs text-gray-700 whitespace-pre-wrap font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y" />
                   </div>
                 ) : (
                   <p className="text-xs text-gray-400 text-center mb-4">
