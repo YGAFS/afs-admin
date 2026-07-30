@@ -81,6 +81,7 @@ Do NOT use bash `cat <<'EOF'` — it causes parser errors in PowerShell.
 
 - **employees** — `id, company_id, name, start_date, end_date`
 - **leave_entries** — `employee_id, date, leave_code, hours` — upserted on cell change; unique on `(employee_id, date, leave_code)`, so multiple codes per day are allowed
+- **attendance_flags** — `employee_id, date, flag_type ('late'|'early_leave'), time, reason` — set via right-click on a day cell, independent of leave codes/notes; unique on `(employee_id, date, flag_type)`
 
 `company_id` values: `'afs'`, `'tnt'`, `'zfs'`
 

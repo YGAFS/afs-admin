@@ -321,6 +321,18 @@ const translations: Record<Locale, Record<string, string>> = {
     'grid.note.delete':      '🗑 Delete Note',
     'grid.note.placeholder': 'Enter a note…',
 
+    'grid.flag.late.mark':    '⏰ Mark Late',
+    'grid.flag.late.edit':    '⏰ Edit Late',
+    'grid.flag.late.delete':  '🗑 Delete Late',
+    'grid.flag.early.mark':   '🏃 Mark Early Leave',
+    'grid.flag.early.edit':   '🏃 Edit Early Leave',
+    'grid.flag.early.delete': '🗑 Delete Early Leave',
+    'grid.flag.title_late':   'Mark Late Arrival',
+    'grid.flag.title_early':  'Mark Early Leave',
+    'grid.flag.time_label':   'Time (optional)',
+    'grid.flag.reason_label': 'Reason (optional)',
+    'grid.flag.reason_ph':    'Enter a reason…',
+
     // ── Employee Search ───────────────────────────────────────────────────────
     'emp.search_ph':        'Search name...',
     'emp.all_companies':    'All Companies',
@@ -717,6 +729,18 @@ const translations: Record<Locale, Record<string, string>> = {
     'grid.note.edit':        '✏️ 메모 수정',
     'grid.note.delete':      '🗑 메모 삭제',
     'grid.note.placeholder': '메모를 입력하세요…',
+
+    'grid.flag.late.mark':    '⏰ 지각 표시',
+    'grid.flag.late.edit':    '⏰ 지각 수정',
+    'grid.flag.late.delete':  '🗑 지각 삭제',
+    'grid.flag.early.mark':   '🏃 조퇴 표시',
+    'grid.flag.early.edit':   '🏃 조퇴 수정',
+    'grid.flag.early.delete': '🗑 조퇴 삭제',
+    'grid.flag.title_late':   '지각 기록',
+    'grid.flag.title_early':  '조퇴 기록',
+    'grid.flag.time_label':   '시간 (선택)',
+    'grid.flag.reason_label': '사유 (선택)',
+    'grid.flag.reason_ph':    '사유를 입력하세요…',
 
     // ── Employee Search ───────────────────────────────────────────────────────
     'emp.search_ph':        '이름 검색...',

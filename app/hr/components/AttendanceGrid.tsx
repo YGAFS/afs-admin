@@ -22,6 +22,10 @@ type LeaveCell = { code: LeaveCode; hours?: number }
 type YS        = { vacTaken: number; sick: number; wfh: number; ot: number }
 const DAY_HOURS = 8
 
+type FlagType = 'late' | 'early_leave'
+type AttFlag   = { time?: string; reason?: string }
+type FlagMap   = Record<string, Partial<Record<FlagType, AttFlag>>>
+
 const CODE_COLOR: Record<string, string> = {
   L:  'bg-green-200 text-green-800',  L1: 'bg-green-100 text-green-700',
   L2: 'bg-green-100 text-green-700',  L3: 'bg-green-50  text-green-600',
@@ -160,6 +164,10 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   const [noteCtx,   setNoteCtx]   = useState<{ empId: string; day: number; x: number; y: number } | null>(null)
   const [noteModal, setNoteModal] = useState<{ empId: string; day: number; existing: string } | null>(null)
   const [noteText,  setNoteText]  = useState('')
+  const [flagMap,   setFlagMap]   = useState<FlagMap>({})
+  const [flagModal, setFlagModal] = useState<{ empId: string; day: number; type: FlagType } | null>(null)
+  const [flagTime,   setFlagTime]   = useState('')
+  const [flagReason, setFlagReason] = useState('')
   const [colMenu,   setColMenu]   = useState<{ day: number; top: number; left: number } | null>(null)
   const dropRef    = useRef<HTMLDivElement>(null)
   const menuRef    = useRef<HTMLDivElement>(null)
@@ -208,7 +216,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     if (!emps?.length) return
 
     const ids = emps.map(e => e.id)
-    const [{ data: me }, { data: ye }, { data: prevYe }, { data: prevPrevYe }, { data: notesRaw }] = await Promise.all([
+    const [{ data: me }, { data: ye }, { data: prevYe }, { data: prevPrevYe }, { data: notesRaw }, { data: flagsRaw }] = await Promise.all([
       supabase.from('leave_entries').select('employee_id,date,leave_code,hours')
         .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
       supabase.from('leave_entries').select('employee_id,date,leave_code,hours')
@@ -218,6 +226,8 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       supabase.from('leave_entries').select('employee_id,date,leave_code')
         .in('employee_id', ids).gte('date', `${year-2}-01-01`).lte('date', `${year-2}-12-31`),
       supabase.from('attendance_notes').select('employee_id,date,note')
+        .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
+      supabase.from('attendance_flags').select('employee_id,date,flag_type,time,reason')
         .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
     ])
 
@@ -232,6 +242,13 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     for (const n of (notesRaw ?? []))
       nm[`${n.employee_id}_${parseInt(n.date.split('-')[2], 10)}`] = n.note
     setNoteMap(nm)
+
+    const fm: FlagMap = {}
+    for (const f of (flagsRaw ?? [])) {
+      const key = `${f.employee_id}_${parseInt(f.date.split('-')[2], 10)}`
+      ;(fm[key] ??= {})[f.flag_type as FlagType] = { time: f.time ?? undefined, reason: f.reason ?? undefined }
+    }
+    setFlagMap(fm)
 
     const ysMap: Record<string, YS> = {}
     for (const emp of emps) ysMap[emp.id] = { vacTaken: 0, sick: 0, wfh: 0, ot: 0 }
@@ -305,6 +322,30 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       .upsert({ employee_id: empId, date: dateStr, note }, { onConflict: 'employee_id,date' })
     setNoteMap(p => ({ ...p, [key]: note }))
     setNoteModal(null)
+  }
+
+  async function saveFlag(empId: string, day: number, type: FlagType, time: string, reason: string) {
+    const dateStr = `${year}-${pad(month)}-${pad(day)}`
+    const key = `${empId}_${day}`
+    const { error } = await supabase.from('attendance_flags')
+      .upsert({ employee_id: empId, date: dateStr, flag_type: type, time: time || null, reason: reason.trim() || null },
+        { onConflict: 'employee_id,date,flag_type' })
+    if (error) { alert(`저장 실패: ${error.message}`); return }
+    setFlagMap(p => ({ ...p, [key]: { ...(p[key] ?? {}), [type]: { time: time || undefined, reason: reason.trim() || undefined } } }))
+    setFlagModal(null)
+  }
+
+  async function deleteFlag(empId: string, day: number, type: FlagType) {
+    const dateStr = `${year}-${pad(month)}-${pad(day)}`
+    const key = `${empId}_${day}`
+    await supabase.from('attendance_flags').delete()
+      .eq('employee_id', empId).eq('date', dateStr).eq('flag_type', type)
+    setFlagMap(p => {
+      const entry = { ...(p[key] ?? {}) }
+      delete entry[type]
+      return { ...p, [key]: entry }
+    })
+    setNoteCtx(null)
   }
 
   async function setColumnHoliday(day: number) {
@@ -524,6 +565,14 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
 
                         const noteKey = `${emp.id}_${d}`
                         const cellNote = noteMap[noteKey]
+                        const cellFlags = flagMap[noteKey]
+                        const lateFlag  = cellFlags?.late
+                        const earlyFlag = cellFlags?.early_leave
+                        const tooltipLines = [
+                          cellNote,
+                          lateFlag  && `${t('grid.flag.late.mark', locale).replace('⏰ ', '')}${lateFlag.time ? ` ${lateFlag.time}` : ''}${lateFlag.reason ? ` - ${lateFlag.reason}` : ''}`,
+                          earlyFlag && `${t('grid.flag.early.mark', locale).replace('🏃 ', '')}${earlyFlag.time ? ` ${earlyFlag.time}` : ''}${earlyFlag.reason ? ` - ${earlyFlag.reason}` : ''}`,
+                        ].filter(Boolean) as string[]
                         return (
                           <td key={d}
                             className={`border border-gray-300 w-8 h-7 text-center relative select-none group
@@ -543,18 +592,26 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                               setEditing(null)
                               setNoteCtx({ empId: emp.id, day: d, x: e.clientX, y: e.clientY })
                             }}>
-                            {/* note tooltip */}
-                            {cellNote && (
+                            {/* note/flag tooltip */}
+                            {tooltipLines.length > 0 && (
                               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-50
                                 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap
                                 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity
-                                max-w-48 overflow-hidden text-ellipsis shadow-lg">
-                                {cellNote}
+                                max-w-48 overflow-hidden text-ellipsis shadow-lg text-left">
+                                {tooltipLines.map((line, i) => <div key={i}>{line}</div>)}
                               </div>
                             )}
                             {/* note dot indicator */}
                             {cellNote && !blocked && (
                               <span className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-amber-400" />
+                            )}
+                            {/* late-arrival indicator */}
+                            {lateFlag && !blocked && (
+                              <span className="absolute top-0.5 left-0.5 w-1 h-1 rounded-full bg-red-500" />
+                            )}
+                            {/* early-leave indicator */}
+                            {earlyFlag && !blocked && (
+                              <span className="absolute bottom-0.5 left-0.5 w-1 h-1 rounded-full bg-purple-500" />
                             )}
                             {blocked ? (
                               <span className="text-gray-300 text-xs">—</span>
@@ -1001,42 +1058,73 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
         )
       })()}
 
-      {/* Right-click note context menu */}
-      {noteCtx && (
-        <div ref={noteCtxRef}
-          style={{ position: 'fixed', top: noteCtx.y, left: noteCtx.x, zIndex: 9999 }}
-          className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-36">
-          {noteMap[`${noteCtx.empId}_${noteCtx.day}`] ? (
-            <>
+      {/* Right-click note/flag context menu */}
+      {noteCtx && (() => {
+        const flags = flagMap[`${noteCtx.empId}_${noteCtx.day}`]
+        const openFlag = (type: FlagType) => {
+          const existing = flags?.[type]
+          setFlagTime(existing?.time ?? '')
+          setFlagReason(existing?.reason ?? '')
+          setFlagModal({ empId: noteCtx.empId, day: noteCtx.day, type })
+          setNoteCtx(null)
+        }
+        return (
+          <div ref={noteCtxRef}
+            style={{ position: 'fixed', top: noteCtx.y, left: noteCtx.x, zIndex: 9999 }}
+            className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-40">
+            <button onClick={() => openFlag('late')}
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">
+              {flags?.late ? t('grid.flag.late.edit', locale) : t('grid.flag.late.mark', locale)}
+            </button>
+            {flags?.late && (
+              <button onClick={() => deleteFlag(noteCtx.empId, noteCtx.day, 'late')}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-500">
+                {t('grid.flag.late.delete', locale)}
+              </button>
+            )}
+            <button onClick={() => openFlag('early_leave')}
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">
+              {flags?.early_leave ? t('grid.flag.early.edit', locale) : t('grid.flag.early.mark', locale)}
+            </button>
+            {flags?.early_leave && (
+              <button onClick={() => deleteFlag(noteCtx.empId, noteCtx.day, 'early_leave')}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-500">
+                {t('grid.flag.early.delete', locale)}
+              </button>
+            )}
+            <div className="border-t border-gray-100 my-1" />
+            {noteMap[`${noteCtx.empId}_${noteCtx.day}`] ? (
+              <>
+                <button
+                  onClick={() => {
+                    const existing = noteMap[`${noteCtx.empId}_${noteCtx.day}`]
+                    setNoteText(existing)
+                    setNoteModal({ empId: noteCtx.empId, day: noteCtx.day, existing })
+                    setNoteCtx(null)
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">
+                  {t('grid.note.edit', locale)}
+                </button>
+                <button
+                  onClick={() => deleteNote(noteCtx.empId, noteCtx.day)}
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-500">
+                  {t('grid.note.delete', locale)}
+                </button>
+              </>
+            ) : (
               <button
                 onClick={() => {
-                  const existing = noteMap[`${noteCtx.empId}_${noteCtx.day}`]
-                  setNoteText(existing)
-                  setNoteModal({ empId: noteCtx.empId, day: noteCtx.day, existing })
+                  setNoteText('')
+                  setNoteModal({ empId: noteCtx.empId, day: noteCtx.day, existing: '' })
                   setNoteCtx(null)
                 }}
                 className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">
-                {t('grid.note.edit', locale)}
+                {t('grid.note.add', locale)}
               </button>
-              <button
-                onClick={() => deleteNote(noteCtx.empId, noteCtx.day)}
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-500">
-                {t('grid.note.delete', locale)}
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => {
-                setNoteText('')
-                setNoteModal({ empId: noteCtx.empId, day: noteCtx.day, existing: '' })
-                setNoteCtx(null)
-              }}
-              className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">
-              {t('grid.note.add', locale)}
-            </button>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )
+      })()}
 
       {/* Note edit modal */}
       {noteModal && (
@@ -1065,6 +1153,48 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                 {t('common.save', locale)}
               </button>
               <button onClick={() => setNoteModal(null)}
+                className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                {t('common.cancel', locale)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Late / early-leave flag modal */}
+      {flagModal && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
+          onClick={e => { if (e.target === e.currentTarget) setFlagModal(null) }}>
+          <div className="bg-white rounded-xl p-5 w-80 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-gray-900 mb-1 text-sm">
+              {flagModal.type === 'late' ? t('grid.flag.title_late', locale) : t('grid.flag.title_early', locale)}
+            </h3>
+            <p className="text-xs text-gray-400 mb-3">
+              {employees.find(e => e.id === flagModal.empId)?.name} · {year}-{pad(month)}-{pad(flagModal.day)}
+            </p>
+            <label className="text-xs text-gray-500 mb-1 block">{t('grid.flag.time_label', locale)}</label>
+            <input
+              type="time"
+              value={flagTime}
+              onChange={e => setFlagTime(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mb-3"
+            />
+            <label className="text-xs text-gray-500 mb-1 block">{t('grid.flag.reason_label', locale)}</label>
+            <textarea
+              rows={3}
+              value={flagReason}
+              onChange={e => setFlagReason(e.target.value)}
+              placeholder={t('grid.flag.reason_ph', locale)}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none mb-3"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => saveFlag(flagModal.empId, flagModal.day, flagModal.type, flagTime, flagReason)}
+                disabled={!flagTime && !flagReason.trim()}
+                className="flex-1 bg-blue-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium">
+                {t('common.save', locale)}
+              </button>
+              <button onClick={() => setFlagModal(null)}
                 className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
                 {t('common.cancel', locale)}
               </button>
