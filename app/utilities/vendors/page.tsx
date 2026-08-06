@@ -21,6 +21,7 @@ type Role    = 'admin' | 'ap'
 interface Location {
   id: string; company_id: Company; region: string | null
   city: string; name: string; address: string | null
+  sort_order?: number | null
 }
 
 interface Contact {
@@ -82,6 +83,10 @@ function fmtCAD(n: number) {
 function fmtDate(d: string | null) {
   if (!d) return '—'
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function sortLocations(arr: Location[]) {
+  return [...arr].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
 }
 
 // ── Copy hook ─────────────────────────────────────────────────────────────────
@@ -547,13 +552,20 @@ function VendorDetailPanel({
 function VendorModal({
   initial, locations, onClose, onSave,
 }: {
-  initial: Partial<Omit<Vendor, 'id' | 'created_at' | 'utility_vendor_contacts' | 'utility_service_accounts' | 'utility_document_links'>>
+  initial: Partial<Vendor>
   locations: Location[]
   onClose: () => void; onSave: () => void
 }) {
   const [form, setForm] = useState({ ...emptyVendor, ...initial })
   const [saving, setSaving] = useState(false)
   const isEdit = !!initial.company_id && (initial as any).id
+  const vendorId = (initial as any).id as string | undefined
+
+  const [tab, setTab] = useState<'details' | 'accounts'>('details')
+  const [accounts, setAccounts] = useState<ServiceAccount[]>(initial.utility_service_accounts ?? [])
+  const [addingAccount, setAddingAccount] = useState(false)
+  const [acctForm, setAcctForm] = useState({ account_number: '', location_id: '', service_label: '' })
+  const [savingAcct, setSavingAcct] = useState(false)
 
   const companyLocations = locations.filter(l => l.company_id === form.company_id)
 
@@ -563,6 +575,26 @@ function VendorModal({
       company_id: c,
       location_id: locations.some(l => l.id === f.location_id && l.company_id === c) ? f.location_id : null,
     }))
+  }
+
+  async function saveAccount() {
+    if (!acctForm.account_number.trim() || !vendorId) return
+    setSavingAcct(true)
+    const { data } = await supabase.from('utility_service_accounts').insert({
+      vendor_id: vendorId,
+      account_number: acctForm.account_number.trim(),
+      location_id: acctForm.location_id || null,
+      service_label: acctForm.service_label || null,
+    }).select('*, utility_locations(*)').single()
+    if (data) setAccounts(a => [...a, data as ServiceAccount])
+    setSavingAcct(false)
+    setAddingAccount(false)
+    setAcctForm({ account_number: '', location_id: '', service_label: '' })
+  }
+
+  async function deleteAccount(id: string) {
+    await supabase.from('utility_service_accounts').delete().eq('id', id)
+    setAccounts(a => a.filter(x => x.id !== id))
   }
 
   async function save() {
@@ -591,6 +623,20 @@ function VendorModal({
           <h3 className="text-lg font-semibold">{(initial as any).id ? 'Edit Vendor' : 'Add Vendor'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
         </div>
+
+        {/* Tabs */}
+        <div className="px-6 pt-3 flex gap-1 border-b border-gray-100">
+          <button onClick={() => setTab('details')}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === 'details' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'
+            }`}>Details</button>
+          <button onClick={() => setTab('accounts')}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === 'accounts' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'
+            }`}>Accounts{accounts.length > 0 ? ` (${accounts.length})` : ''}</button>
+        </div>
+
+        {tab === 'details' && (
         <div className="p-6 space-y-4">
           {/* Company */}
           <div>
@@ -668,6 +714,78 @@ function VendorModal({
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none" />
           </div>
         </div>
+        )}
+
+        {tab === 'accounts' && (
+        <div className="p-6 space-y-3">
+          {!vendorId ? (
+            <p className="text-xs text-gray-400">Save the vendor first, then add accounts here.</p>
+          ) : (
+            <>
+              {accounts.length === 0 && !addingAccount && (
+                <p className="text-xs text-gray-400">No accounts yet.</p>
+              )}
+              <div className="space-y-2">
+                {accounts.map(a => {
+                  const loc = a.location_id ? companyLocations.find(l => l.id === a.location_id) : null
+                  return (
+                    <div key={a.id} className="group flex items-start justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono text-sm font-semibold text-gray-800">{a.account_number}</span>
+                          {a.service_label && <span className="text-xs text-gray-400">· {a.service_label}</span>}
+                        </div>
+                        {loc && <span className="text-xs text-gray-500">📍 {loc.name}</span>}
+                      </div>
+                      <button onClick={() => deleteAccount(a.id)}
+                        className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs transition-opacity shrink-0 mt-0.5">
+                        ✕
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {addingAccount ? (
+                <div className="p-3 bg-gray-50 rounded-lg space-y-2">
+                  <input type="text" placeholder="Account Number *" value={acctForm.account_number}
+                    onChange={e => setAcctForm(f => ({ ...f, account_number: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  <input type="text" placeholder="Label (optional)" value={acctForm.service_label}
+                    onChange={e => setAcctForm(f => ({ ...f, service_label: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  {companyLocations.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      <button onClick={() => setAcctForm(f => ({ ...f, location_id: '' }))}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                          !acctForm.location_id ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-600 hover:bg-white'
+                        }`}>None</button>
+                      {companyLocations.map(l => (
+                        <button key={l.id} onClick={() => setAcctForm(f => ({ ...f, location_id: l.id }))}
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                            acctForm.location_id === l.id ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-600 hover:bg-white'
+                          }`}>{l.name}</button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={() => setAddingAccount(false)}
+                      className="flex-1 py-1.5 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+                    <button onClick={saveAccount} disabled={savingAcct || !acctForm.account_number.trim()}
+                      className="flex-1 py-1.5 text-xs text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors">
+                      {savingAcct ? 'Saving…' : 'Add Account'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setAddingAccount(true)}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add Account</button>
+              )}
+            </>
+          )}
+        </div>
+        )}
+
         <div className="px-6 pb-6 flex gap-3">
           <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
           <button onClick={save} disabled={saving || !form.name.trim()}
@@ -713,7 +831,7 @@ function VendorsContent() {
       supabase.from('utility_bills').select('provider, amount, currency, due_date, is_paid'),
     ])
     setVendors((v as Vendor[]) ?? [])
-    setLocations((l as Location[]) ?? [])
+    setLocations(sortLocations((l as Location[]) ?? []))
     setBills((b as Bill[]) ?? [])
     setLoading(false)
   }, [])

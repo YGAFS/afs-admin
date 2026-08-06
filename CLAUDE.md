@@ -129,4 +129,5 @@ Thank you.
 - [ ] Run `supabase/allow_multi_leave_per_day.sql` in Supabase SQL Editor to enable multiple leave codes per day
 - [ ] Run `supabase/add_special_leave_code.sql` in Supabase SQL Editor to enable the 'C' Special Leave code
 - [ ] Run `supabase/add_vendor_location.sql` in Supabase SQL Editor to enable setting a Location on Vendors (`app/utilities/vendors/page.tsx`)
+- [ ] Run `supabase/add_location_sort_order.sql` in Supabase SQL Editor to enable custom (contract-order) sorting of Locations, e.g. TNT: Cambridge, Biscayne, Pickering
 - [ ] Add ZFS employee data to Supabase `employees` table
