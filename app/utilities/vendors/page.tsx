@@ -57,6 +57,7 @@ interface Vendor {
 interface Bill {
   provider: string | null; amount: number | null
   currency: string; due_date: string | null; is_paid: boolean
+  issue_date: string | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -87,6 +88,18 @@ function fmtDate(d: string | null) {
 
 function sortLocations(arr: Location[]) {
   return [...arr].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
+}
+
+function ordinal(n: number) {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
+}
+
+function avgDayOfMonth(dates: (string | null)[]) {
+  const days = dates.filter((d): d is string => !!d).map(d => new Date(d + 'T00:00:00').getDate())
+  if (!days.length) return null
+  return Math.round(days.reduce((s, d) => s + d, 0) / days.length)
 }
 
 // ── Copy hook ─────────────────────────────────────────────────────────────────
@@ -151,6 +164,8 @@ function VendorDetailPanel({
   const nextBill = vendorBills
     .filter(b => !b.is_paid && b.due_date)
     .sort((a, b) => a.due_date!.localeCompare(b.due_date!))[0] ?? null
+  const avgIssueDay = avgDayOfMonth(vendorBills.map(b => b.issue_date))
+  const avgDueDay = avgDayOfMonth(vendorBills.map(b => b.due_date))
 
   // Service accounts inline add
   const [addingAccount, setAddingAccount] = useState(false)
@@ -271,6 +286,13 @@ function VendorDetailPanel({
             <p className="text-xs text-gray-400 mt-0.5">
               Avg {fmtCAD(avgAmt)}/mo · {vendorBills.length} bills
               {nextBill?.due_date ? ` · Next: ${fmtDate(nextBill.due_date)}` : ''}
+            </p>
+          )}
+          {(avgIssueDay !== null || avgDueDay !== null) && (
+            <p className="text-xs text-gray-400 mt-0.5">
+              {avgIssueDay !== null && `Avg Invoice Date: ${ordinal(avgIssueDay)}`}
+              {avgIssueDay !== null && avgDueDay !== null && ' · '}
+              {avgDueDay !== null && `Avg Due Date: ${ordinal(avgDueDay)}`}
             </p>
           )}
         </div>
@@ -828,7 +850,7 @@ function VendorsContent() {
         utility_document_links(*)
       `).order('name'),
       supabase.from('utility_locations').select('*').order('company_id').order('name'),
-      supabase.from('utility_bills').select('provider, amount, currency, due_date, is_paid'),
+      supabase.from('utility_bills').select('provider, amount, currency, due_date, is_paid, issue_date'),
     ])
     setVendors((v as Vendor[]) ?? [])
     setLocations(sortLocations((l as Location[]) ?? []))
