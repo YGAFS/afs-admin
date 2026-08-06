@@ -20,8 +20,10 @@ function getSupabase() {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-type AuthCtx = { user: User | null; loading: boolean }
-const AuthContext = createContext<AuthCtx>({ user: null, loading: true })
+// allowedSections: null = full access to every section. Otherwise, only these
+// top-level sidebar sections (e.g. 'utilities', 'hr') are visible/reachable.
+type AuthCtx = { user: User | null; loading: boolean; allowedSections: string[] | null }
+const AuthContext = createContext<AuthCtx>({ user: null, loading: true, allowedSections: null })
 export const useAuth = () => useContext(AuthContext)
 
 // ── Locale ────────────────────────────────────────────────────────────────────
@@ -35,6 +37,8 @@ export const useLocale = () => useContext(LocaleContext)
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [user,    setUser]   = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [accessLoading, setAccessLoading] = useState(true)
+  const [allowedSections, setAllowedSections] = useState<string[] | null>(null)
   const [locale,  setLocaleState] = useState<Locale>('en')
 
   useEffect(() => {
@@ -60,6 +64,24 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
+  useEffect(() => {
+    if (!user?.email) {
+      setAllowedSections(null)
+      setAccessLoading(false)
+      return
+    }
+    setAccessLoading(true)
+    getSupabase()
+      .from('user_access')
+      .select('allowed_sections')
+      .eq('email', user.email)
+      .maybeSingle()
+      .then(({ data }) => {
+        setAllowedSections((data?.allowed_sections as string[] | null) ?? null)
+        setAccessLoading(false)
+      })
+  }, [user])
+
   async function setLocale(l: Locale) {
     setLocaleState(l)
     if (user) {
@@ -68,7 +90,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading }}>
+    <AuthContext.Provider value={{ user, loading: loading || accessLoading, allowedSections }}>
       <LocaleContext.Provider value={{ locale, setLocale }}>
         {children}
       </LocaleContext.Provider>

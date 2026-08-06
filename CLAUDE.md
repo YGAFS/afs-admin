@@ -87,6 +87,18 @@ Do NOT use bash `cat <<'EOF'` — it causes parser errors in PowerShell.
 
 ---
 
+## Per-User Section Access (`user_access` table)
+
+Restricts which top-level sidebar sections (`/hr`, `/utilities`, `/licenses`, `/assets`, `/supplies`, `/admin`) a logged-in user can see and reach.
+
+- Table: `user_access(email, allowed_sections text[])`. A user with **no row** (or `allowed_sections = null`) has **full access** — this is the default, so existing users are unaffected.
+- Enforced client-side: `app/providers.tsx` fetches the row for the logged-in user's email on login and exposes `allowedSections` via `useAuth()`. `app/components/Sidebar.tsx` filters the nav list; `app/components/ConditionalLayout.tsx` redirects (and blanks the page while redirecting) if the current route's top-level segment isn't in `allowedSections`.
+- **This is client-side only** — there is no `middleware.ts` and Supabase RLS on most tables is currently wide-open (`using (true)`) to any authenticated user. A restricted user cannot *see* other sections in the UI, but if the underlying tables' RLS policies allow it, direct API calls could still read/write that data. Treat this as UI-level restriction for trusted internal staff, not a hard security boundary — tighten RLS per-table if that's needed later.
+- To restrict a user: insert/update a row in `user_access`, e.g. `allowed_sections = '{utilities}'` for Utility Dashboard only.
+- **Creating the actual login account (Supabase Auth user + password) must be done manually** in the Supabase Dashboard → Authentication → Users — Claude will not create accounts or set passwords.
+
+---
+
 ## Email Report Feature (`app/hr/[company]/page.tsx`)
 
 ### How it works
@@ -130,4 +142,6 @@ Thank you.
 - [ ] Run `supabase/add_special_leave_code.sql` in Supabase SQL Editor to enable the 'C' Special Leave code
 - [ ] Run `supabase/add_vendor_location.sql` in Supabase SQL Editor to enable setting a Location on Vendors (`app/utilities/vendors/page.tsx`)
 - [ ] Run `supabase/add_location_sort_order.sql` in Supabase SQL Editor to enable custom (contract-order) sorting of Locations, e.g. TNT: Cambridge, Biscayne, Pickering
+- [ ] Run `supabase/add_user_access.sql` in Supabase SQL Editor to enable per-user section restriction (creates `user_access` table, also inserts the YG → Utility-only row)
+- [ ] Create the Supabase Auth login (email + password) for `yungyeong.j@afstransco.com` manually in Supabase Dashboard → Authentication → Users
 - [ ] Add ZFS employee data to Supabase `employees` table

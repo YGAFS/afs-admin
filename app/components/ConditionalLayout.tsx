@@ -6,16 +6,21 @@ import Sidebar from './Sidebar'
 import { useAuth } from '../providers'
 
 export default function ConditionalLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
+  const { user, loading, allowedSections } = useAuth()
   const pathname = usePathname()
   const router   = useRouter()
   const isLogin  = pathname === '/login' || pathname.startsWith('/auth/')
+  const section  = pathname.split('/')[1] ?? ''
 
   useEffect(() => {
     if (!loading && !user && !isLogin) {
       router.replace('/login')
+      return
     }
-  }, [user, loading, isLogin, router])
+    if (!loading && user && !isLogin && allowedSections && !allowedSections.includes(section)) {
+      router.replace(`/${allowedSections[0]}`)
+    }
+  }, [user, loading, isLogin, allowedSections, section, router])
 
   // Login page — no sidebar, full screen
   if (isLogin) {
@@ -33,6 +38,9 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
 
   // Not authenticated → blank while redirect fires
   if (!user) return null
+
+  // Section not allowed for this user → blank while redirect fires
+  if (allowedSections && !allowedSections.includes(section)) return null
 
   // Authenticated — normal layout
   return (

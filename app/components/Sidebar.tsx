@@ -255,10 +255,13 @@ export default function Sidebar() {
   const [open, setOpen] = useState(true)
   const path            = usePathname()
   const router          = useRouter()
-  const { user }        = useAuth()
+  const { user, allowedSections } = useAuth()
   const { locale }      = useLocale()
 
   const isUtility = path.startsWith('/utilities')
+  const visibleNav = allowedSections
+    ? NAV.filter(n => allowedSections.includes(n.href.slice(1)))
+    : NAV
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -291,7 +294,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex flex-col gap-1 py-3 px-2 flex-1">
-        {NAV.map(({ href, key, icon }) => {
+        {visibleNav.map(({ href, key, icon }) => {
           const active = path === href || path.startsWith(href + '/')
           return (
             <Link key={href} href={href}
