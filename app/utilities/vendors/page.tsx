@@ -46,6 +46,7 @@ interface Vendor {
   contract_start: string | null; contract_end: string | null
   onedrive_url: string | null; website_url: string | null
   billing_portal_url: string | null; notes: string | null
+  location_id: string | null
   created_at: string
   utility_vendor_contacts: Contact[]
   utility_service_accounts: ServiceAccount[]
@@ -122,7 +123,7 @@ const emptyVendor: Omit<Vendor,
 > = {
   company_id: 'afs', name: '', service_type: '', contact_name: '', contact_email: '',
   contact_phone: '', contract_start: '', contract_end: '', onedrive_url: '',
-  website_url: '', billing_portal_url: '', notes: '',
+  website_url: '', billing_portal_url: '', notes: '', location_id: null,
 }
 
 // ── VendorDetailPanel ─────────────────────────────────────────────────────────
@@ -252,6 +253,11 @@ function VendorDetailPanel({
             {vendor.service_type && (
               <span className="px-2 py-0.5 rounded-full text-xs bg-sky-100 text-sky-700">
                 {vendor.service_type}
+              </span>
+            )}
+            {vendor.location_id && locationMap.get(vendor.location_id) && (
+              <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
+                📍 {locationMap.get(vendor.location_id)!.name}
               </span>
             )}
           </div>
@@ -539,14 +545,25 @@ function VendorDetailPanel({
 // ── Vendor Form Modal ─────────────────────────────────────────────────────────
 
 function VendorModal({
-  initial, onClose, onSave,
+  initial, locations, onClose, onSave,
 }: {
   initial: Partial<Omit<Vendor, 'id' | 'created_at' | 'utility_vendor_contacts' | 'utility_service_accounts' | 'utility_document_links'>>
+  locations: Location[]
   onClose: () => void; onSave: () => void
 }) {
   const [form, setForm] = useState({ ...emptyVendor, ...initial })
   const [saving, setSaving] = useState(false)
   const isEdit = !!initial.company_id && (initial as any).id
+
+  const companyLocations = locations.filter(l => l.company_id === form.company_id)
+
+  function selectCompany(c: Company) {
+    setForm(f => ({
+      ...f,
+      company_id: c,
+      location_id: locations.some(l => l.id === f.location_id && l.company_id === c) ? f.location_id : null,
+    }))
+  }
 
   async function save() {
     if (!form.name.trim()) return
@@ -556,6 +573,7 @@ function VendorModal({
       service_type: form.service_type || null, notes: form.notes || null,
       contract_start: form.contract_start || null, contract_end: form.contract_end || null,
       website_url: form.website_url || null, billing_portal_url: form.billing_portal_url || null,
+      location_id: form.location_id || null,
     }
     if ((initial as any).id) {
       await supabase.from('utility_vendors').update(payload).eq('id', (initial as any).id)
@@ -579,12 +597,32 @@ function VendorModal({
             <label className="block text-xs font-semibold text-gray-500 mb-1">Company *</label>
             <div className="flex gap-2">
               {(['afs', 'tnt', 'zfs'] as Company[]).map(c => (
-                <button key={c} onClick={() => setForm(f => ({ ...f, company_id: c }))}
+                <button key={c} onClick={() => selectCompany(c)}
                   className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                     form.company_id === c ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                   }`}>{c.toUpperCase()}</button>
               ))}
             </div>
+          </div>
+          {/* Location */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 mb-1">Location</label>
+            {companyLocations.length === 0 ? (
+              <p className="text-xs text-gray-400">No locations set up for this company yet.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => setForm(f => ({ ...f, location_id: null }))}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                    !form.location_id ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}>None</button>
+                {companyLocations.map(l => (
+                  <button key={l.id} onClick={() => setForm(f => ({ ...f, location_id: l.id }))}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                      form.location_id === l.id ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}>{l.name}</button>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1">Vendor Name *</label>
@@ -698,7 +736,8 @@ function VendorsContent() {
   const filtered = useMemo(() => vendors.filter(v => {
     if (coFilter !== 'all' && v.company_id !== coFilter) return false
     if (locFilter !== 'all') {
-      const hasLoc = v.utility_service_accounts.some(a => a.location_id === locFilter)
+      const hasLoc = v.location_id === locFilter ||
+        v.utility_service_accounts.some(a => a.location_id === locFilter)
       if (!hasLoc) return false
     }
     if (search) {
@@ -889,6 +928,7 @@ function VendorsContent() {
       {showModal && (
         <VendorModal
           initial={editVendor ?? {}}
+          locations={locations}
           onClose={() => { setShowModal(false); setEditVendor(null) }}
           onSave={() => { setShowModal(false); setEditVendor(null); load() }}
         />

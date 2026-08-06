@@ -128,4 +128,5 @@ Thank you.
 - [ ] Run `supabase/add_overtime_leave_code.sql` in Supabase SQL Editor to enable OT saves
 - [ ] Run `supabase/allow_multi_leave_per_day.sql` in Supabase SQL Editor to enable multiple leave codes per day
 - [ ] Run `supabase/add_special_leave_code.sql` in Supabase SQL Editor to enable the 'C' Special Leave code
+- [ ] Run `supabase/add_vendor_location.sql` in Supabase SQL Editor to enable setting a Location on Vendors (`app/utilities/vendors/page.tsx`)
 - [ ] Add ZFS employee data to Supabase `employees` table
