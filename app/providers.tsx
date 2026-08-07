@@ -64,6 +64,13 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Supabase re-emits onAuthStateChange (TOKEN_REFRESHED, USER_UPDATED, tab refocus, etc.)
+  // with a *new* user object for the same logical account. Keying this effect on that
+  // object reference re-ran the access lookup — and flipped `loading` true/false again —
+  // on every one of those events, which is what caused the repeated flicker even after
+  // the initial-load race was fixed. Keying on the email (a stable primitive) instead
+  // means it only re-runs when the signed-in account actually changes.
+  const userEmail = user?.email ?? null
   useEffect(() => {
     // Wait until the initial auth check has actually resolved — otherwise this runs
     // once with the placeholder `user === null` before getUser() settles, briefly
@@ -71,7 +78,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     // flipping back to the loading state once the real user (and their section
     // restrictions) come in.
     if (loading) return
-    if (!user?.email) {
+    if (!userEmail) {
       setAllowedSections(null)
       setAccessLoading(false)
       return
@@ -80,13 +87,13 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     getSupabase()
       .from('user_access')
       .select('allowed_sections')
-      .eq('email', user.email)
+      .eq('email', userEmail)
       .maybeSingle()
       .then(({ data }) => {
         setAllowedSections((data?.allowed_sections as string[] | null) ?? null)
         setAccessLoading(false)
       })
-  }, [user, loading])
+  }, [userEmail, loading])
 
   async function setLocale(l: Locale) {
     setLocaleState(l)
