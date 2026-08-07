@@ -431,7 +431,6 @@ export default function UtilityPage() {
       {mainTab === 'dashboard' && (
         <DashboardTab
           bills={bills}
-          stats={stats}
           overdueBills={overdueBills}
           currentBills={currentBills}
           coFilter={coFilter}
@@ -450,7 +449,6 @@ export default function UtilityPage() {
           noteEdit={noteEdit}
           setNoteEdit={setNoteEdit}
           onSaveNote={saveNote}
-          onViewAllFiltered={(sf) => { setStatusFilter(sf); setMainTab('all') }}
         />
       )}
 
@@ -1249,16 +1247,14 @@ function BillExpandPanel({
 }
 
 function DashboardTab({
-  bills, stats, overdueBills, currentBills,
+  bills, overdueBills, currentBills,
   coFilter, setCoFilter, searchTerm, setSearchTerm,
   expandedVendor, setExpandedVendor,
   role, onUpdateStatus, onCarryForward, onEdit,
   deleteConfirm, setDeleteConfirm, onDelete,
   noteEdit, setNoteEdit, onSaveNote,
-  onViewAllFiltered,
 }: {
   bills: Bill[]
-  stats: { total: number; outstanding: number; overdue: number; paid: number; carriedForward: number }
   overdueBills: Bill[]
   currentBills: Bill[]
   coFilter: Company | 'all'
@@ -1277,13 +1273,12 @@ function DashboardTab({
   noteEdit: { id: string; value: string } | null
   setNoteEdit: (v: { id: string; value: string } | null) => void
   onSaveNote: (id: string, notes: string) => void
-  onViewAllFiltered: (sf: StatusFilter) => void
 }) {
   const [expandedBillId, setExpandedBillId] = useState<string | null>(null)
   function toggleBill(id: string) {
     setExpandedBillId(prev => prev === id ? null : id)
   }
-  // Scope the current-bills list + vendor history to the selected company + search term
+  // Scope the vendor history to the selected company + search term
   const scoped = bills.filter(b => {
     if (coFilter !== 'all' && b.company_id !== coFilter) return false
     if (searchTerm) {
@@ -1293,11 +1288,6 @@ function DashboardTab({
     }
     return true
   })
-
-  const scopedIds = new Set(scoped.map(b => b.id))
-  const scopedCurrent = currentBills
-    .filter(b => scopedIds.has(b.id))
-    .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
 
   // Group scoped bills by vendor (provider, falling back to utility name)
   const vendors = useMemo(() => {
@@ -1317,28 +1307,81 @@ function DashboardTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coFilter, searchTerm, bills])
 
+  const sortedCurrent = [...currentBills].sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+  const sortedOverdue = [...overdueBills].sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+
+  function renderBillRow(b: Bill, amountClassName: string, dateClassName: string) {
+    const isOpen = expandedBillId === b.id
+    return (
+      <div key={b.id} className="py-2 first:pt-0 last:pb-0">
+        <div
+          onClick={() => toggleBill(b.id)}
+          className="flex items-center justify-between gap-2 cursor-pointer"
+        >
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className={`text-xs transition-transform inline-block ${isOpen ? 'rotate-90' : ''}`}>▸</span>
+            <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+            <span className="text-sm font-medium text-gray-800 truncate">{b.utility_name}</span>
+            {b.provider && <span className="text-sm text-gray-400 hidden sm:inline">· {b.provider}</span>}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className={`text-sm font-medium ${amountClassName}`}>{fmtAmt(b)}</span>
+            <span className={`text-sm ${dateClassName}`}>{dueDateLabel(b)}</span>
+            <button
+              onClick={e => { e.stopPropagation(); onUpdateStatus(b, 'paid') }}
+              className="text-xs px-2 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+              title="Mark paid"
+            >
+              ✓ Paid
+            </button>
+          </div>
+        </div>
+        {isOpen && (
+          <BillExpandPanel
+            bill={b}
+            role={role}
+            onUpdateStatus={onUpdateStatus}
+            onCarryForward={onCarryForward}
+            onEdit={onEdit}
+            deleteConfirm={deleteConfirm}
+            setDeleteConfirm={setDeleteConfirm}
+            onDelete={onDelete}
+            noteEdit={noteEdit}
+            setNoteEdit={setNoteEdit}
+            onSaveNote={onSaveNote}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div>
-      {/* Total / Current / Overdue summary */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
-        <button
-          onClick={() => onViewAllFiltered('all')}
-          className="bg-white rounded-xl border border-gray-200 px-4 py-3 text-left hover:shadow-sm transition-shadow"
-        >
-          <div className="text-2xl font-bold text-gray-700">{stats.total}</div>
-          <div className="text-sm text-gray-500 mt-0.5">Total</div>
-        </button>
-        <div className="bg-amber-50 rounded-xl border border-gray-200 px-4 py-3 text-left">
-          <div className="text-2xl font-bold text-amber-600">{currentBills.length}</div>
-          <div className="text-sm text-gray-500 mt-0.5">Current (this + next month)</div>
-        </div>
-        <button
-          onClick={() => onViewAllFiltered('overdue')}
-          className="bg-red-50 rounded-xl border border-gray-200 px-4 py-3 text-left hover:shadow-sm transition-shadow"
-        >
-          <div className="text-2xl font-bold text-red-600">{overdueBills.length}</div>
-          <div className="text-sm text-gray-500 mt-0.5">Overdue</div>
-        </button>
+      {/* Current + Overdue bill lists */}
+      <div className={`grid gap-3 mb-5 ${sortedCurrent.length > 0 && sortedOverdue.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
+        {sortedOverdue.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="text-red-600 font-semibold text-base mb-3">🚨 Overdue ({sortedOverdue.length})</div>
+            <div className="divide-y divide-red-100">
+              {sortedOverdue.map(b => renderBillRow(b, 'text-red-600', 'text-red-500'))}
+            </div>
+          </div>
+        )}
+
+        {sortedCurrent.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <div className="text-amber-700 font-semibold text-base mb-3">⏰ Current ({sortedCurrent.length})</div>
+            <div className="divide-y divide-amber-100">
+              {sortedCurrent.map(b => renderBillRow(b, 'text-gray-800', dueDateColor(b)))}
+            </div>
+          </div>
+        )}
+
+        {sortedOverdue.length === 0 && sortedCurrent.length === 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-sm text-gray-400">
+            No current or overdue bills.
+          </div>
+        )}
       </div>
 
       {/* Company + search control row */}
@@ -1363,61 +1406,6 @@ function DashboardTab({
           onChange={e => setSearchTerm(e.target.value)}
           className="ml-auto px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 w-60"
         />
-      </div>
-
-      {/* Current unpaid list */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5">
-        <div className="text-base font-semibold text-gray-700 mb-3">Current Unpaid ({scopedCurrent.length})</div>
-        {scopedCurrent.length === 0 ? (
-          <div className="py-6 text-center text-sm text-gray-400">No unpaid bills due this month or next.</div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {scopedCurrent.map(b => {
-              const isOpen = expandedBillId === b.id
-              return (
-                <div key={b.id} className="py-2 first:pt-0 last:pb-0">
-                  <div
-                    onClick={() => toggleBill(b.id)}
-                    className="flex items-center justify-between gap-2 cursor-pointer"
-                  >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className={`text-xs transition-transform inline-block ${isOpen ? 'rotate-90' : ''}`}>▸</span>
-                      <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
-                      <span className="text-sm font-medium text-gray-800 truncate">{b.utility_name}</span>
-                      {b.provider && <span className="text-sm text-gray-400 hidden sm:inline">· {b.provider}</span>}
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-sm font-medium text-gray-800">{fmtAmt(b)}</span>
-                      <span className={`text-sm ${dueDateColor(b)}`}>{dueDateLabel(b)}</span>
-                      <button
-                        onClick={e => { e.stopPropagation(); onUpdateStatus(b, 'paid') }}
-                        className="text-xs px-2 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
-                        title="Mark paid"
-                      >
-                        ✓ Paid
-                      </button>
-                    </div>
-                  </div>
-                  {isOpen && (
-                    <BillExpandPanel
-                      bill={b}
-                      role={role}
-                      onUpdateStatus={onUpdateStatus}
-                      onCarryForward={onCarryForward}
-                      onEdit={onEdit}
-                      deleteConfirm={deleteConfirm}
-                      setDeleteConfirm={setDeleteConfirm}
-                      onDelete={onDelete}
-                      noteEdit={noteEdit}
-                      setNoteEdit={setNoteEdit}
-                      onSaveNote={onSaveNote}
-                    />
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
       </div>
 
       {/* Vendor-grouped monthly history (accordion) */}
