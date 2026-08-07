@@ -3,6 +3,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@supabase/supabase-js'
 import { useAuth } from '@/app/providers'
 import {
@@ -1040,16 +1041,39 @@ function StatusDropdown({
   onPartialPayment: (bill: Bill) => void
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const status = computeBillStatus(bill)
   const badge = STATUS_BADGE[status]
 
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+  function toggleOpen() {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 4, left: r.left })
     }
-    if (open) document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    setOpen(v => !v)
+  }
+
+  // Menu renders in a portal (escapes any ancestor overflow-hidden/scroll clipping,
+  // e.g. the vendor-history accordion card), so outside-click/scroll must check both refs.
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e: MouseEvent) {
+      const target = e.target as Node
+      if (btnRef.current?.contains(target)) return
+      if (menuRef.current?.contains(target)) return
+      setOpen(false)
+    }
+    function handleScroll() { setOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    window.addEventListener('scroll', handleScroll, true)
+    window.addEventListener('resize', handleScroll)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('scroll', handleScroll, true)
+      window.removeEventListener('resize', handleScroll)
+    }
   }, [open])
 
   const options: { status: BalanceStatus; label: string }[] = [
@@ -1059,15 +1083,20 @@ function StatusDropdown({
   ]
 
   return (
-    <div ref={ref} className="relative inline-block">
+    <>
       <button
-        onClick={() => setOpen(v => !v)}
+        ref={btnRef}
+        onClick={toggleOpen}
         className={`px-2 py-0.5 rounded text-xs font-medium ${badge.className} hover:opacity-80 transition-opacity whitespace-nowrap`}
       >
         {badge.label} ▾
       </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[150px]">
+      {open && pos && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', top: pos.top, left: pos.left }}
+          className="z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[150px]"
+        >
           {options.map(opt => (
             <button
               key={opt.status}
@@ -1089,9 +1118,10 @@ function StatusDropdown({
           >
             Carried Forward →
           </button>
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   )
 }
 
