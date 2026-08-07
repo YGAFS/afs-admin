@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@supabase/supabase-js'
 import { useAuth } from '@/app/providers'
@@ -325,13 +325,17 @@ export default function UtilityPage() {
 
   async function savePartialPayment(bill: Bill, amountPaid: number, paidAt: string) {
     const totalDue = bill.total_due ?? bill.amount ?? 0
+    // Paying it off in full through this same flow should count as fully Paid —
+    // otherwise balance_status stays 'partially_paid' forever and the bill never
+    // leaves the Overdue list even though nothing is owed anymore.
+    const isFullyPaid = totalDue > 0 && amountPaid >= totalDue - 0.005
     const patch: Partial<Bill> = {
-      balance_status: 'partially_paid',
-      amount_paid: amountPaid,
-      remaining_balance: Math.max(totalDue - amountPaid, 0),
+      balance_status: isFullyPaid ? 'paid' : 'partially_paid',
+      amount_paid: isFullyPaid ? totalDue : amountPaid,
+      remaining_balance: isFullyPaid ? 0 : Math.max(totalDue - amountPaid, 0),
       paid_at: paidAt ? new Date(paidAt + 'T00:00:00').toISOString() : new Date().toISOString(),
       paid_by: user?.email ?? null,
-      is_paid: false,
+      is_paid: isFullyPaid,
     }
     await supabase.from('utility_bills').update(patch).eq('id', bill.id)
     setBills(prev => prev.map(b => b.id === bill.id ? { ...b, ...patch } : b))
@@ -1050,10 +1054,33 @@ function StatusDropdown({
   function toggleOpen() {
     if (!open && btnRef.current) {
       const r = btnRef.current.getBoundingClientRect()
+      // Rough guess for the first paint; corrected below once the menu's real size is known.
       setPos({ top: r.bottom + 4, left: r.left })
     }
     setOpen(v => !v)
   }
+
+  // After the menu actually renders, flip it above the button (or clamp horizontally)
+  // if it would otherwise overflow the viewport — a plain "open below" would get cut off
+  // by the screen edge for buttons near the bottom, with no way to scroll it into view
+  // since the menu is position:fixed.
+  useLayoutEffect(() => {
+    if (!open || !menuRef.current || !btnRef.current) return
+    const btnRect = btnRef.current.getBoundingClientRect()
+    const menuRect = menuRef.current.getBoundingClientRect()
+    const margin = 8
+    let top = btnRect.bottom + 4
+    if (top + menuRect.height > window.innerHeight - margin) {
+      top = btnRect.top - menuRect.height - 4
+      if (top < margin) top = margin
+    }
+    let left = btnRect.left
+    if (left + menuRect.width > window.innerWidth - margin) {
+      left = window.innerWidth - menuRect.width - margin
+    }
+    if (left < margin) left = margin
+    setPos(prev => (prev && prev.top === top && prev.left === left) ? prev : { top, left })
+  }, [open])
 
   // Menu renders in a portal (escapes any ancestor overflow-hidden/scroll clipping,
   // e.g. the vendor-history accordion card), so outside-click/scroll must check both refs.
