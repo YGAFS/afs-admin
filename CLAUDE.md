@@ -99,6 +99,25 @@ Restricts which top-level sidebar sections (`/hr`, `/utilities`, `/licenses`, `/
 
 ---
 
+## Utility Bill Ingestor (`tools/utility_bill_ingestor/`)
+
+A **separate local Python worker** (not part of the Next.js app) that watches
+a folder for newly-downloaded utility bill PDFs (any filename) and
+automatically extracts vendor/site/account/amount/dates, validates
+conservatively, upserts into the same `utility_bills` table, renames the
+file to a standard form, and archives it back into the existing
+`{COMPANY}\{VENDOR}\...` folder structure under the master OneDrive DB
+folder. Uses a Supabase **service_role key** (own `.env`, never committed,
+never shared with the Next.js app) since it runs unattended.
+
+Full details, install steps, and vendor-extractor list: see
+[`tools/utility_bill_ingestor/README.md`](tools/utility_bill_ingestor/README.md).
+Ported/validated vendor parsing logic originally came from
+`scripts/extract_utility_bills.py` (one-off backfill script, superseded by
+this tool for ongoing use).
+
+---
+
 ## Email Report Feature (`app/hr/[company]/page.tsx`)
 
 ### How it works
@@ -145,3 +164,5 @@ Thank you.
 - [ ] Run `supabase/add_user_access.sql` in Supabase SQL Editor to enable per-user section restriction (creates `user_access` table, also inserts the YG → Utility-only row)
 - [ ] Create the Supabase Auth login (email + password) for `yungyeong.j@afstransco.com` manually in Supabase Dashboard → Authentication → Users
 - [ ] Add ZFS employee data to Supabase `employees` table
+- [ ] Run `supabase/add_utility_bill_imports.sql` in Supabase SQL Editor to enable the Utility Bill Ingestor's audit log/dedup table (`tools/utility_bill_ingestor/`)
+- [ ] Set up `tools/utility_bill_ingestor/.env` (copy from `.env.example`, fill in `SUPABASE_SERVICE_ROLE_KEY` from Supabase Dashboard) before running the ingestor

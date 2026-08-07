@@ -1,0 +1,131 @@
+# Vendor config, keyed by a unique internal vendor_key.
+#
+# db_name must match utility_vendors.name EXACTLY for that company_id
+# (looked up live from Supabase at runtime — no UUIDs are hardcoded here,
+# since row IDs can differ across environments).
+#
+# accounts: known account numbers -> instantly resolves vendor + site with
+# highest confidence (classification priority #1). Add new accounts here as
+# soon as they're known (e.g. once TNT Biscayne/Pickering utilities are set
+# up in the utility_vendors/utility_service_accounts tables).
+#
+# aliases: text variants seen in real bill PDFs, used for text-based
+# vendor-phrase classification (priority #4) when the account number isn't
+# recognized yet.
+#
+# archive_folder (optional): the vendor subfolder name to file processed
+# PDFs into under ROOT/{COMPANY}/. Defaults to db_name. Set this explicitly
+# when the folder already on disk doesn't exactly match db_name, so new
+# bills land next to the existing historical ones instead of splitting the
+# archive across two folders.
+
+rogers_afs:
+  db_name: "Rogers"
+  company_id: afs
+  site_code: SURREY
+  utility_name: "Business Phone"
+  aliases:
+    - Rogers
+    - Rogers Communications
+    - ROGERS
+  accounts:
+    - "5-0781-2423"
+
+telus_afs:
+  db_name: "Telus"
+  company_id: afs
+  site_code: SURREY
+  utility_name: "Internet (Wifi)"
+  aliases:
+    - Telus
+    - TELUS
+    - TELUS Communications
+  accounts:
+    - "6070393200"
+
+cambridge_water_tnt:
+  db_name: "Cambridge Water"
+  company_id: tnt
+  site_code: CAMBRIDGE
+  utility_name: "Water"
+  aliases:
+    - Cambridge Water
+    - City of Cambridge
+    - City of Cambridge Water
+  accounts: []
+
+enbridge_tnt:
+  db_name: "Enbridge"
+  company_id: tnt
+  site_code: CAMBRIDGE
+  utility_name: "Gas"
+  aliases:
+    - Enbridge
+    - Enbridge Gas
+  accounts: []
+
+grandbridge_tnt:
+  db_name: "Grandbridge"
+  archive_folder: "Grand Bridge"  # matches the existing folder on disk under TNT\
+  company_id: tnt
+  site_code: CAMBRIDGE
+  utility_name: "Electrictity"
+  aliases:
+    - Grandbridge
+    - GrandBridge Energy
+    - Grand Bridge
+  accounts: []
+
+rogers_tnt:
+  db_name: "Rogers"
+  company_id: tnt
+  site_code: CAMBRIDGE
+  utility_name: "Internet"
+  aliases:
+    - Rogers
+    - Rogers Communications
+    - ROGERS
+  accounts:
+    - "860900"
+
+burrtec_zfs:
+  db_name: "Burrtec"
+  company_id: zfs
+  site_code: FONTANA
+  utility_name: "Garbage"
+  aliases:
+    - Burrtec
+    - Burrtec Waste Industries
+  accounts: []
+
+fontana_water_zfs:
+  db_name: "Fontana Water"
+  archive_folder: "Fontana water"  # matches the existing folder on disk under ZFS\ (lowercase w)
+  company_id: zfs
+  site_code: FONTANA
+  utility_name: "water"
+  aliases:
+    - Fontana Water
+    - Fontana Water Company
+  accounts:
+    - "10149626-106310"
+    - "10149626-106311"
+    - "10149626-106307"
+
+orkin_zfs:
+  db_name: "Orkin"
+  company_id: zfs
+  site_code: FONTANA
+  utility_name: "Pest Control"
+  aliases:
+    - Orkin
+  accounts: []
+
+us_bank_zfs:
+  db_name: "US Bank"
+  company_id: zfs
+  site_code: FONTANA
+  utility_name: "Printer"
+  aliases:
+    - US Bank
+  accounts: []

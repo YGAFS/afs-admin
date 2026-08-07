@@ -331,8 +331,11 @@ export default function UtilityPage() {
   async function saveBill() {
     if (!editBill.utility_name?.trim()) return
     setSaving(true)
-    const issueDate = editBill.issue_date || editBill.due_date || null
-    const billingDate = issueDate ? new Date(issueDate + 'T00:00:00') : null
+    // billing_month/billing_year identify which month's bill this is, and
+    // must come from issue_date only — falling back to due_date here
+    // previously mislabeled bills by the wrong month whenever issue_date
+    // was left blank (due_date is typically ~1 month after issue_date).
+    const billingDate = editBill.issue_date ? new Date(editBill.issue_date + 'T00:00:00') : null
 
     const payload = {
       company_id:        editBill.company_id,

@@ -1,0 +1,52 @@
+# Site/location config, keyed by company_id (matches utility_bills.company_id
+# and utility_locations.company_id in Supabase: 'afs' | 'tnt' | 'zfs').
+#
+# db_location_name must match utility_locations.name EXACTLY for that
+# company (case-insensitive match is done at runtime, but keep it exact).
+#
+# multi_site: true means the archive folder path gets a per-site
+# subfolder (ROOT/{COMPANY}/{VENDOR}/{SITE}/...); false keeps the existing
+# flat ROOT/{COMPANY}/{VENDOR}/... layout already used on disk.
+
+afs:
+  multi_site: false
+  sites:
+    SURREY:
+      db_location_name: "Surrey Office"
+      aliases:
+        - Surrey
+        - Surrey Office
+        - Surrey Head Office
+
+tnt:
+  # TNT now has 3 active locations; only Cambridge has bills registered so
+  # far (Biscayne/Pickering utility accounts are not set up yet). Keep
+  # multi_site true so new sites automatically get their own archive folder
+  # once vendors/accounts are added below and in vendors.yaml.
+  multi_site: true
+  sites:
+    CAMBRIDGE:
+      db_location_name: "Cambridge"
+      aliases:
+        - Cambridge
+        - Cambridge Ontario
+        - Cambridge, ON
+    BISCAYNE:
+      db_location_name: "Biscayne"
+      aliases:
+        - Biscayne
+    PICKERING:
+      db_location_name: "Pickering"
+      aliases:
+        - Pickering
+
+zfs:
+  multi_site: false
+  sites:
+    FONTANA:
+      db_location_name: "Fontana"
+      aliases:
+        - Fontana
+        - Fontana DC
+        - Fontana, CA
+        - Fontana California
