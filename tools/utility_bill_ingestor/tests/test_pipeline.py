@@ -157,3 +157,31 @@ def test_unrecognized_vendor_goes_to_review_without_db_write(tmp_path):
     assert repo.inserted_bills == []
     assert result.destination is not None
     assert result.destination.parent == settings.review_dir
+
+
+def test_dropping_a_needs_review_file_back_in_reprocesses_instead_of_short_circuiting(tmp_path):
+    # Regression: re-processing the *same bytes* after a needs_review outcome
+    # used to hit the unique constraint on source_file_hash (it tried to
+    # insert a second utility_bill_imports row) instead of updating the
+    # existing one and actually retrying the file.
+    settings = _settings(tmp_path, dry_run=False)
+    repo = FakeRepository(
+        dry_run=False,
+        vendors={("afs", "telus"): _telus_vendor_row()},
+        locations={("afs", "surrey office"): {"id": "loc-surrey", "name": "Surrey Office"}},
+    )
+    pipeline = Pipeline(settings, repo)
+
+    text = "Some Random Utility Co\nAccount Number: 999888777\nTotal Amount Due: $42.00\n"
+    first_path = make_pdf(tmp_path / "unknown.pdf", text)
+    result1 = pipeline.process_file(first_path, original_filename="unknown.pdf")
+    assert result1.status == "needs_review"
+    assert len(repo.inserted_imports) == 1
+
+    second_path = tmp_path / "unknown2.pdf"
+    shutil.copyfile(result1.destination, second_path)
+    result2 = pipeline.process_file(second_path, original_filename="unknown-retry.pdf")
+
+    assert result2.status == "needs_review"  # genuinely reprocessed, not short-circuited
+    assert len(repo.inserted_imports) == 1  # same hash -> updated in place, not a second row
+    assert repo.inserted_imports[0]["original_filename"] == "unknown-retry.pdf"

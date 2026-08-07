@@ -77,4 +77,11 @@ class FakeRepository:
         return import_id
 
     def update_import_record(self, import_id: str, payload: dict[str, Any]) -> None:
-        pass
+        if self.dry_run:
+            return
+        for record in self.inserted_imports:
+            if record.get("id") == import_id:
+                record.update(payload)
+                if record.get("source_file_hash"):
+                    self._bills_by_hash[record["source_file_hash"]] = record
+                return

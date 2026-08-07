@@ -86,7 +86,13 @@ class Pipeline:
             return self._to_failed(path, original_filename, file_hash=None, error=hash_error)
 
         existing_import = self.repo.find_import_by_hash(file_hash)
-        if existing_import and existing_import.get("status") in ("completed", "needs_review", "duplicate"):
+        # Only a previously-*completed* or already-confirmed-*duplicate* file
+        # short-circuits here — those outcomes are final (the bill is either
+        # already registered, or already known to duplicate one that is).
+        # 'needs_review' and 'failed' do NOT short-circuit: dropping the same
+        # file back into the inbox after fixing an extractor/config issue is
+        # the documented way to retry it, and it should actually re-run.
+        if existing_import and existing_import.get("status") in ("completed", "duplicate"):
             log.info("duplicate file (hash already processed): %s", original_filename)
             dest = self._move_duplicate(path, original_filename)
             self._write_import_record(
@@ -414,4 +420,11 @@ class Pipeline:
             "utility_bill_id": utility_bill_id,
             "processed_at": datetime.now(timezone.utc).isoformat(),
         }
-        self.repo.insert_import_record(payload)
+        # source_file_hash is unique — on a retry (needs_review/failed file
+        # dropped back into the inbox) a row for this hash already exists,
+        # so update it in place instead of inserting a second one.
+        existing = self.repo.find_import_by_hash(file_hash)
+        if existing:
+            self.repo.update_import_record(existing["id"], payload)
+        else:
+            self.repo.insert_import_record(payload)
