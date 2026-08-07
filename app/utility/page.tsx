@@ -320,6 +320,22 @@ export default function UtilityPage() {
   }
 
   const [carryForwardBill, setCarryForwardBill] = useState<Bill | null>(null)
+  const [partialPaymentBill, setPartialPaymentBill] = useState<Bill | null>(null)
+
+  async function savePartialPayment(bill: Bill, amountPaid: number, paidAt: string) {
+    const totalDue = bill.total_due ?? bill.amount ?? 0
+    const patch: Partial<Bill> = {
+      balance_status: 'partially_paid',
+      amount_paid: amountPaid,
+      remaining_balance: Math.max(totalDue - amountPaid, 0),
+      paid_at: paidAt ? new Date(paidAt + 'T00:00:00').toISOString() : new Date().toISOString(),
+      paid_by: user?.email ?? null,
+      is_paid: false,
+    }
+    await supabase.from('utility_bills').update(patch).eq('id', bill.id)
+    setBills(prev => prev.map(b => b.id === bill.id ? { ...b, ...patch } : b))
+    setPartialPaymentBill(null)
+  }
 
   async function saveNote(id: string, notes: string) {
     await supabase.from('utility_bills').update({ notes }).eq('id', id)
@@ -442,6 +458,7 @@ export default function UtilityPage() {
           role={role}
           onUpdateStatus={updateBillStatus}
           onCarryForward={setCarryForwardBill}
+          onPartialPayment={setPartialPaymentBill}
           onEdit={openEdit}
           deleteConfirm={deleteConfirm}
           setDeleteConfirm={setDeleteConfirm}
@@ -671,7 +688,7 @@ export default function UtilityPage() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <StatusDropdown bill={bill} onUpdate={updateBillStatus} onCarryForward={setCarryForwardBill} />
+                          <StatusDropdown bill={bill} onUpdate={updateBillStatus} onCarryForward={setCarryForwardBill} onPartialPayment={setPartialPaymentBill} />
                         </td>
                         {role === 'admin' && (
                           <td className="px-4 py-3">
@@ -999,6 +1016,14 @@ export default function UtilityPage() {
           }}
         />
       )}
+
+      {partialPaymentBill && (
+        <PartialPaymentModal
+          bill={partialPaymentBill}
+          onClose={() => setPartialPaymentBill(null)}
+          onSave={savePartialPayment}
+        />
+      )}
     </div>
     </div>
   )
@@ -1007,11 +1032,12 @@ export default function UtilityPage() {
 // ── StatusDropdown ─────────────────────────────────────────────────────────────
 
 function StatusDropdown({
-  bill, onUpdate, onCarryForward,
+  bill, onUpdate, onCarryForward, onPartialPayment,
 }: {
   bill: Bill
   onUpdate: (bill: Bill, status: BalanceStatus) => void
   onCarryForward: (bill: Bill) => void
+  onPartialPayment: (bill: Bill) => void
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -1028,7 +1054,6 @@ function StatusDropdown({
 
   const options: { status: BalanceStatus; label: string }[] = [
     { status: 'open',           label: 'Open' },
-    { status: 'partially_paid', label: 'Partially Paid' },
     { status: 'paid',           label: 'Paid ✓' },
     { status: 'waived',         label: 'Waived' },
   ]
@@ -1053,6 +1078,12 @@ function StatusDropdown({
             </button>
           ))}
           <button
+            className="w-full text-left px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 transition-colors"
+            onClick={() => { onPartialPayment(bill); setOpen(false) }}
+          >
+            Partially Paid…
+          </button>
+          <button
             className="w-full text-left px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 transition-colors border-t border-gray-100"
             onClick={() => { onCarryForward(bill); setOpen(false) }}
           >
@@ -1060,6 +1091,80 @@ function StatusDropdown({
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── PartialPaymentModal ─────────────────────────────────────────────────────────
+
+function PartialPaymentModal({
+  bill, onClose, onSave,
+}: {
+  bill: Bill
+  onClose: () => void
+  onSave: (bill: Bill, amountPaid: number, paidAt: string) => Promise<void>
+}) {
+  const totalDue = bill.total_due ?? bill.amount ?? 0
+  const [amountPaid, setAmountPaid] = useState(String(bill.amount_paid ?? ''))
+  const [paidAt, setPaidAt] = useState(bill.paid_at ? bill.paid_at.slice(0, 10) : new Date().toISOString().slice(0, 10))
+  const [saving, setSaving] = useState(false)
+
+  const parsedAmount = parseFloat(amountPaid)
+  const remaining = !isNaN(parsedAmount) ? Math.max(totalDue - parsedAmount, 0) : null
+  const currencySymbol = bill.currency === 'USD' ? 'US$' : 'CA$'
+
+  async function handle() {
+    if (isNaN(parsedAmount) || parsedAmount < 0) return
+    setSaving(true)
+    await onSave(bill, parsedAmount, paidAt)
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-900">Record Partial Payment</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-gray-600">
+            <span className="font-medium">{bill.utility_name}</span>
+            {bill.provider && ` · ${bill.provider}`}
+            {' — Total Due: '}
+            <span className="font-medium">{currencySymbol}{totalDue.toFixed(2)}</span>
+          </p>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Amount Paid So Far</label>
+            <input
+              type="number" step="0.01" value={amountPaid}
+              onChange={e => setAmountPaid(e.target.value)}
+              placeholder="0.00"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Payment Date</label>
+            <input
+              type="date" value={paidAt}
+              onChange={e => setPaidAt(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+            />
+          </div>
+          {remaining !== null && (
+            <p className="text-xs text-gray-500">
+              Remaining balance: <span className="font-medium text-gray-700">{currencySymbol}{remaining.toFixed(2)}</span>
+            </p>
+          )}
+        </div>
+        <div className="px-6 pb-6 flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
+          <button onClick={handle} disabled={saving || amountPaid.trim() === ''}
+            className="flex-1 px-4 py-2 text-sm text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:bg-gray-300 transition-colors">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1160,7 +1265,7 @@ function monthYearLabel(b: Bill) {
 }
 
 function BillExpandPanel({
-  bill, role, onUpdateStatus, onCarryForward, onEdit,
+  bill, role, onUpdateStatus, onCarryForward, onPartialPayment, onEdit,
   deleteConfirm, setDeleteConfirm, onDelete,
   noteEdit, setNoteEdit, onSaveNote,
 }: {
@@ -1168,6 +1273,7 @@ function BillExpandPanel({
   role: Role
   onUpdateStatus: (bill: Bill, status: BalanceStatus) => void
   onCarryForward: (bill: Bill) => void
+  onPartialPayment: (bill: Bill) => void
   onEdit: (bill: Bill) => void
   deleteConfirm: string | null
   setDeleteConfirm: (id: string | null) => void
@@ -1223,7 +1329,7 @@ function BillExpandPanel({
         )}
       </div>
       <div className="col-span-2 flex items-center justify-between pt-1">
-        <StatusDropdown bill={bill} onUpdate={onUpdateStatus} onCarryForward={onCarryForward} />
+        <StatusDropdown bill={bill} onUpdate={onUpdateStatus} onCarryForward={onCarryForward} onPartialPayment={onPartialPayment} />
         {role === 'admin' && (
           <div className="flex items-center gap-2">
             {bill.onedrive_file_url && (
@@ -1250,7 +1356,7 @@ function DashboardTab({
   bills, overdueBills, currentBills,
   coFilter, setCoFilter, searchTerm, setSearchTerm,
   expandedVendor, setExpandedVendor,
-  role, onUpdateStatus, onCarryForward, onEdit,
+  role, onUpdateStatus, onCarryForward, onPartialPayment, onEdit,
   deleteConfirm, setDeleteConfirm, onDelete,
   noteEdit, setNoteEdit, onSaveNote,
 }: {
@@ -1266,6 +1372,7 @@ function DashboardTab({
   role: Role
   onUpdateStatus: (bill: Bill, status: BalanceStatus) => void
   onCarryForward: (bill: Bill) => void
+  onPartialPayment: (bill: Bill) => void
   onEdit: (bill: Bill) => void
   deleteConfirm: string | null
   setDeleteConfirm: (id: string | null) => void
@@ -1346,6 +1453,7 @@ function DashboardTab({
             role={role}
             onUpdateStatus={onUpdateStatus}
             onCarryForward={onCarryForward}
+            onPartialPayment={onPartialPayment}
             onEdit={onEdit}
             deleteConfirm={deleteConfirm}
             setDeleteConfirm={setDeleteConfirm}
@@ -1463,6 +1571,7 @@ function DashboardTab({
                                 role={role}
                                 onUpdateStatus={onUpdateStatus}
                                 onCarryForward={onCarryForward}
+                                onPartialPayment={onPartialPayment}
                                 onEdit={onEdit}
                                 deleteConfirm={deleteConfirm}
                                 setDeleteConfirm={setDeleteConfirm}
