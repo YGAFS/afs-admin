@@ -20,7 +20,7 @@ const supabase = createClient(
 type Company = 'afs' | 'tnt' | 'zfs'
 type Currency = 'CAD' | 'USD'
 type Role = 'admin' | 'ap'
-type MainTab = 'bills' | 'analytics'
+type MainTab = 'dashboard' | 'all' | 'analytics'
 type StatusFilter = 'all' | 'open' | 'overdue' | 'overdue_partial' | 'due_today' | 'upcoming' | 'partially_paid' | 'paid' | 'carried_forward' | 'waived' | 'void'
 
 interface PaymentMethod {
@@ -216,10 +216,11 @@ export default function UtilityPage() {
   const [methods, setMethods] = useState<PaymentMethod[]>([])
   const [loading, setLoading] = useState(true)
 
-  const [mainTab,      setMainTab]      = useState<MainTab>('bills')
-  const [coFilter,     setCoFilter]     = useState<Company | 'all'>('all')
+  const [mainTab,      setMainTab]      = useState<MainTab>('dashboard')
+  const [coFilter,     setCoFilter]     = useState<Company | 'all'>('afs')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [searchTerm,   setSearchTerm]   = useState('')
+  const [expandedVendor, setExpandedVendor] = useState<string | null>(null)
 
   const [showModal,     setShowModal]     = useState(false)
   const [editBill,      setEditBill]      = useState<Partial<Bill>>(emptyBill)
@@ -276,6 +277,19 @@ export default function UtilityPage() {
     if (!isActiveOutstanding(b) || !b.due_date) return false
     const due = new Date(b.due_date + 'T00:00:00')
     return due >= today && due <= inSevenDays
+  })
+
+  // "Current" = unpaid bills due this month or next month, excluding anything already overdue
+  const curMonth  = today.getMonth()
+  const curYear   = today.getFullYear()
+  const nextMonthDate = new Date(curYear, curMonth + 1, 1)
+  const currentBills = bills.filter(b => {
+    const s = computeBillStatus(b)
+    if (s === 'overdue' || s === 'overdue_partial' || !isActiveOutstanding(b) || !b.due_date) return false
+    const d = new Date(b.due_date + 'T00:00:00')
+    const isThisMonth = d.getFullYear() === curYear && d.getMonth() === curMonth
+    const isNextMonth  = d.getFullYear() === nextMonthDate.getFullYear() && d.getMonth() === nextMonthDate.getMonth()
+    return isThisMonth || isNextMonth
   })
 
   const stats = {
@@ -377,15 +391,25 @@ export default function UtilityPage() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Utility Bills</h1>
-          <p className="text-sm text-gray-400 mt-0.5">AFS · TNT · ZFS — {role === 'ap' ? 'AP View' : 'Admin'}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setMainTab(t => t === 'bills' ? 'analytics' : 'bills')}
-            className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 bg-white rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            {mainTab === 'bills' ? '📊 Analytics' : '📋 Bills'}
-          </button>
+          <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
+            {([
+              ['dashboard', '🏠 Dashboard'],
+              ['all',       '📋 All Bills'],
+              ['analytics', '📊 Analytics'],
+            ] as [MainTab, string][]).map(([tab, label]) => (
+              <button
+                key={tab}
+                onClick={() => setMainTab(tab)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  mainTab === tab ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <button
             onClick={() => setShowPMModal(true)}
             className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 bg-white rounded-lg hover:bg-gray-50 transition-colors"
@@ -403,8 +427,26 @@ export default function UtilityPage() {
         </div>
       </div>
 
-      {/* ── BILLS TAB ────────────────────────────────────────────────────────── */}
-      {mainTab === 'bills' && (
+      {/* ── DASHBOARD TAB ──────────────────────────────────────────────────── */}
+      {mainTab === 'dashboard' && (
+        <DashboardTab
+          bills={bills}
+          stats={stats}
+          overdueBills={overdueBills}
+          currentBills={currentBills}
+          coFilter={coFilter}
+          setCoFilter={setCoFilter}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          expandedVendor={expandedVendor}
+          setExpandedVendor={setExpandedVendor}
+          onUpdateStatus={updateBillStatus}
+          onViewAllFiltered={(sf) => { setStatusFilter(sf); setMainTab('all') }}
+        />
+      )}
+
+      {/* ── ALL BILLS TAB ──────────────────────────────────────────────────── */}
+      {mainTab === 'all' && (
         <>
           {/* Stats row — clickable to filter */}
           <div className="grid grid-cols-5 gap-3 mb-5">
@@ -1096,6 +1138,193 @@ function CarryForwardModal({
             {saving ? 'Saving…' : 'Carry Forward'}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Dashboard Tab ────────────────────────────────────────────────────────────
+
+function relativeMonthLabel(b: Bill) {
+  const dateStr = b.issue_date ?? b.due_date
+  if (!dateStr) return '—'
+  const d = new Date(dateStr + 'T00:00:00')
+  const now = new Date()
+  const diffMonths = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth())
+  if (diffMonths === 0) return 'This month'
+  if (diffMonths === 1) return 'Last month'
+  if (diffMonths === 2) return '2 months ago'
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+}
+
+function DashboardTab({
+  bills, stats, overdueBills, currentBills,
+  coFilter, setCoFilter, searchTerm, setSearchTerm,
+  expandedVendor, setExpandedVendor,
+  onUpdateStatus, onViewAllFiltered,
+}: {
+  bills: Bill[]
+  stats: { total: number; outstanding: number; overdue: number; paid: number; carriedForward: number }
+  overdueBills: Bill[]
+  currentBills: Bill[]
+  coFilter: Company | 'all'
+  setCoFilter: (c: Company | 'all') => void
+  searchTerm: string
+  setSearchTerm: (s: string) => void
+  expandedVendor: string | null
+  setExpandedVendor: (v: string | null) => void
+  onUpdateStatus: (bill: Bill, status: BalanceStatus) => void
+  onViewAllFiltered: (sf: StatusFilter) => void
+}) {
+  // Scope the current-bills list + vendor history to the selected company + search term
+  const scoped = bills.filter(b => {
+    if (coFilter !== 'all' && b.company_id !== coFilter) return false
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase()
+      if (!b.utility_name.toLowerCase().includes(q) &&
+          !(b.provider ?? '').toLowerCase().includes(q)) return false
+    }
+    return true
+  })
+
+  const scopedIds = new Set(scoped.map(b => b.id))
+  const scopedCurrent = currentBills
+    .filter(b => scopedIds.has(b.id))
+    .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+
+  // Group scoped bills by vendor (provider, falling back to utility name)
+  const vendors = useMemo(() => {
+    const map = new Map<string, Bill[]>()
+    for (const b of scoped) {
+      const key = b.provider ?? b.utility_name
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(b)
+    }
+    return Array.from(map.entries())
+      .map(([name, bs]) => ({
+        name,
+        company_id: bs[0].company_id,
+        bills: [...bs].sort((a, b) => (b.issue_date ?? b.due_date ?? '').localeCompare(a.issue_date ?? a.due_date ?? '')),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coFilter, searchTerm, bills])
+
+  return (
+    <div>
+      {/* Total / Current / Overdue summary */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <button
+          onClick={() => onViewAllFiltered('all')}
+          className="bg-white rounded-xl border border-gray-200 px-4 py-3 text-left hover:shadow-sm transition-shadow"
+        >
+          <div className="text-2xl font-bold text-gray-700">{stats.total}</div>
+          <div className="text-xs text-gray-500 mt-0.5">Total</div>
+        </button>
+        <div className="bg-amber-50 rounded-xl border border-gray-200 px-4 py-3 text-left">
+          <div className="text-2xl font-bold text-amber-600">{currentBills.length}</div>
+          <div className="text-xs text-gray-500 mt-0.5">Current (this + next month)</div>
+        </div>
+        <button
+          onClick={() => onViewAllFiltered('overdue')}
+          className="bg-red-50 rounded-xl border border-gray-200 px-4 py-3 text-left hover:shadow-sm transition-shadow"
+        >
+          <div className="text-2xl font-bold text-red-600">{overdueBills.length}</div>
+          <div className="text-xs text-gray-500 mt-0.5">Overdue</div>
+        </button>
+      </div>
+
+      {/* Company + search control row */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
+          {COMPANIES.map(c => (
+            <button
+              key={c.id}
+              onClick={() => setCoFilter(c.id as Company | 'all')}
+              className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                coFilter === c.id ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          placeholder="Search utility / provider…"
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          className="ml-auto px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 w-60"
+        />
+      </div>
+
+      {/* Current unpaid list */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5">
+        <div className="text-sm font-semibold text-gray-700 mb-3">Current Unpaid ({scopedCurrent.length})</div>
+        {scopedCurrent.length === 0 ? (
+          <div className="py-6 text-center text-sm text-gray-400">No unpaid bills due this month or next.</div>
+        ) : (
+          <div className="space-y-2">
+            {scopedCurrent.map(b => (
+              <div key={b.id} className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+                  <span className="text-xs font-medium text-gray-800 truncate">{b.utility_name}</span>
+                  {b.provider && <span className="text-xs text-gray-400 hidden sm:inline">· {b.provider}</span>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs font-medium text-gray-800">{fmtAmt(b)}</span>
+                  <span className={`text-xs ${dueDateColor(b)}`}>{dueDateLabel(b)}</span>
+                  <button onClick={() => onUpdateStatus(b, 'paid')} className="text-xs px-2 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors" title="Mark paid">✓ Paid</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Vendor-grouped monthly history (accordion) */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">Bill History by Vendor</div>
+        {vendors.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-400">No bills found.</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {vendors.map(v => {
+              const isOpen = expandedVendor === v.name
+              return (
+                <div key={v.name}>
+                  <button
+                    onClick={() => setExpandedVendor(isOpen ? null : v.name)}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs transition-transform inline-block ${isOpen ? 'rotate-90' : ''}`}>▸</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[v.company_id]}`}>{v.company_id.toUpperCase()}</span>
+                      <span className="font-medium text-gray-900 text-sm">{v.name}</span>
+                    </div>
+                    <span className="text-xs text-gray-400">{v.bills.length} bill{v.bills.length !== 1 ? 's' : ''}</span>
+                  </button>
+                  {isOpen && (
+                    <div className="px-4 pb-3 space-y-1.5">
+                      {v.bills.map(b => (
+                        <div key={b.id} className="flex items-center justify-between gap-2 pl-6 py-1">
+                          <span className="text-xs text-gray-500">{relativeMonthLabel(b)}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-gray-800">{fmtAmt(b)}</span>
+                            <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_BADGE[computeBillStatus(b)].className}`}>
+                              {STATUS_BADGE[computeBillStatus(b)].label}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
