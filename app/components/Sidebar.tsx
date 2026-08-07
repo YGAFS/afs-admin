@@ -23,34 +23,6 @@ const NAV = [
 
 // ── Utility sidebar ───────────────────────────────────────────────────────────
 
-interface CompanyNode {
-  id: string
-  label: string
-  tag: string  // e.g. "(CA)"
-  locations: string[]
-}
-
-const UTILITY_COMPANIES: CompanyNode[] = [
-  {
-    id: 'afs',
-    label: 'AFS Transco',
-    tag: '(CA)',
-    locations: ['Surrey Head Office', 'Vancouver Warehouse', 'Calgary Warehouse'],
-  },
-  {
-    id: 'tnt',
-    label: 'TNT',
-    tag: '(ON)',
-    locations: ['Toronto DC', 'Mississauga WH', 'Ottawa WH'],
-  },
-  {
-    id: 'zfs',
-    label: 'ZFS Trans Co',
-    tag: '(US)',
-    locations: ['Fontana DC', 'Ontario DC'],
-  },
-]
-
 const UTILITY_NAV: { href: string; label: string; icon: () => React.ReactElement; badge?: number }[] = [
   { href: '/utilities/overview',   label: 'Overview',      icon: HomeIcon },
   { href: '/utilities/bills',      label: 'Utility Bills', icon: FileIcon },
@@ -116,23 +88,8 @@ function GearIcon() {
     </svg>
   )
 }
-function ChevronIcon({ down }: { down: boolean }) {
-  return (
-    <svg className={`w-3 h-3 transition-transform ${down ? 'rotate-90' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-      <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-    </svg>
-  )
-}
-
 function UtilitySidebar() {
   const path = usePathname()
-  const [expanded, setExpanded] = useState<string[]>(['zfs'])
-  const [selectedLocation, setSelectedLocation] = useState<string | null>('Fontana DC')
-  const [locationSearch, setLocationSearch] = useState('')
-
-  function toggle(id: string) {
-    setExpanded(e => e.includes(id) ? e.filter(x => x !== id) : [...e, id])
-  }
 
   return (
     <aside className="w-56 shrink-0 h-screen flex flex-col bg-white border-r border-gray-200 overflow-hidden">
@@ -174,77 +131,6 @@ function UtilitySidebar() {
         })}
       </nav>
 
-      {/* Company / Location */}
-      <div className="flex-1 overflow-y-auto px-2 py-3">
-        <p className="px-2 mb-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-          Company / Location
-        </p>
-
-        {/* All Companies dropdown-style button */}
-        <button className="w-full flex items-center justify-between px-3 py-2 mb-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-          <span>All Companies</span>
-          <ChevronIcon down={true} />
-        </button>
-
-        {/* Location search */}
-        <div className="relative mb-2">
-          <svg className="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Search location..."
-            value={locationSearch}
-            onChange={e => setLocationSearch(e.target.value)}
-            className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
-
-        {/* Company tree */}
-        <div className="space-y-0.5">
-          {UTILITY_COMPANIES.map(co => {
-            const isOpen = expanded.includes(co.id)
-            const filteredLocs = locationSearch
-              ? co.locations.filter(l => l.toLowerCase().includes(locationSearch.toLowerCase()))
-              : co.locations
-            if (locationSearch && filteredLocs.length === 0) return null
-            return (
-              <div key={co.id}>
-                <button
-                  onClick={() => toggle(co.id)}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors w-full text-left"
-                >
-                  <ChevronIcon down={isOpen} />
-                  <span className="font-medium text-xs">{co.label}</span>
-                  <span className="text-xs text-gray-400">{co.tag}</span>
-                </button>
-
-                {isOpen && (
-                  <div className="ml-4 mt-0.5 space-y-0.5">
-                    {filteredLocs.map(loc => {
-                      const sel = selectedLocation === loc
-                      return (
-                        <button
-                          key={loc}
-                          onClick={() => setSelectedLocation(loc)}
-                          className={`flex items-center gap-1.5 w-full px-2 py-1.5 rounded-lg text-xs text-left transition-colors ${
-                            sel
-                              ? 'bg-blue-50 text-blue-700 font-medium'
-                              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
-                          }`}
-                        >
-                          <span className="text-gray-300">›</span>
-                          <span>{loc}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </div>
     </aside>
   )
 }

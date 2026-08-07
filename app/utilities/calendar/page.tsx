@@ -126,7 +126,7 @@ export default function CalendarPage() {
     <div className="h-full overflow-auto">
     <div className="p-6">
       {/* Month nav */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-center gap-4 mb-4">
         <button onClick={prevMonth} className="px-4 py-2 text-base border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">‹</button>
         <span className="font-semibold text-gray-800 text-xl">{monthLabel}</span>
         <button onClick={nextMonth} className="px-4 py-2 text-base border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">›</button>

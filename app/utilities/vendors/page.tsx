@@ -832,7 +832,7 @@ function VendorsContent() {
   const [loading,   setLoading]   = useState(true)
   const [role,      setRole]      = useState<Role>('admin')
 
-  const [coFilter,   setCoFilter]   = useState<Company | 'all'>(urlCompany ?? 'all')
+  const [coFilter,   setCoFilter]   = useState<Company | 'all'>(urlCompany ?? 'afs')
   const [locFilter,  setLocFilter]  = useState<string>('all')
   const [search,     setSearch]     = useState('')
   const [selected,   setSelected]   = useState<Vendor | null>(null)
