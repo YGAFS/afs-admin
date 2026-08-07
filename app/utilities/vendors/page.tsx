@@ -7,6 +7,7 @@ import {
 } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useSearchParams } from 'next/navigation'
+import { computeBillStatus, STATUS_BADGE, type BalanceStatus, type InvoiceStatus } from '@/lib/billStatus'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
@@ -55,9 +56,23 @@ interface Vendor {
 }
 
 interface Bill {
+  id: string
   provider: string | null; amount: number | null
   currency: string; due_date: string | null; is_paid: boolean
   issue_date: string | null
+  utility_name: string; bill_number: string | null; account_number: string | null
+  balance_status: BalanceStatus; invoice_status: InvoiceStatus | null
+}
+
+interface PaymentMethod {
+  id: string
+  company_id: Company
+  label: string
+  holder_name: string | null
+  card_brand: string | null
+  bank_name: string | null
+  is_auto: boolean
+  notes: string | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -572,10 +587,11 @@ function VendorDetailPanel({
 // ── Vendor Form Modal ─────────────────────────────────────────────────────────
 
 function VendorModal({
-  initial, locations, onClose, onSave,
+  initial, locations, bills, onClose, onSave,
 }: {
   initial: Partial<Vendor>
   locations: Location[]
+  bills: Bill[]
   onClose: () => void; onSave: () => void
 }) {
   const [form, setForm] = useState({ ...emptyVendor, ...initial })
@@ -583,13 +599,67 @@ function VendorModal({
   const isEdit = !!initial.company_id && (initial as any).id
   const vendorId = (initial as any).id as string | undefined
 
-  const [tab, setTab] = useState<'details' | 'accounts'>('details')
+  const [tab, setTab] = useState<'details' | 'accounts' | 'payments' | 'bills'>('details')
   const [accounts, setAccounts] = useState<ServiceAccount[]>(initial.utility_service_accounts ?? [])
   const [addingAccount, setAddingAccount] = useState(false)
   const [acctForm, setAcctForm] = useState({ account_number: '', location_id: '', service_label: '' })
   const [savingAcct, setSavingAcct] = useState(false)
 
   const companyLocations = locations.filter(l => l.company_id === form.company_id)
+
+  // Payment methods (scoped to the vendor's company)
+  const [methods, setMethods] = useState<PaymentMethod[]>([])
+  const [loadingMethods, setLoadingMethods] = useState(false)
+  const emptyPM: Omit<PaymentMethod, 'id'> = {
+    company_id: form.company_id, label: '', holder_name: '', card_brand: '', bank_name: '', is_auto: false, notes: '',
+  }
+  const [pmForm, setPmForm] = useState<Omit<PaymentMethod, 'id'>>(emptyPM)
+  const [addingMethod, setAddingMethod] = useState(false)
+  const [savingMethod, setSavingMethod] = useState(false)
+  const [delMethodConfirm, setDelMethodConfirm] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (tab !== 'payments' || methods.length > 0 || loadingMethods) return
+    setLoadingMethods(true)
+    supabase.from('payment_methods').select('*').order('label').then(({ data }) => {
+      setMethods((data as PaymentMethod[]) ?? [])
+      setLoadingMethods(false)
+    })
+  }, [tab])
+
+  const companyMethods = methods.filter(m => m.company_id === form.company_id)
+
+  async function saveMethod() {
+    if (!pmForm.label.trim()) return
+    setSavingMethod(true)
+    const { data } = await supabase.from('payment_methods').insert({
+      company_id:  form.company_id,
+      label:       pmForm.label,
+      holder_name: pmForm.holder_name || null,
+      card_brand:  pmForm.card_brand  || null,
+      bank_name:   pmForm.bank_name   || null,
+      is_auto:     pmForm.is_auto,
+      notes:       pmForm.notes || null,
+    }).select().single()
+    if (data) setMethods(m => [...m, data as PaymentMethod])
+    setSavingMethod(false)
+    setAddingMethod(false)
+    setPmForm({ ...emptyPM, company_id: form.company_id })
+  }
+
+  async function deleteMethod(id: string) {
+    await supabase.from('payment_methods').delete().eq('id', id)
+    setMethods(m => m.filter(x => x.id !== id))
+    setDelMethodConfirm(null)
+  }
+
+  // Bills for this vendor (matched by provider name, read-only)
+  const vendorBills = useMemo(() => {
+    if (!form.name.trim()) return []
+    return bills
+      .filter(b => b.provider?.toLowerCase() === form.name.trim().toLowerCase())
+      .sort((a, b) => (b.due_date ?? '').localeCompare(a.due_date ?? ''))
+  }, [bills, form.name])
 
   function selectCompany(c: Company) {
     setForm(f => ({
@@ -656,6 +726,14 @@ function VendorModal({
             className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               tab === 'accounts' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'
             }`}>Accounts{accounts.length > 0 ? ` (${accounts.length})` : ''}</button>
+          <button onClick={() => setTab('payments')}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === 'payments' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'
+            }`}>Payment Methods{companyMethods.length > 0 ? ` (${companyMethods.length})` : ''}</button>
+          <button onClick={() => setTab('bills')}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === 'bills' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'
+            }`}>Bills{vendorBills.length > 0 ? ` (${vendorBills.length})` : ''}</button>
         </div>
 
         {tab === 'details' && (
@@ -808,6 +886,114 @@ function VendorModal({
         </div>
         )}
 
+        {tab === 'payments' && (
+        <div className="p-6 space-y-3">
+          <p className="text-xs text-gray-400 -mt-1">Payment methods for {form.company_id.toUpperCase()}</p>
+          {loadingMethods ? (
+            <p className="text-xs text-gray-400">Loading…</p>
+          ) : (
+            <>
+              {companyMethods.length === 0 && !addingMethod && (
+                <p className="text-xs text-gray-400">No payment methods yet.</p>
+              )}
+              <div className="space-y-2">
+                {companyMethods.map(m => (
+                  <div key={m.id} className="group flex items-start justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-medium text-gray-800">{m.label}</span>
+                        {m.is_auto && <span className="text-xs text-blue-500">⟳ Auto</span>}
+                      </div>
+                      {m.holder_name && <div className="text-xs text-gray-500 mt-0.5">👤 {m.holder_name}</div>}
+                      {m.card_brand && <div className="text-xs text-gray-500">💳 {m.card_brand}</div>}
+                      {m.bank_name && <div className="text-xs text-gray-500">🏦 {m.bank_name}</div>}
+                      {m.notes && <div className="text-xs text-gray-400 mt-0.5 italic">{m.notes}</div>}
+                    </div>
+                    {delMethodConfirm === m.id ? (
+                      <span className="flex items-center gap-1 text-xs shrink-0">
+                        <button onClick={() => deleteMethod(m.id)} className="text-red-600 font-semibold">Del</button>
+                        <button onClick={() => setDelMethodConfirm(null)} className="text-gray-400">✕</button>
+                      </span>
+                    ) : (
+                      <button onClick={() => setDelMethodConfirm(m.id)}
+                        className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs transition-opacity shrink-0 mt-0.5">
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {addingMethod ? (
+                <div className="p-3 bg-gray-50 rounded-lg space-y-2">
+                  <input type="text" placeholder="Label * (e.g. RBC Visa)" value={pmForm.label}
+                    onChange={e => setPmForm(f => ({ ...f, label: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="text" placeholder="Card Holder Name" value={pmForm.holder_name ?? ''}
+                      onChange={e => setPmForm(f => ({ ...f, holder_name: e.target.value }))}
+                      className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                    <input type="text" placeholder="Card Brand / Bank" value={pmForm.card_brand ?? ''}
+                      onChange={e => setPmForm(f => ({ ...f, card_brand: e.target.value }))}
+                      className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                    <input type="checkbox" checked={pmForm.is_auto}
+                      onChange={e => setPmForm(f => ({ ...f, is_auto: e.target.checked }))}
+                      className="w-3.5 h-3.5 accent-blue-600" />
+                    Auto-pay
+                  </label>
+                  <div className="flex gap-2">
+                    <button onClick={() => setAddingMethod(false)}
+                      className="flex-1 py-1.5 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+                    <button onClick={saveMethod} disabled={savingMethod || !pmForm.label.trim()}
+                      className="flex-1 py-1.5 text-xs text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors">
+                      {savingMethod ? 'Saving…' : 'Add Method'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => { setPmForm({ ...emptyPM, company_id: form.company_id }); setAddingMethod(true) }}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add Payment Method</button>
+              )}
+            </>
+          )}
+        </div>
+        )}
+
+        {tab === 'bills' && (
+        <div className="p-6">
+          {vendorBills.length === 0 ? (
+            <p className="text-xs text-gray-400">No bills found for this vendor.</p>
+          ) : (
+            <div className="space-y-2">
+              {vendorBills.map(b => {
+                const status = computeBillStatus(b)
+                const badge = STATUS_BADGE[status]
+                return (
+                  <div key={b.id} className="flex items-center justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-800 truncate">{b.utility_name}</div>
+                      <div className="text-xs text-gray-400">
+                        {b.account_number && <span className="font-mono">{b.account_number}</span>}
+                        {b.account_number && b.due_date && ' · '}
+                        {b.due_date && `Due ${fmtDate(b.due_date)}`}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-sm font-medium text-gray-800">
+                        {b.amount != null ? `${b.currency === 'USD' ? 'US$' : 'CA$'}${b.amount.toFixed(2)}` : '—'}
+                      </span>
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${badge.className}`}>{badge.label}</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+        )}
+
         <div className="px-6 pb-6 flex gap-3">
           <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
           <button onClick={save} disabled={saving || !form.name.trim()}
@@ -850,7 +1036,7 @@ function VendorsContent() {
         utility_document_links(*)
       `).order('name'),
       supabase.from('utility_locations').select('*').order('company_id').order('name'),
-      supabase.from('utility_bills').select('provider, amount, currency, due_date, is_paid, issue_date'),
+      supabase.from('utility_bills').select('id, provider, amount, currency, due_date, is_paid, issue_date, utility_name, bill_number, account_number, balance_status, invoice_status'),
     ])
     setVendors((v as Vendor[]) ?? [])
     setLocations(sortLocations((l as Location[]) ?? []))
@@ -1069,6 +1255,7 @@ function VendorsContent() {
         <VendorModal
           initial={editVendor ?? {}}
           locations={locations}
+          bills={bills}
           onClose={() => { setShowModal(false); setEditVendor(null) }}
           onSave={() => { setShowModal(false); setEditVendor(null); load() }}
         />
