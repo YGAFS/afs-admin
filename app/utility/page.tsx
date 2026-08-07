@@ -1200,7 +1200,7 @@ function BillExpandPanel({
       <div className="col-span-2">
         <span className="text-gray-400">Notes:</span>{' '}
         {noteEdit?.id === bill.id ? (
-          <span className="inline-flex gap-1 items-center">
+          <span className="inline-flex gap-1 items-center w-full mt-1">
             <input
               autoFocus
               value={noteEdit.value}
@@ -1209,17 +1209,18 @@ function BillExpandPanel({
                 if (e.key === 'Enter') onSaveNote(bill.id, noteEdit.value)
                 if (e.key === 'Escape') setNoteEdit(null)
               }}
-              className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-900"
+              className="flex-1 min-w-0 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-900"
             />
             <button onClick={() => onSaveNote(bill.id, noteEdit.value)} className="text-emerald-600 text-sm font-bold">✓</button>
             <button onClick={() => setNoteEdit(null)} className="text-gray-400 text-sm">✕</button>
           </span>
         ) : (
           <span
-            onClick={() => setNoteEdit({ id: bill.id, value: bill.notes ?? '' })}
+            onDoubleClick={() => setNoteEdit({ id: bill.id, value: bill.notes ?? '' })}
             className="text-gray-700 cursor-pointer hover:text-gray-900"
+            title="Double-click to edit"
           >
-            {bill.notes || <span className="text-gray-300">+ add note</span>}
+            {bill.notes || <span className="text-gray-300">+ double-click to add note</span>}
           </span>
         )}
       </div>
@@ -1451,7 +1452,7 @@ function DashboardTab({
                               onClick={() => toggleBill(b.id)}
                               className="flex items-center justify-between gap-2 cursor-pointer"
                             >
-                              <span className="text-sm text-gray-500">{monthYearLabel(b)}</span>
+                              <span className="text-sm font-semibold text-gray-800">{monthYearLabel(b)}</span>
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium text-gray-800">{fmtAmt(b)}</span>
                                 <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_BADGE[computeBillStatus(b)].className}`}>
