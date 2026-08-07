@@ -323,16 +323,18 @@ export default function UtilityPage() {
   const [carryForwardBill, setCarryForwardBill] = useState<Bill | null>(null)
   const [partialPaymentBill, setPartialPaymentBill] = useState<Bill | null>(null)
 
-  async function savePartialPayment(bill: Bill, amountPaid: number, paidAt: string) {
-    const totalDue = bill.total_due ?? bill.amount ?? 0
-    // Paying it off in full through this same flow should count as fully Paid —
-    // otherwise balance_status stays 'partially_paid' forever and the bill never
-    // leaves the Overdue list even though nothing is owed anymore.
-    const isFullyPaid = totalDue > 0 && amountPaid >= totalDue - 0.005
+  async function savePartialPayment(bill: Bill, amountPaid: number, paidAt: string, lateFee: number) {
+    const baseTotal = bill.total_due ?? bill.amount ?? 0
+    const effectiveTotal = baseTotal + lateFee
+    // Paying it off in full (including any late fee) through this same flow should
+    // count as fully Paid — otherwise balance_status stays 'partially_paid' forever
+    // and the bill never leaves the Overdue list even though nothing is owed anymore.
+    const isFullyPaid = effectiveTotal > 0 && amountPaid >= effectiveTotal - 0.005
     const patch: Partial<Bill> = {
       balance_status: isFullyPaid ? 'paid' : 'partially_paid',
-      amount_paid: isFullyPaid ? totalDue : amountPaid,
-      remaining_balance: isFullyPaid ? 0 : Math.max(totalDue - amountPaid, 0),
+      amount_paid: isFullyPaid ? effectiveTotal : amountPaid,
+      remaining_balance: isFullyPaid ? 0 : Math.max(effectiveTotal - amountPaid, 0),
+      late_fee: lateFee,
       paid_at: paidAt ? new Date(paidAt + 'T00:00:00').toISOString() : new Date().toISOString(),
       paid_by: user?.email ?? null,
       is_paid: isFullyPaid,
@@ -1159,21 +1161,25 @@ function PartialPaymentModal({
 }: {
   bill: Bill
   onClose: () => void
-  onSave: (bill: Bill, amountPaid: number, paidAt: string) => Promise<void>
+  onSave: (bill: Bill, amountPaid: number, paidAt: string, lateFee: number) => Promise<void>
 }) {
-  const totalDue = bill.total_due ?? bill.amount ?? 0
+  const baseTotal = bill.total_due ?? bill.amount ?? 0
   const [amountPaid, setAmountPaid] = useState(String(bill.amount_paid ?? ''))
   const [paidAt, setPaidAt] = useState(bill.paid_at ? bill.paid_at.slice(0, 10) : new Date().toISOString().slice(0, 10))
+  const [lateFee, setLateFee] = useState(String(bill.late_fee ?? ''))
   const [saving, setSaving] = useState(false)
 
   const parsedAmount = parseFloat(amountPaid)
-  const remaining = !isNaN(parsedAmount) ? Math.max(totalDue - parsedAmount, 0) : null
+  const parsedLateFee = parseFloat(lateFee)
+  const lateFeeValue = isNaN(parsedLateFee) ? 0 : parsedLateFee
+  const effectiveTotal = baseTotal + lateFeeValue
+  const remaining = !isNaN(parsedAmount) ? Math.max(effectiveTotal - parsedAmount, 0) : null
   const currencySymbol = bill.currency === 'USD' ? 'US$' : 'CA$'
 
   async function handle() {
     if (isNaN(parsedAmount) || parsedAmount < 0) return
     setSaving(true)
-    await onSave(bill, parsedAmount, paidAt)
+    await onSave(bill, parsedAmount, paidAt, lateFeeValue)
     setSaving(false)
   }
 
@@ -1181,7 +1187,7 @@ function PartialPaymentModal({
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900">Record Partial Payment</h2>
+          <h2 className="font-semibold text-gray-900">Record Payment</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
         </div>
         <div className="p-6 space-y-4">
@@ -1189,7 +1195,7 @@ function PartialPaymentModal({
             <span className="font-medium">{bill.utility_name}</span>
             {bill.provider && ` · ${bill.provider}`}
             {' — Total Due: '}
-            <span className="font-medium">{currencySymbol}{totalDue.toFixed(2)}</span>
+            <span className="font-medium">{currencySymbol}{baseTotal.toFixed(2)}</span>
           </p>
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Amount Paid So Far</label>
@@ -1208,8 +1214,20 @@ function PartialPaymentModal({
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
             />
           </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Late Fee (if any)</label>
+            <input
+              type="number" step="0.01" value={lateFee}
+              onChange={e => setLateFee(e.target.value)}
+              placeholder="0.00"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+            />
+          </div>
           {remaining !== null && (
             <p className="text-xs text-gray-500">
+              {lateFeeValue > 0 && (
+                <>Total incl. late fee: <span className="font-medium text-gray-700">{currencySymbol}{effectiveTotal.toFixed(2)}</span> · </>
+              )}
               Remaining balance: <span className="font-medium text-gray-700">{currencySymbol}{remaining.toFixed(2)}</span>
             </p>
           )}

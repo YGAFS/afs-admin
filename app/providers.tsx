@@ -65,6 +65,12 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
+    // Wait until the initial auth check has actually resolved — otherwise this runs
+    // once with the placeholder `user === null` before getUser() settles, briefly
+    // clearing accessLoading and letting the unfiltered layout flash on screen before
+    // flipping back to the loading state once the real user (and their section
+    // restrictions) come in.
+    if (loading) return
     if (!user?.email) {
       setAllowedSections(null)
       setAccessLoading(false)
@@ -80,7 +86,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         setAllowedSections((data?.allowed_sections as string[] | null) ?? null)
         setAccessLoading(false)
       })
-  }, [user])
+  }, [user, loading])
 
   async function setLocale(l: Locale) {
     setLocaleState(l)

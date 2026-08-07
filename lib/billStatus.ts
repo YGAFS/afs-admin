@@ -3,6 +3,7 @@ export type InvoiceStatus = 'active' | 'void'
 
 export type BillStatusResult =
   | 'paid'
+  | 'paid_late'
   | 'carried_forward'
   | 'waived'
   | 'void'
@@ -16,12 +17,18 @@ export interface BillForStatus {
   balance_status: BalanceStatus
   invoice_status: InvoiceStatus | null
   due_date: string | null
+  paid_at?: string | null
 }
 
 export function computeBillStatus(bill: BillForStatus): BillStatusResult {
   if (bill.invoice_status === 'void') return 'void'
   const s = bill.balance_status
-  if (s === 'paid') return 'paid'
+  if (s === 'paid') {
+    // Paid, but only after the due date had already passed — surface this distinctly
+    // from an on-time payment instead of collapsing it into a plain "Paid" badge.
+    if (bill.due_date && bill.paid_at && bill.paid_at.slice(0, 10) > bill.due_date) return 'paid_late'
+    return 'paid'
+  }
   if (s === 'carried_forward') return 'carried_forward'
   if (s === 'waived') return 'waived'
   if (!bill.due_date) return s === 'partially_paid' ? 'overdue_partial' : 'open'
@@ -40,6 +47,7 @@ export function isActiveOutstanding(bill: BillForStatus): boolean {
 
 export const STATUS_BADGE: Record<BillStatusResult, { label: string; className: string }> = {
   paid:            { label: 'Paid',              className: 'bg-emerald-100 text-emerald-700' },
+  paid_late:       { label: 'Paid (Late)',       className: 'bg-amber-100 text-amber-800' },
   carried_forward: { label: 'Carried Forward',   className: 'bg-purple-100 text-purple-700' },
   waived:          { label: 'Waived',            className: 'bg-gray-100 text-gray-500' },
   void:            { label: 'Void',              className: 'bg-gray-100 text-gray-400' },
