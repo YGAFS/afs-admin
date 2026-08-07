@@ -1298,11 +1298,15 @@ function DashboardTab({
       map.get(key)!.push(b)
     }
     return Array.from(map.entries())
-      .map(([name, bs]) => ({
-        name,
-        company_id: bs[0].company_id,
-        bills: [...bs].sort((a, b) => (b.issue_date ?? b.due_date ?? '').localeCompare(a.issue_date ?? a.due_date ?? '')),
-      }))
+      .map(([name, bs]) => {
+        const distinctAccounts = new Set(bs.map(b => b.account_number).filter((a): a is string => !!a))
+        return {
+          name,
+          company_id: bs[0].company_id,
+          hasMultipleAccounts: distinctAccounts.size > 1,
+          bills: [...bs].sort((a, b) => (b.issue_date ?? b.due_date ?? '').localeCompare(a.issue_date ?? a.due_date ?? '')),
+        }
+      })
       .sort((a, b) => a.name.localeCompare(b.name))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coFilter, searchTerm, bills])
@@ -1440,7 +1444,12 @@ function DashboardTab({
                               onClick={() => toggleBill(b.id)}
                               className="flex items-center justify-between gap-2 cursor-pointer"
                             >
-                              <span className="text-sm font-semibold text-gray-800">{monthYearLabel(b)}</span>
+                              <span className="flex items-center gap-2 min-w-0">
+                                {v.hasMultipleAccounts && (
+                                  <span className="text-xs text-gray-400 font-mono truncate">{b.account_number ?? '—'}</span>
+                                )}
+                                <span className="text-sm font-semibold text-gray-800">{monthYearLabel(b)}</span>
+                              </span>
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium text-gray-800">{fmtAmt(b)}</span>
                                 <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_BADGE[computeBillStatus(b)].className}`}>
