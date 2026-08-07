@@ -306,7 +306,12 @@ export default function UtilityPage() {
     if (newStatus === 'paid') {
       patch.amount_paid = bill.total_due ?? bill.amount ?? 0
       patch.remaining_balance = 0
-      patch.paid_at = new Date().toISOString()
+      // The quick "Paid" action makes no claim about *when* it was actually paid —
+      // stamping "now" made every backfilled/historical bill look "paid late" simply
+      // because today is always after an old due date. Only the dated Record Payment
+      // flow (savePartialPayment) should set a paid_at that feeds the late check.
+      // Clearing it here also lets "Paid" double as the fix for a wrongly-late bill.
+      patch.paid_at = null
       patch.paid_by = user?.email ?? null
       patch.is_paid = true
     } else if (newStatus === 'open') {
@@ -1756,7 +1761,7 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
               <tbody className="divide-y divide-gray-50">
                 {bs.slice(-10).map(b => {
                   const pct = maxAmt > 0 && b.amount != null ? (b.amount / maxAmt) * 100 : 0
-                  const wasLate = computeBillStatus(b) === 'paid' && b.paid_at && b.due_date && b.paid_at > b.due_date
+                  const wasLate = b.is_paid && b.paid_at && b.due_date && b.paid_at.slice(0, 10) > b.due_date
                   const isCurrentlyOverdue = computeBillStatus(b) === 'overdue' || computeBillStatus(b) === 'overdue_partial'
                   return (
                     <tr key={b.id}>
