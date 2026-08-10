@@ -21,7 +21,7 @@ const supabase = createClient(
 type Company = 'afs' | 'tnt' | 'zfs'
 type Currency = 'CAD' | 'USD'
 type Role = 'admin' | 'ap'
-type MainTab = 'dashboard' | 'all' | 'analytics'
+type MainTab = 'dashboard' | 'all' | 'analytics' | 'balance'
 type StatusFilter = 'all' | 'open' | 'overdue' | 'overdue_partial' | 'due_today' | 'upcoming' | 'partially_paid' | 'paid' | 'carried_forward' | 'waived' | 'void'
 
 interface PaymentMethod {
@@ -171,6 +171,41 @@ function fmtAmt(bill: Bill) {
 function fmtShortDate(d: string | null) {
   if (!d) return '—'
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+interface LedgerEntry {
+  bill: Bill
+  charge: number
+  paid: number
+  balance: number
+}
+
+// Running account balance, computed from current_charges (not total_due) so a bill's
+// carried-forward previous_balance isn't double-counted on top of the source bill's own
+// charge. Payments that exceed a bill's own total (over-payments) push the balance
+// negative — that's an account credit, not clamped to zero like per-bill remaining_balance.
+function computeAccountLedger(bills: Bill[]): LedgerEntry[] {
+  const sorted = [...bills].sort((a, b) => (a.issue_date ?? a.due_date ?? '').localeCompare(b.issue_date ?? b.due_date ?? ''))
+  let running = 0
+  return sorted.map(bill => {
+    const status = computeBillStatus(bill)
+    const charge = status === 'void' || status === 'waived' ? 0 : (bill.current_charges ?? bill.total_due ?? bill.amount ?? 0)
+    const paid = bill.amount_paid ?? 0
+    running += charge - paid
+    return { bill, charge, paid, balance: running }
+  })
+}
+
+function fmtBalance(balance: number, sym: string): string {
+  if (balance > 0.005) return `${sym}${balance.toFixed(2)}`
+  if (balance < -0.005) return `-${sym}${Math.abs(balance).toFixed(2)}`
+  return `${sym}0.00`
+}
+
+function balanceColor(balance: number): string {
+  if (balance > 0.005) return 'text-red-600'
+  if (balance < -0.005) return 'text-emerald-600'
+  return 'text-gray-400'
 }
 
 const emptyBill: Omit<Bill, 'id' | 'created_at' | 'payment_methods'> = {
@@ -427,6 +462,7 @@ export default function UtilityPage() {
               ['dashboard', '🏠 Dashboard'],
               ['all',       '📋 All Bills'],
               ['analytics', '📊 Analytics'],
+              ['balance',   '💰 Balance'],
             ] as [MainTab, string][]).map(([tab, label]) => (
               <button
                 key={tab}
@@ -740,6 +776,9 @@ export default function UtilityPage() {
 
       {/* ── ANALYTICS TAB ──────────────────────────────────────────────────── */}
       {mainTab === 'analytics' && <AnalyticsTab bills={bills} />}
+
+      {/* ── BALANCE TAB ────────────────────────────────────────────────────── */}
+      {mainTab === 'balance' && <BalanceTab bills={bills} />}
 
       {/* ── Add/Edit Bill Modal ─────────────────────────────────────────────── */}
       {showModal && (
@@ -1697,7 +1736,9 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
       const maxAmt = amounts.length ? Math.max(...amounts) : 0
       const minAmt = amounts.length ? Math.min(...amounts) : 0
       const avgAmt = amounts.length ? amounts.reduce((s, v) => s + v, 0) / amounts.length : 0
-      return { key, company_id: bs[0].company_id as Company, utility_name: bs[0].utility_name, provider: bs[0].provider, account_number: bs[0].account_number, bills: sorted, overdueCount, maxAmt, minAmt, avgAmt }
+      const ledger = computeAccountLedger(bs)
+      const balance = ledger.length ? ledger[ledger.length - 1].balance : 0
+      return { key, company_id: bs[0].company_id as Company, utility_name: bs[0].utility_name, provider: bs[0].provider, account_number: bs[0].account_number, bills: sorted, ledger, balance, overdueCount, maxAmt, minAmt, avgAmt }
     })
   }, [bills])
 
@@ -1707,7 +1748,7 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
 
   return (
     <div className="space-y-4">
-      {utilities.map(({ key, company_id, utility_name, provider, account_number, bills: bs, overdueCount, maxAmt, minAmt, avgAmt }) => (
+      {utilities.map(({ key, company_id, utility_name, provider, account_number, ledger, balance, overdueCount, maxAmt, minAmt, avgAmt }) => (
         <div key={key} className="bg-white rounded-xl border border-gray-200 p-5">
           {/* Utility header */}
           <div className="flex items-start justify-between mb-4">
@@ -1725,22 +1766,23 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
                   ⚠ {overdueCount}x overdue
                 </span>
               )}
-              {bs.some(b => b.is_auto_pay) && (
+              {ledger.some(({ bill }) => bill.is_auto_pay) && (
                 <span className="text-blue-500 font-medium">⟳ Auto-pay</span>
               )}
             </div>
           </div>
 
           {/* Summary stats */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-4 gap-3 mb-4">
             {[
-              { label: 'Avg Amount', value: avgAmt > 0 ? `${bs[0].currency === 'USD' ? 'US$' : 'CA$'}${avgAmt.toFixed(2)}` : '—' },
-              { label: 'Range', value: maxAmt > 0 ? `${bs[0].currency === 'USD' ? 'US$' : 'CA$'}${minAmt.toFixed(2)} – ${maxAmt.toFixed(2)}` : '—' },
-              { label: 'Entries', value: bs.length },
+              { label: 'Avg Amount', value: avgAmt > 0 ? `${ledger[0].bill.currency === 'USD' ? 'US$' : 'CA$'}${avgAmt.toFixed(2)}` : '—', color: 'text-gray-800' },
+              { label: 'Range', value: maxAmt > 0 ? `${ledger[0].bill.currency === 'USD' ? 'US$' : 'CA$'}${minAmt.toFixed(2)} – ${maxAmt.toFixed(2)}` : '—', color: 'text-gray-800' },
+              { label: 'Entries', value: ledger.length, color: 'text-gray-800' },
+              { label: 'Balance', value: fmtBalance(balance, ledger[0]?.bill.currency === 'USD' ? 'US$' : 'CA$'), color: balanceColor(balance) },
             ].map(s => (
               <div key={s.label} className="bg-gray-50 rounded-lg px-3 py-2">
                 <div className="text-xs text-gray-500 mb-0.5">{s.label}</div>
-                <div className="text-sm font-semibold text-gray-800">{s.value}</div>
+                <div className={`text-sm font-semibold ${s.color}`}>{s.value}</div>
               </div>
             ))}
           </div>
@@ -1755,15 +1797,17 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
                   <th className="text-left pb-2 pr-3 font-medium">Issued</th>
                   <th className="text-left pb-2 pr-3 font-medium">Due</th>
                   <th className="text-right pb-2 pr-4 font-medium">Amount</th>
-                  <th className="pb-2 font-medium w-36">Trend</th>
-                  <th className="text-center pb-2 font-medium">Status</th>
+                  <th className="pb-2 font-medium w-28">Trend</th>
+                  <th className="text-center pb-2 pr-3 font-medium">Status</th>
+                  <th className="text-right pb-2 font-medium">Balance</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {bs.slice(-10).map(b => {
+                {ledger.slice(-10).map(({ bill: b, balance: rb }) => {
                   const pct = maxAmt > 0 && b.amount != null ? (b.amount / maxAmt) * 100 : 0
                   const wasLate = b.is_paid && b.paid_at && b.due_date && b.paid_at.slice(0, 10) > b.due_date
                   const isCurrentlyOverdue = computeBillStatus(b) === 'overdue' || computeBillStatus(b) === 'overdue_partial'
+                  const sym = b.currency === 'USD' ? 'US$' : 'CA$'
                   return (
                     <tr key={b.id}>
                       <td className="py-2 pr-3 text-gray-600">{b.billing_period ?? '—'}</td>
@@ -1774,19 +1818,20 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
                         {b.amount != null ? fmtAmt(b) : '—'}
                       </td>
                       <td className="py-2 pr-2">
-                        <div className="bg-gray-100 rounded-full h-2 w-36">
+                        <div className="bg-gray-100 rounded-full h-2 w-28">
                           <div
                             className="h-2 rounded-full bg-blue-400 transition-all"
                             style={{ width: `${pct}%` }}
                           />
                         </div>
                       </td>
-                      <td className="py-2 text-center">
+                      <td className="py-2 pr-3 text-center">
                         {b.is_paid && !wasLate  && <span className="text-emerald-600 font-bold" title="Paid on time">✓</span>}
                         {wasLate                 && <span className="text-amber-500 font-bold"   title="Paid late">⚠</span>}
                         {isCurrentlyOverdue      && <span className="text-red-600 font-bold"     title="Overdue">!</span>}
                         {!b.is_paid && !isCurrentlyOverdue && <span className="text-gray-400" title="Pending">·</span>}
                       </td>
+                      <td className={`py-2 text-right font-semibold ${balanceColor(rb)}`}>{fmtBalance(rb, sym)}</td>
                     </tr>
                   )
                 })}
@@ -1795,6 +1840,106 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ── Balance Tab ──────────────────────────────────────────────────────────────
+
+function BalanceTab({ bills }: { bills: Bill[] }) {
+  const accounts = useMemo(() => {
+    const map = new Map<string, Bill[]>()
+    for (const b of bills) {
+      const key = `${b.company_id}::${b.utility_name}::${b.account_number ?? ''}`
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(b)
+    }
+    return Array.from(map.entries()).map(([key, bs]) => {
+      const ledger = computeAccountLedger(bs)
+      const balance = ledger.length ? ledger[ledger.length - 1].balance : 0
+      return {
+        key,
+        company_id: bs[0].company_id as Company,
+        utility_name: bs[0].utility_name,
+        provider: bs[0].provider,
+        account_number: bs[0].account_number,
+        currency: bs[0].currency,
+        ledger,
+        balance,
+      }
+    }).sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
+  }, [bills])
+
+  const totalOwed = accounts.reduce((s, a) => s + Math.max(a.balance, 0), 0)
+  const totalCredit = accounts.reduce((s, a) => s + Math.max(-a.balance, 0), 0)
+
+  if (bills.length === 0) {
+    return <div className="py-16 text-center text-sm text-gray-400">No bills data yet.</div>
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+          <div className="text-xs text-red-500 mb-0.5">Total Owed (open balances)</div>
+          <div className="text-lg font-bold text-red-600">US${totalOwed.toFixed(2)}</div>
+        </div>
+        <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
+          <div className="text-xs text-emerald-500 mb-0.5">Total Credit (overpaid)</div>
+          <div className="text-lg font-bold text-emerald-600">US${totalCredit.toFixed(2)}</div>
+        </div>
+      </div>
+
+      {accounts.map(({ key, company_id, utility_name, provider, account_number, currency, ledger, balance }) => {
+        const sym = currency === 'USD' ? 'US$' : 'CA$'
+        return (
+          <div key={key} className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[company_id]}`}>
+                  {company_id.toUpperCase()}
+                </span>
+                <span className="font-semibold text-gray-900">{utility_name}</span>
+                {provider && <span className="text-xs text-gray-400">· {provider}</span>}
+                {account_number && <span className="text-xs text-gray-400 font-mono">({account_number})</span>}
+              </div>
+              <div className={`text-sm font-bold ${balanceColor(balance)}`}>
+                {balance > 0.005 ? `${fmtBalance(balance, sym)} owed` : balance < -0.005 ? `${fmtBalance(balance, sym)} credit` : 'Settled'}
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-gray-400 border-b border-gray-100">
+                    <th className="text-left pb-2 pr-3 font-medium">Issued</th>
+                    <th className="text-left pb-2 pr-3 font-medium">Bill #</th>
+                    <th className="text-center pb-2 pr-3 font-medium">Status</th>
+                    <th className="text-right pb-2 pr-3 font-medium">Charge</th>
+                    <th className="text-right pb-2 pr-3 font-medium">Paid</th>
+                    <th className="text-right pb-2 font-medium">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {ledger.map(({ bill, charge, paid, balance: rb }) => (
+                    <tr key={bill.id}>
+                      <td className="py-2 pr-3 text-gray-500">{fmtShortDate(bill.issue_date)}</td>
+                      <td className="py-2 pr-3 font-mono text-gray-500">{bill.bill_number ?? '—'}</td>
+                      <td className="py-2 pr-3 text-center">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUS_BADGE[computeBillStatus(bill)].className}`}>
+                          {STATUS_BADGE[computeBillStatus(bill)].label}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3 text-right text-gray-700">{charge > 0 ? `${sym}${charge.toFixed(2)}` : '—'}</td>
+                      <td className="py-2 pr-3 text-right text-gray-500">{paid > 0 ? `${sym}${paid.toFixed(2)}` : '—'}</td>
+                      <td className={`py-2 text-right font-semibold ${balanceColor(rb)}`}>{fmtBalance(rb, sym)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
