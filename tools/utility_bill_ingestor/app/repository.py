@@ -198,6 +198,9 @@ def bill_payload_from_parsed(
     if computed_total is None and current is not None:
         computed_total = previous + current
 
+    already_paid = getattr(parsed, "already_paid", False)
+    amount_paid = computed_total if already_paid else (_d(parsed.payments_received) or 0)
+
     return {
         "company_id": company_id,
         "utility_name": utility_name,
@@ -209,8 +212,8 @@ def bill_payload_from_parsed(
         "tax": _d(parsed.tax_amount) or 0,
         "late_fee": _d(parsed.late_fee) or 0,
         "adjustments": _d(parsed.adjustments) or 0,
-        "amount_paid": _d(parsed.payments_received) or 0,
-        "remaining_balance": _d(computed_total),
+        "amount_paid": _d(amount_paid) or 0,
+        "remaining_balance": 0 if already_paid else _d(computed_total),
         "currency": parsed.currency,
         "issue_date": _iso(parsed.issue_date),
         "due_date": _iso(parsed.due_date),
@@ -220,10 +223,10 @@ def bill_payload_from_parsed(
         "account_number": parsed.account_number,
         "location_id": location_id,
         "service_account_id": service_account_id,
-        "is_auto_pay": False,
-        "is_paid": False,
-        "balance_status": "open",
+        "is_auto_pay": already_paid,
+        "is_paid": already_paid,
+        "balance_status": "paid" if already_paid else "open",
         "invoice_status": "active",
         "needs_amount_review": bool(parsed.warnings),
-        "notes": "Imported via utility-bill-ingestor",
+        "notes": "Imported via utility-bill-ingestor" + (" — auto-paid" if already_paid else ""),
     }

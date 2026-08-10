@@ -30,6 +30,10 @@ class ParsedBill:
     adjustments: Decimal | None = None
     total_due: Decimal | None = None
     currency: str = "CAD"
+    # True for vendors whose bill always shows a $0 "total amount due" because the
+    # charge is collected via autopay before/at statement time (e.g. Orkin) — the
+    # charge itself still gets registered, just pre-marked paid instead of open.
+    already_paid: bool = False
     confidence: float = 0.0
     warnings: list[str] = field(default_factory=list)
     raw_fields: dict = field(default_factory=dict)
