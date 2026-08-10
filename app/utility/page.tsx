@@ -213,7 +213,7 @@ function computeAccountBalanceDetail(bills: Bill[], credits: Credit[]): { balanc
       addLine(key, `${fmtShortDate(b.issue_date)} bill: ${status}, excluded`)
       continue
     }
-    const charge = b.current_charges ?? b.total_due ?? b.amount ?? 0
+    const charge = b.current_charges ?? b.amount ?? b.total_due ?? 0
     // amount_paid on a carried-forward bill includes repaying the previous_balance portion
     // too (the "Paid" quick action sets amount_paid = previous_balance + current_charges).
     // Subtract previous_balance back out so only this bill's own current_charges is treated
@@ -415,7 +415,7 @@ export default function UtilityPage() {
   async function updateBillStatus(bill: Bill, newStatus: BalanceStatus) {
     const patch: Partial<Bill> = { balance_status: newStatus }
     if (newStatus === 'paid') {
-      patch.amount_paid = bill.total_due ?? bill.amount ?? 0
+      patch.amount_paid = bill.amount ?? bill.total_due ?? 0
       patch.remaining_balance = 0
       // The quick "Paid" action makes no claim about *when* it was actually paid —
       // stamping "now" made every backfilled/historical bill look "paid late" simply
@@ -427,7 +427,7 @@ export default function UtilityPage() {
       patch.is_paid = true
     } else if (newStatus === 'open') {
       patch.amount_paid = 0
-      patch.remaining_balance = bill.total_due ?? bill.amount ?? 0
+      patch.remaining_balance = bill.amount ?? bill.total_due ?? 0
       patch.is_paid = false
       patch.paid_at = null
       patch.paid_by = null
@@ -440,7 +440,7 @@ export default function UtilityPage() {
   const [partialPaymentBill, setPartialPaymentBill] = useState<Bill | null>(null)
 
   async function savePartialPayment(bill: Bill, amountPaid: number, paidAt: string, lateFee: number) {
-    const baseTotal = bill.total_due ?? bill.amount ?? 0
+    const baseTotal = bill.amount ?? bill.total_due ?? 0
     const effectiveTotal = baseTotal + lateFee
     // Paying it off in full (including any late fee) through this same flow should
     // count as fully Paid — otherwise balance_status stays 'partially_paid' forever
@@ -533,7 +533,7 @@ export default function UtilityPage() {
       .filter(c => accountKey(c.company_id, c.utility_name, c.account_number) === key)
       .sort((a, b) => (a.credit_date ?? '').localeCompare(b.credit_date ?? ''))
     const available = acctCredits.reduce((s, c) => s + c.amount, 0)
-    const baseTotal = bill.total_due ?? bill.amount ?? 0
+    const baseTotal = bill.amount ?? bill.total_due ?? 0
     const alreadyPaid = bill.amount_paid ?? 0
     const remaining = Math.max(baseTotal - alreadyPaid, 0)
     const applyAmt = Math.min(available, remaining)
@@ -904,7 +904,7 @@ export default function UtilityPage() {
                                 const avail = availableCreditByAccount.get(key) ?? 0
                                 const canApply = avail > 0.005 && s !== 'paid' && s !== 'paid_late' && s !== 'void' && s !== 'waived' && s !== 'carried_forward'
                                 if (!canApply) return null
-                                const baseTotal = bill.total_due ?? bill.amount ?? 0
+                                const baseTotal = bill.amount ?? bill.total_due ?? 0
                                 const remaining = Math.max(baseTotal - (bill.amount_paid ?? 0), 0)
                                 const applyAmt = Math.min(avail, remaining)
                                 const sym = bill.currency === 'USD' ? 'US$' : 'CA$'
@@ -1444,7 +1444,7 @@ function PartialPaymentModal({
   onClose: () => void
   onSave: (bill: Bill, amountPaid: number, paidAt: string, lateFee: number) => Promise<void>
 }) {
-  const baseTotal = bill.total_due ?? bill.amount ?? 0
+  const baseTotal = bill.amount ?? bill.total_due ?? 0
   const [amountPaid, setAmountPaid] = useState(String(bill.amount_paid ?? ''))
   const [paidAt, setPaidAt] = useState(bill.paid_at ? bill.paid_at.slice(0, 10) : new Date().toISOString().slice(0, 10))
   const [lateFee, setLateFee] = useState(String(bill.late_fee ?? ''))
@@ -1535,7 +1535,7 @@ function CarryForwardModal({
   onClose: () => void
   onSave: (sourceId: string, targetId: string | null, amount: number, notes: string) => Promise<void>
 }) {
-  const defaultAmt = bill.remaining_balance ?? bill.total_due ?? bill.amount ?? 0
+  const defaultAmt = bill.remaining_balance ?? bill.amount ?? bill.total_due ?? 0
   const [amount, setAmount] = useState(String(defaultAmt))
   const [targetId, setTargetId] = useState('')
   const [notes, setNotes] = useState('')
