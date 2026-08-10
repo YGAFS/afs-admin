@@ -194,18 +194,34 @@ def bill_payload_from_parsed(
     system, mirroring app/utility/page.tsx's own saveBill())."""
     previous = parsed.previous_balance or Decimal(0)
     current = parsed.current_charges
+    payments = parsed.payments_received or Decimal(0)
     computed_total = parsed.total_due
     if computed_total is None and current is not None:
         computed_total = previous + current
 
+    # A payment shown on the bill clears the *previous* balance first, not this
+    # period's current_charges — waterfall it: reduce previous_balance by the
+    # payment (down to zero), and only the leftover excess (if any) counts as
+    # amount_paid toward the current total. Registering the raw previous_balance
+    # here when it's already been paid off would otherwise resurrect a stale,
+    # already-settled debt in the app's own account-balance ledger (see
+    # app/utility/page.tsx's computeAccountBalanceDetail, which reads
+    # previous_balance/amount_paid straight off this row).
+    effective_previous = previous - payments
+    if effective_previous < 0:
+        effective_previous = Decimal(0)
+    excess_payment = payments - previous
+    if excess_payment < 0:
+        excess_payment = Decimal(0)
+
     already_paid = getattr(parsed, "already_paid", False)
-    amount_paid = computed_total if already_paid else (_d(parsed.payments_received) or 0)
+    amount_paid = computed_total if already_paid else excess_payment
 
     return {
         "company_id": company_id,
         "utility_name": utility_name,
         "provider": provider,
-        "previous_balance": _d(parsed.previous_balance),
+        "previous_balance": _d(effective_previous),
         "current_charges": _d(parsed.current_charges),
         "amount": _d(computed_total),
         "total_due": _d(computed_total),
@@ -213,7 +229,7 @@ def bill_payload_from_parsed(
         "late_fee": _d(parsed.late_fee) or 0,
         "adjustments": _d(parsed.adjustments) or 0,
         "amount_paid": _d(amount_paid) or 0,
-        "remaining_balance": 0 if already_paid else _d(computed_total),
+        "remaining_balance": 0 if already_paid else _d(max((computed_total or Decimal(0)) - amount_paid, Decimal(0))),
         "currency": parsed.currency,
         "issue_date": _iso(parsed.issue_date),
         "due_date": _iso(parsed.due_date),

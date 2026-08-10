@@ -2,6 +2,8 @@
 [Key=Value] tags, which is by far the most reliable signal."""
 from __future__ import annotations
 
+import re
+
 from app.extractors.base import ParsedBill
 from app.normalizer import find_money_after, parse_date_numeric, parse_money, search
 
@@ -26,11 +28,21 @@ class FontanaWaterExtractor:
         current = find_money_after(r"Total Current Charges", text)
         total = parse_money(search(r"\[Sys_Balance=([-\d.]+)\]", text).group(1))
 
+        # When the previous balance was already settled before this statement was
+        # generated, the bill shows a "<date> Payment, Thank you  $-X.XX" line and
+        # Sys_Balance (total) legitimately excludes that previous balance. Without
+        # capturing it as payments_received, the balance-sum check (previous +
+        # current - payments == total) fails and every such bill needlessly lands
+        # in needs_review even though the numbers genuinely reconcile.
+        payment_match = re.search(r"Payment,\s*Thank you\s*\$?(-?[\d,]+\.\d{2})", text, re.IGNORECASE)
+        payments_received = abs(parse_money(payment_match.group(1))) if payment_match else None
+
         issue_date = parse_date_numeric(bill_date_raw)
         due_date = parse_date_numeric(due_date_raw)
 
-        if previous + current != total:
-            warnings.append(f"previous({previous}) + current({current}) != total({total})")
+        reconciled = previous + current - (payments_received or 0)
+        if reconciled != total:
+            warnings.append(f"previous({previous}) + current({current}) - payments({payments_received or 0}) != total({total})")
 
         return ParsedBill(
             vendor_name="Fontana Water",
@@ -41,6 +53,7 @@ class FontanaWaterExtractor:
             billing_year=issue_date.year,
             previous_balance=previous,
             current_charges=current,
+            payments_received=payments_received,
             total_due=total,
             currency="USD",
             confidence=0.9,
