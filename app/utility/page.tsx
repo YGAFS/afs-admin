@@ -200,9 +200,15 @@ function computeAccountBalances(bills: Bill[], credits: Credit[]): Map<string, n
   const map = new Map<string, number>()
   for (const b of bills) {
     const status = computeBillStatus(b)
-    const charge = status === 'void' || status === 'waived' ? 0 : (b.current_charges ?? b.total_due ?? b.amount ?? 0)
-    const paid = b.amount_paid ?? 0
     const key = accountKey(b.company_id, b.utility_name, b.account_number)
+    if (status === 'void' || status === 'waived') continue
+    const charge = b.current_charges ?? b.total_due ?? b.amount ?? 0
+    // amount_paid on a carried-forward bill includes repaying the previous_balance portion
+    // too (the "Paid" quick action sets amount_paid = previous_balance + current_charges).
+    // Subtract previous_balance back out so only this bill's own current_charges is treated
+    // as paid here — otherwise the carried amount gets counted as repaid a second time on
+    // top of however it was already accounted for in the prior bill's own contribution.
+    const paid = (b.amount_paid ?? 0) - (b.previous_balance ?? 0)
     map.set(key, (map.get(key) ?? 0) + charge - paid)
   }
   for (const c of credits) {
@@ -281,6 +287,7 @@ export default function UtilityPage() {
   const [saving,        setSaving]        = useState(false)
   const [noteEdit,      setNoteEdit]      = useState<{ id: string; value: string } | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [applyConfirm,  setApplyConfirm]  = useState<string | null>(null)
   const [showPMModal,   setShowPMModal]   = useState(false)
   const [showCreditModal, setShowCreditModal] = useState(false)
 
@@ -324,6 +331,38 @@ export default function UtilityPage() {
     }
     return true
   })
+
+  // Credits aren't "bills" so they only show up in the unfiltered All-Bills view — a bill
+  // status filter (Overdue, Paid, etc.) doesn't have a meaningful equivalent for them.
+  const filteredCredits = statusFilter !== 'all' ? [] : credits.filter(c => {
+    if (coFilter !== 'all' && c.company_id !== coFilter) return false
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase()
+      if (!c.utility_name.toLowerCase().includes(q) &&
+          !(c.account_number ?? '').toLowerCase().includes(q) &&
+          !(c.note ?? '').toLowerCase().includes(q)) return false
+    }
+    return true
+  })
+
+  type BillTableRow = { kind: 'bill'; bill: Bill } | { kind: 'credit'; credit: Credit }
+  const rows: BillTableRow[] = [
+    ...filtered.map(bill => ({ kind: 'bill' as const, bill })),
+    ...filteredCredits.map(credit => ({ kind: 'credit' as const, credit })),
+  ].sort((a, b) => {
+    const da = a.kind === 'bill' ? (a.bill.due_date ?? '') : (a.credit.credit_date ?? '')
+    const db = b.kind === 'bill' ? (b.bill.due_date ?? '') : (b.credit.credit_date ?? '')
+    return da.localeCompare(db)
+  })
+
+  const availableCreditByAccount = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const c of credits) {
+      const key = accountKey(c.company_id, c.utility_name, c.account_number)
+      map.set(key, (map.get(key) ?? 0) + c.amount)
+    }
+    return map
+  }, [credits])
 
   const today = new Date(new Date().toDateString())
   const inSevenDays = new Date(today.getTime() + 7 * 86400000)
@@ -461,6 +500,57 @@ export default function UtilityPage() {
     await supabase.from('utility_bills').delete().eq('id', id)
     setBills(prev => prev.filter(b => b.id !== id))
     setDeleteConfirm(null)
+  }
+
+  async function deleteCredit(id: string) {
+    await supabase.from('utility_credits').delete().eq('id', id)
+    setCredits(prev => prev.filter(c => c.id !== id))
+  }
+
+  // Applies as much of the account's available credit as possible toward a bill: marks the
+  // bill paid/partially-paid (same fields the quick "Paid" action sets) and consumes credit
+  // rows oldest-first, shrinking or deleting them. Balance-neutral overall — see
+  // computeAccountBalances: crediting a bill's amount_paid and removing the same amount from
+  // the credits pool cancel out, so the account's total balance doesn't move, only which line
+  // item represents it.
+  async function applyCredit(bill: Bill) {
+    const key = accountKey(bill.company_id, bill.utility_name, bill.account_number)
+    const acctCredits = credits
+      .filter(c => accountKey(c.company_id, c.utility_name, c.account_number) === key)
+      .sort((a, b) => (a.credit_date ?? '').localeCompare(b.credit_date ?? ''))
+    const available = acctCredits.reduce((s, c) => s + c.amount, 0)
+    const baseTotal = bill.total_due ?? bill.amount ?? 0
+    const alreadyPaid = bill.amount_paid ?? 0
+    const remaining = Math.max(baseTotal - alreadyPaid, 0)
+    const applyAmt = Math.min(available, remaining)
+    if (applyAmt <= 0.005) return
+
+    const newPaid = alreadyPaid + applyAmt
+    const isFullyPaid = newPaid >= baseTotal - 0.005
+    const patch: Partial<Bill> = {
+      balance_status: isFullyPaid ? 'paid' : 'partially_paid',
+      amount_paid: newPaid,
+      remaining_balance: Math.max(baseTotal - newPaid, 0),
+      is_paid: isFullyPaid,
+      paid_by: bill.paid_by ?? 'Credit',
+    }
+    await supabase.from('utility_bills').update(patch).eq('id', bill.id)
+    setBills(prev => prev.map(b => b.id === bill.id ? { ...b, ...patch } : b))
+
+    let toConsume = applyAmt
+    for (const c of acctCredits) {
+      if (toConsume <= 0.005) break
+      const use = Math.min(c.amount, toConsume)
+      toConsume -= use
+      const newAmt = c.amount - use
+      if (newAmt <= 0.005) {
+        await supabase.from('utility_credits').delete().eq('id', c.id)
+      } else {
+        await supabase.from('utility_credits').update({ amount: newAmt }).eq('id', c.id)
+      }
+    }
+    setApplyConfirm(null)
+    load()
   }
 
   function openEdit(bill: Bill) {
@@ -683,7 +773,15 @@ export default function UtilityPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {filtered.map(bill => (
+                    {rows.map(row => row.kind === 'credit' ? (
+                      <CreditRow
+                        key={`credit-${row.credit.id}`}
+                        credit={row.credit}
+                        balance={accountBalances.get(accountKey(row.credit.company_id, row.credit.utility_name, row.credit.account_number)) ?? 0}
+                        role={role}
+                        onDelete={deleteCredit}
+                      />
+                    ) : (() => { const bill = row.bill; return (
                       <tr key={bill.id} className={`hover:bg-gray-50 transition-colors ${computeBillStatus(bill) === 'paid' || computeBillStatus(bill) === 'waived' || computeBillStatus(bill) === 'void' ? 'opacity-60' : ''}`}>
                         <td className="px-4 py-3">
                           <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[bill.company_id]}`}>
@@ -783,6 +881,25 @@ export default function UtilityPage() {
                                 <a href={bill.onedrive_file_url} target="_blank" rel="noreferrer"
                                   className="p-1 text-gray-400 hover:text-blue-500 transition-colors" title="Open file">📎</a>
                               )}
+                              {(() => {
+                                const s = computeBillStatus(bill)
+                                const key = accountKey(bill.company_id, bill.utility_name, bill.account_number)
+                                const avail = availableCreditByAccount.get(key) ?? 0
+                                const canApply = avail > 0.005 && s !== 'paid' && s !== 'paid_late' && s !== 'void' && s !== 'waived' && s !== 'carried_forward'
+                                if (!canApply) return null
+                                const baseTotal = bill.total_due ?? bill.amount ?? 0
+                                const remaining = Math.max(baseTotal - (bill.amount_paid ?? 0), 0)
+                                const applyAmt = Math.min(avail, remaining)
+                                const sym = bill.currency === 'USD' ? 'US$' : 'CA$'
+                                return applyConfirm === bill.id ? (
+                                  <span className="flex items-center gap-1 text-xs">
+                                    <button onClick={() => applyCredit(bill)} className="text-emerald-600 font-semibold">Apply {sym}{applyAmt.toFixed(2)}?</button>
+                                    <button onClick={() => setApplyConfirm(null)} className="text-gray-400">✕</button>
+                                  </span>
+                                ) : (
+                                  <button onClick={() => setApplyConfirm(bill.id)} className="p-1 text-gray-400 hover:text-emerald-500 transition-colors" title={`Apply account credit (${sym}${avail.toFixed(2)} available)`}>💰</button>
+                                )
+                              })()}
                               <button onClick={() => openEdit(bill)} className="p-1 text-gray-400 hover:text-gray-700 transition-colors" title="Edit">✏️</button>
                               {deleteConfirm === bill.id ? (
                                 <span className="flex items-center gap-1 text-xs">
@@ -796,7 +913,7 @@ export default function UtilityPage() {
                           </td>
                         )}
                       </tr>
-                    ))}
+                    ) })())}
                   </tbody>
                 </table>
               </div>
@@ -1120,6 +1237,65 @@ export default function UtilityPage() {
       )}
     </div>
     </div>
+  )
+}
+
+// ── CreditRow ──────────────────────────────────────────────────────────────────
+// Renders a standalone account credit inline in the All Bills table, matching the bill
+// row's column layout so the two interleave cleanly in the same chronological list.
+
+function CreditRow({
+  credit, balance, role, onDelete,
+}: {
+  credit: Credit
+  balance: number
+  role: Role
+  onDelete: (id: string) => void
+}) {
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const sym = 'US$' // credits are entered in USD/CAD-agnostic dollars; matches fmtBalance's default symbol usage elsewhere
+
+  return (
+    <tr className="bg-emerald-50/40 hover:bg-emerald-50 transition-colors">
+      <td className="px-4 py-3">
+        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[credit.company_id]}`}>
+          {credit.company_id.toUpperCase()}
+        </span>
+      </td>
+      <td className="px-4 py-3">
+        <span className="font-medium text-gray-900">{credit.utility_name}</span>
+      </td>
+      <td className="px-4 py-3 text-xs text-gray-400">—</td>
+      <td className="px-4 py-3 text-xs text-gray-400">—</td>
+      <td className="px-4 py-3 text-xs text-gray-500 font-mono">{credit.account_number ?? '—'}</td>
+      <td className="px-4 py-3 text-right">
+        <span className={`text-xs font-semibold ${balanceColor(balance)}`}>{fmtBalance(balance, sym)}</span>
+      </td>
+      <td className="px-4 py-3">
+        <span className="font-medium text-emerald-600">-{sym}{credit.amount.toFixed(2)}</span>
+      </td>
+      <td className="px-4 py-3 text-xs text-gray-500">{fmtShortDate(credit.credit_date)}</td>
+      <td className="px-4 py-3 text-xs text-gray-400">—</td>
+      <td className="px-4 py-3 text-xs text-gray-400">—</td>
+      <td className="px-4 py-3 max-w-[180px] text-xs text-gray-500 truncate" title={credit.note ?? ''}>{credit.note ?? '—'}</td>
+      <td className="px-4 py-3">
+        <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">💰 Credit</span>
+      </td>
+      {role === 'admin' && (
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-1">
+            {deleteConfirm ? (
+              <span className="flex items-center gap-1 text-xs">
+                <button onClick={() => onDelete(credit.id)} className="text-red-600 font-semibold">Del</button>
+                <button onClick={() => setDeleteConfirm(false)} className="text-gray-400">✕</button>
+              </span>
+            ) : (
+              <button onClick={() => setDeleteConfirm(true)} className="p-1 text-gray-300 hover:text-red-400 transition-colors" title="Delete">🗑</button>
+            )}
+          </div>
+        </td>
+      )}
+    </tr>
   )
 }
 
