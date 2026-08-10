@@ -262,7 +262,8 @@ export default function UtilityPage() {
       const q = searchTerm.toLowerCase()
       if (!b.utility_name.toLowerCase().includes(q) &&
           !(b.provider ?? '').toLowerCase().includes(q) &&
-          !(b.bill_number ?? '').toLowerCase().includes(q)) return false
+          !(b.bill_number ?? '').toLowerCase().includes(q) &&
+          !(b.account_number ?? '').toLowerCase().includes(q)) return false
     }
     return true
   })
@@ -583,7 +584,7 @@ export default function UtilityPage() {
             </div>
             <input
               type="text"
-              placeholder="Search utility / provider / bill #…"
+              placeholder="Search utility / provider / bill # / account…"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="ml-auto px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 w-60"
