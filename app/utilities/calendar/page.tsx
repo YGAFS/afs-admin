@@ -160,16 +160,16 @@ export default function CalendarPage() {
                   {day}
                 </div>
                 {issuedBills.slice(0, 2).map(b => (
-                  <div key={`i-${b.id}`} className="text-xs leading-tight px-1 py-0.5 mb-0.5 rounded bg-blue-100 text-blue-700 truncate" title={`Issued: ${b.utility_name}`}>
-                    ● {b.utility_name}
+                  <div key={`i-${b.id}`} className="text-xs leading-tight px-1 py-0.5 mb-0.5 rounded bg-blue-100 text-blue-700 truncate" title={`Issued: ${b.provider ?? b.utility_name}`}>
+                    ● {b.provider ?? b.utility_name}
                   </div>
                 ))}
                 {dueBills.slice(0, 3 - issuedBills.slice(0, 2).length).map(b => (
                   <div key={`d-${b.id}`}
                     className={`text-xs leading-tight px-1 py-0.5 mb-0.5 rounded truncate ${STATUS_BADGE[computeBillStatus(b)].className}`}
-                    title={`Due: ${b.utility_name}${b.amount != null ? ` (${fmtAmt(b)})` : ''}`}
+                    title={`Due: ${b.provider ?? b.utility_name}${b.amount != null ? ` (${fmtAmt(b)})` : ''}`}
                   >
-                    ⏰ {b.utility_name}
+                    ⏰ {b.provider ?? b.utility_name}
                   </div>
                 ))}
                 {(dueBills.length + issuedBills.length) > 3 && (
@@ -194,8 +194,8 @@ export default function CalendarPage() {
                 {selectedIssued.map(b => (
                   <div key={b.id} className="flex items-center gap-2 text-base">
                     <span className={`px-2 py-0.5 rounded-full text-sm font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
-                    <span className="font-medium text-gray-900">{b.utility_name}</span>
-                    {b.provider && <span className="text-gray-400 text-sm">· {b.provider}</span>}
+                    <span className="font-medium text-gray-900">{b.provider ?? b.utility_name}</span>
+                    {b.provider && <span className="text-gray-400 text-sm">· {b.utility_name}</span>}
                     {b.bill_number && <span className="text-gray-400 text-sm font-mono">#{b.bill_number}</span>}
                   </div>
                 ))}
@@ -210,8 +210,8 @@ export default function CalendarPage() {
                   <div key={b.id} className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 text-base min-w-0">
                       <span className={`shrink-0 px-2 py-0.5 rounded-full text-sm font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
-                      <span className="font-medium text-gray-900 truncate">{b.utility_name}</span>
-                      {b.provider && <span className="text-gray-400 text-sm hidden sm:inline">· {b.provider}</span>}
+                      <span className="font-medium text-gray-900 truncate">{b.provider ?? b.utility_name}</span>
+                      {b.provider && <span className="text-gray-400 text-sm hidden sm:inline">· {b.utility_name}</span>}
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <span className="text-base font-medium text-gray-800">{fmtAmt(b)}</span>
