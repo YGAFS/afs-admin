@@ -196,12 +196,23 @@ function accountKey(companyId: Company, utilityName: string, accountNumber: stri
 // adjustments (e.g. a duplicate payment) not tied to any bill, and simply reduce the balance —
 // pushing it negative represents an account credit rather than clamping at zero like the
 // per-bill remaining_balance field does.
-function computeAccountBalances(bills: Bill[], credits: Credit[]): Map<string, number> {
-  const map = new Map<string, number>()
+// Returns both the final per-account balance and a human-readable breakdown of what
+// contributed to it (bill charge/paid line + credit lines) — the Balance column shows the
+// breakdown as a hover tooltip so a wrong-looking number can be traced back to its source
+// (a specific bill's total_due column, an old carry-forward, a mistyped credit, etc.)
+// instead of having to be re-derived by hand.
+function computeAccountBalanceDetail(bills: Bill[], credits: Credit[]): { balances: Map<string, number>; breakdown: Map<string, string[]> } {
+  const balances = new Map<string, number>()
+  const breakdown = new Map<string, string[]>()
+  const addLine = (key: string, line: string) => breakdown.set(key, [...(breakdown.get(key) ?? []), line])
+
   for (const b of bills) {
     const status = computeBillStatus(b)
     const key = accountKey(b.company_id, b.utility_name, b.account_number)
-    if (status === 'void' || status === 'waived') continue
+    if (status === 'void' || status === 'waived') {
+      addLine(key, `${fmtShortDate(b.issue_date)} bill: ${status}, excluded`)
+      continue
+    }
     const charge = b.current_charges ?? b.total_due ?? b.amount ?? 0
     // amount_paid on a carried-forward bill includes repaying the previous_balance portion
     // too (the "Paid" quick action sets amount_paid = previous_balance + current_charges).
@@ -209,13 +220,16 @@ function computeAccountBalances(bills: Bill[], credits: Credit[]): Map<string, n
     // as paid here — otherwise the carried amount gets counted as repaid a second time on
     // top of however it was already accounted for in the prior bill's own contribution.
     const paid = (b.amount_paid ?? 0) - (b.previous_balance ?? 0)
-    map.set(key, (map.get(key) ?? 0) + charge - paid)
+    const contribution = charge - paid
+    balances.set(key, (balances.get(key) ?? 0) + contribution)
+    addLine(key, `${fmtShortDate(b.issue_date)} bill: charge ${charge.toFixed(2)} − paid ${paid.toFixed(2)} (amount_paid ${(b.amount_paid ?? 0).toFixed(2)}, total_due ${(b.total_due ?? 0).toFixed(2)}) = ${contribution >= 0 ? '+' : ''}${contribution.toFixed(2)}`)
   }
   for (const c of credits) {
     const key = accountKey(c.company_id, c.utility_name, c.account_number)
-    map.set(key, (map.get(key) ?? 0) - c.amount)
+    balances.set(key, (balances.get(key) ?? 0) - c.amount)
+    addLine(key, `${fmtShortDate(c.credit_date)} credit: -${c.amount.toFixed(2)}`)
   }
-  return map
+  return { balances, breakdown }
 }
 
 function fmtBalance(balance: number, sym: string): string {
@@ -317,7 +331,7 @@ export default function UtilityPage() {
 
   useEffect(() => { load() }, [load])
 
-  const accountBalances = useMemo(() => computeAccountBalances(bills, credits), [bills, credits])
+  const { balances: accountBalances, breakdown: accountBalanceBreakdown } = useMemo(() => computeAccountBalanceDetail(bills, credits), [bills, credits])
 
   const filtered = bills.filter(b => {
     if (coFilter !== 'all' && b.company_id !== coFilter) return false
@@ -778,6 +792,7 @@ export default function UtilityPage() {
                         key={`credit-${row.credit.id}`}
                         credit={row.credit}
                         balance={accountBalances.get(accountKey(row.credit.company_id, row.credit.utility_name, row.credit.account_number)) ?? 0}
+                        balanceTip={(accountBalanceBreakdown.get(accountKey(row.credit.company_id, row.credit.utility_name, row.credit.account_number)) ?? []).join('\n')}
                         role={role}
                         onDelete={deleteCredit}
                       />
@@ -802,9 +817,11 @@ export default function UtilityPage() {
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">{bill.account_number ?? '—'}</td>
                         <td className="px-4 py-3 text-right">
                           {(() => {
-                            const bal = accountBalances.get(accountKey(bill.company_id, bill.utility_name, bill.account_number)) ?? 0
+                            const key = accountKey(bill.company_id, bill.utility_name, bill.account_number)
+                            const bal = accountBalances.get(key) ?? 0
                             const sym = bill.currency === 'USD' ? 'US$' : 'CA$'
-                            return <span className={`text-xs font-semibold ${balanceColor(bal)}`}>{fmtBalance(bal, sym)}</span>
+                            const tip = (accountBalanceBreakdown.get(key) ?? []).join('\n')
+                            return <span className={`text-xs font-semibold ${balanceColor(bal)} cursor-help`} title={tip}>{fmtBalance(bal, sym)}</span>
                           })()}
                         </td>
                         <td className="px-4 py-3">
@@ -1245,10 +1262,11 @@ export default function UtilityPage() {
 // row's column layout so the two interleave cleanly in the same chronological list.
 
 function CreditRow({
-  credit, balance, role, onDelete,
+  credit, balance, balanceTip, role, onDelete,
 }: {
   credit: Credit
   balance: number
+  balanceTip?: string
   role: Role
   onDelete: (id: string) => void
 }) {
@@ -1269,7 +1287,7 @@ function CreditRow({
       <td className="px-4 py-3 text-xs text-gray-400">—</td>
       <td className="px-4 py-3 text-xs text-gray-500 font-mono">{credit.account_number ?? '—'}</td>
       <td className="px-4 py-3 text-right">
-        <span className={`text-xs font-semibold ${balanceColor(balance)}`}>{fmtBalance(balance, sym)}</span>
+        <span className={`text-xs font-semibold ${balanceColor(balance)} cursor-help`} title={balanceTip}>{fmtBalance(balance, sym)}</span>
       </td>
       <td className="px-4 py-3">
         <span className="font-medium text-emerald-600">-{sym}{credit.amount.toFixed(2)}</span>
