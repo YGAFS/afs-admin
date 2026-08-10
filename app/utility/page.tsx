@@ -21,7 +21,7 @@ const supabase = createClient(
 type Company = 'afs' | 'tnt' | 'zfs'
 type Currency = 'CAD' | 'USD'
 type Role = 'admin' | 'ap'
-type MainTab = 'dashboard' | 'all' | 'analytics' | 'balance'
+type MainTab = 'dashboard' | 'all' | 'analytics'
 type StatusFilter = 'all' | 'open' | 'overdue' | 'overdue_partial' | 'due_today' | 'upcoming' | 'partially_paid' | 'paid' | 'carried_forward' | 'waived' | 'void'
 
 interface PaymentMethod {
@@ -33,6 +33,19 @@ interface PaymentMethod {
   bank_name: string | null
   is_auto: boolean
   notes: string | null
+}
+
+// A standalone account-balance adjustment (e.g. a duplicate/overpayment) not tied to any
+// specific bill. Reduces the account's running balance the same way a bill payment would.
+interface Credit {
+  id: string
+  company_id: Company
+  utility_name: string
+  account_number: string | null
+  amount: number
+  credit_date: string | null
+  note: string | null
+  created_at: string
 }
 
 interface Bill {
@@ -173,27 +186,30 @@ function fmtShortDate(d: string | null) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-interface LedgerEntry {
-  bill: Bill
-  charge: number
-  paid: number
-  balance: number
+function accountKey(companyId: Company, utilityName: string, accountNumber: string | null): string {
+  return `${companyId}::${utilityName}::${accountNumber ?? ''}`
 }
 
-// Running account balance, computed from current_charges (not total_due) so a bill's
-// carried-forward previous_balance isn't double-counted on top of the source bill's own
-// charge. Payments that exceed a bill's own total (over-payments) push the balance
-// negative — that's an account credit, not clamped to zero like per-bill remaining_balance.
-function computeAccountLedger(bills: Bill[]): LedgerEntry[] {
-  const sorted = [...bills].sort((a, b) => (a.issue_date ?? a.due_date ?? '').localeCompare(b.issue_date ?? b.due_date ?? ''))
-  let running = 0
-  return sorted.map(bill => {
-    const status = computeBillStatus(bill)
-    const charge = status === 'void' || status === 'waived' ? 0 : (bill.current_charges ?? bill.total_due ?? bill.amount ?? 0)
-    const paid = bill.amount_paid ?? 0
-    running += charge - paid
-    return { bill, charge, paid, balance: running }
-  })
+// Per-account running balance, keyed the same way bills are grouped elsewhere on this page.
+// Charge uses current_charges (not total_due) so a bill's carried-forward previous_balance
+// isn't double-counted on top of the source bill's own charge. Credits are independent
+// adjustments (e.g. a duplicate payment) not tied to any bill, and simply reduce the balance —
+// pushing it negative represents an account credit rather than clamping at zero like the
+// per-bill remaining_balance field does.
+function computeAccountBalances(bills: Bill[], credits: Credit[]): Map<string, number> {
+  const map = new Map<string, number>()
+  for (const b of bills) {
+    const status = computeBillStatus(b)
+    const charge = status === 'void' || status === 'waived' ? 0 : (b.current_charges ?? b.total_due ?? b.amount ?? 0)
+    const paid = b.amount_paid ?? 0
+    const key = accountKey(b.company_id, b.utility_name, b.account_number)
+    map.set(key, (map.get(key) ?? 0) + charge - paid)
+  }
+  for (const c of credits) {
+    const key = accountKey(c.company_id, c.utility_name, c.account_number)
+    map.set(key, (map.get(key) ?? 0) - c.amount)
+  }
+  return map
 }
 
 function fmtBalance(balance: number, sym: string): string {
@@ -250,6 +266,7 @@ export default function UtilityPage() {
   const [role,    setRole]    = useState<Role>('admin')
   const [bills,   setBills]   = useState<Bill[]>([])
   const [methods, setMethods] = useState<PaymentMethod[]>([])
+  const [credits, setCredits] = useState<Credit[]>([])
   const [loading, setLoading] = useState(true)
 
   const [mainTab,      setMainTab]      = useState<MainTab>('dashboard')
@@ -265,6 +282,7 @@ export default function UtilityPage() {
   const [noteEdit,      setNoteEdit]      = useState<{ id: string; value: string } | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [showPMModal,   setShowPMModal]   = useState(false)
+  const [showCreditModal, setShowCreditModal] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -285,10 +303,14 @@ export default function UtilityPage() {
     setBills((data as Bill[]) ?? [])
     const { data: pm } = await supabase.from('payment_methods').select('*').order('label')
     setMethods((pm as PaymentMethod[]) ?? [])
+    const { data: cr } = await supabase.from('utility_credits').select('*').order('credit_date', { ascending: false })
+    setCredits((cr as Credit[]) ?? [])
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  const accountBalances = useMemo(() => computeAccountBalances(bills, credits), [bills, credits])
 
   const filtered = bills.filter(b => {
     if (coFilter !== 'all' && b.company_id !== coFilter) return false
@@ -462,7 +484,6 @@ export default function UtilityPage() {
               ['dashboard', '🏠 Dashboard'],
               ['all',       '📋 All Bills'],
               ['analytics', '📊 Analytics'],
-              ['balance',   '💰 Balance'],
             ] as [MainTab, string][]).map(([tab, label]) => (
               <button
                 key={tab}
@@ -481,6 +502,14 @@ export default function UtilityPage() {
           >
             💳 Payment Methods
           </button>
+          {role === 'admin' && (
+            <button
+              onClick={() => setShowCreditModal(true)}
+              className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 bg-white rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              💰 Add Credit
+            </button>
+          )}
           {role === 'admin' && (
             <button
               onClick={() => { setEditBill(emptyBill); setEditingId(null); setShowModal(true) }}
@@ -643,6 +672,7 @@ export default function UtilityPage() {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Bill #</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Provider</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Account</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Balance</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Amount</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Issued</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Due Date</th>
@@ -672,6 +702,13 @@ export default function UtilityPage() {
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">{bill.bill_number ?? '—'}</td>
                         <td className="px-4 py-3 text-gray-600 text-xs">{bill.provider ?? '—'}</td>
                         <td className="px-4 py-3 text-xs text-gray-500 font-mono">{bill.account_number ?? '—'}</td>
+                        <td className="px-4 py-3 text-right">
+                          {(() => {
+                            const bal = accountBalances.get(accountKey(bill.company_id, bill.utility_name, bill.account_number)) ?? 0
+                            const sym = bill.currency === 'USD' ? 'US$' : 'CA$'
+                            return <span className={`text-xs font-semibold ${balanceColor(bal)}`}>{fmtBalance(bal, sym)}</span>
+                          })()}
+                        </td>
                         <td className="px-4 py-3">
                           {bill.current_charges != null ? (
                             <div>
@@ -776,9 +813,6 @@ export default function UtilityPage() {
 
       {/* ── ANALYTICS TAB ──────────────────────────────────────────────────── */}
       {mainTab === 'analytics' && <AnalyticsTab bills={bills} />}
-
-      {/* ── BALANCE TAB ────────────────────────────────────────────────────── */}
-      {mainTab === 'balance' && <BalanceTab bills={bills} />}
 
       {/* ── Add/Edit Bill Modal ─────────────────────────────────────────────── */}
       {showModal && (
@@ -1030,6 +1064,14 @@ export default function UtilityPage() {
           role={role}
           onClose={() => setShowPMModal(false)}
           onSave={() => { setShowPMModal(false); load() }}
+        />
+      )}
+
+      {showCreditModal && (
+        <CreditModal
+          credits={credits}
+          onClose={() => setShowCreditModal(false)}
+          onSave={() => load()}
         />
       )}
 
@@ -1736,9 +1778,7 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
       const maxAmt = amounts.length ? Math.max(...amounts) : 0
       const minAmt = amounts.length ? Math.min(...amounts) : 0
       const avgAmt = amounts.length ? amounts.reduce((s, v) => s + v, 0) / amounts.length : 0
-      const ledger = computeAccountLedger(bs)
-      const balance = ledger.length ? ledger[ledger.length - 1].balance : 0
-      return { key, company_id: bs[0].company_id as Company, utility_name: bs[0].utility_name, provider: bs[0].provider, account_number: bs[0].account_number, bills: sorted, ledger, balance, overdueCount, maxAmt, minAmt, avgAmt }
+      return { key, company_id: bs[0].company_id as Company, utility_name: bs[0].utility_name, provider: bs[0].provider, account_number: bs[0].account_number, bills: sorted, overdueCount, maxAmt, minAmt, avgAmt }
     })
   }, [bills])
 
@@ -1748,7 +1788,7 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
 
   return (
     <div className="space-y-4">
-      {utilities.map(({ key, company_id, utility_name, provider, account_number, ledger, balance, overdueCount, maxAmt, minAmt, avgAmt }) => (
+      {utilities.map(({ key, company_id, utility_name, provider, account_number, bills: bs, overdueCount, maxAmt, minAmt, avgAmt }) => (
         <div key={key} className="bg-white rounded-xl border border-gray-200 p-5">
           {/* Utility header */}
           <div className="flex items-start justify-between mb-4">
@@ -1766,23 +1806,22 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
                   ⚠ {overdueCount}x overdue
                 </span>
               )}
-              {ledger.some(({ bill }) => bill.is_auto_pay) && (
+              {bs.some(b => b.is_auto_pay) && (
                 <span className="text-blue-500 font-medium">⟳ Auto-pay</span>
               )}
             </div>
           </div>
 
           {/* Summary stats */}
-          <div className="grid grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-3 mb-4">
             {[
-              { label: 'Avg Amount', value: avgAmt > 0 ? `${ledger[0].bill.currency === 'USD' ? 'US$' : 'CA$'}${avgAmt.toFixed(2)}` : '—', color: 'text-gray-800' },
-              { label: 'Range', value: maxAmt > 0 ? `${ledger[0].bill.currency === 'USD' ? 'US$' : 'CA$'}${minAmt.toFixed(2)} – ${maxAmt.toFixed(2)}` : '—', color: 'text-gray-800' },
-              { label: 'Entries', value: ledger.length, color: 'text-gray-800' },
-              { label: 'Balance', value: fmtBalance(balance, ledger[0]?.bill.currency === 'USD' ? 'US$' : 'CA$'), color: balanceColor(balance) },
+              { label: 'Avg Amount', value: avgAmt > 0 ? `${bs[0].currency === 'USD' ? 'US$' : 'CA$'}${avgAmt.toFixed(2)}` : '—' },
+              { label: 'Range', value: maxAmt > 0 ? `${bs[0].currency === 'USD' ? 'US$' : 'CA$'}${minAmt.toFixed(2)} – ${maxAmt.toFixed(2)}` : '—' },
+              { label: 'Entries', value: bs.length },
             ].map(s => (
               <div key={s.label} className="bg-gray-50 rounded-lg px-3 py-2">
                 <div className="text-xs text-gray-500 mb-0.5">{s.label}</div>
-                <div className={`text-sm font-semibold ${s.color}`}>{s.value}</div>
+                <div className="text-sm font-semibold text-gray-800">{s.value}</div>
               </div>
             ))}
           </div>
@@ -1797,17 +1836,15 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
                   <th className="text-left pb-2 pr-3 font-medium">Issued</th>
                   <th className="text-left pb-2 pr-3 font-medium">Due</th>
                   <th className="text-right pb-2 pr-4 font-medium">Amount</th>
-                  <th className="pb-2 font-medium w-28">Trend</th>
-                  <th className="text-center pb-2 pr-3 font-medium">Status</th>
-                  <th className="text-right pb-2 font-medium">Balance</th>
+                  <th className="pb-2 font-medium w-36">Trend</th>
+                  <th className="text-center pb-2 font-medium">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {ledger.slice(-10).map(({ bill: b, balance: rb }) => {
+                {bs.slice(-10).map(b => {
                   const pct = maxAmt > 0 && b.amount != null ? (b.amount / maxAmt) * 100 : 0
                   const wasLate = b.is_paid && b.paid_at && b.due_date && b.paid_at.slice(0, 10) > b.due_date
                   const isCurrentlyOverdue = computeBillStatus(b) === 'overdue' || computeBillStatus(b) === 'overdue_partial'
-                  const sym = b.currency === 'USD' ? 'US$' : 'CA$'
                   return (
                     <tr key={b.id}>
                       <td className="py-2 pr-3 text-gray-600">{b.billing_period ?? '—'}</td>
@@ -1818,20 +1855,19 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
                         {b.amount != null ? fmtAmt(b) : '—'}
                       </td>
                       <td className="py-2 pr-2">
-                        <div className="bg-gray-100 rounded-full h-2 w-28">
+                        <div className="bg-gray-100 rounded-full h-2 w-36">
                           <div
                             className="h-2 rounded-full bg-blue-400 transition-all"
                             style={{ width: `${pct}%` }}
                           />
                         </div>
                       </td>
-                      <td className="py-2 pr-3 text-center">
+                      <td className="py-2 text-center">
                         {b.is_paid && !wasLate  && <span className="text-emerald-600 font-bold" title="Paid on time">✓</span>}
                         {wasLate                 && <span className="text-amber-500 font-bold"   title="Paid late">⚠</span>}
                         {isCurrentlyOverdue      && <span className="text-red-600 font-bold"     title="Overdue">!</span>}
                         {!b.is_paid && !isCurrentlyOverdue && <span className="text-gray-400" title="Pending">·</span>}
                       </td>
-                      <td className={`py-2 text-right font-semibold ${balanceColor(rb)}`}>{fmtBalance(rb, sym)}</td>
                     </tr>
                   )
                 })}
@@ -1840,106 +1876,6 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
           </div>
         </div>
       ))}
-    </div>
-  )
-}
-
-// ── Balance Tab ──────────────────────────────────────────────────────────────
-
-function BalanceTab({ bills }: { bills: Bill[] }) {
-  const accounts = useMemo(() => {
-    const map = new Map<string, Bill[]>()
-    for (const b of bills) {
-      const key = `${b.company_id}::${b.utility_name}::${b.account_number ?? ''}`
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(b)
-    }
-    return Array.from(map.entries()).map(([key, bs]) => {
-      const ledger = computeAccountLedger(bs)
-      const balance = ledger.length ? ledger[ledger.length - 1].balance : 0
-      return {
-        key,
-        company_id: bs[0].company_id as Company,
-        utility_name: bs[0].utility_name,
-        provider: bs[0].provider,
-        account_number: bs[0].account_number,
-        currency: bs[0].currency,
-        ledger,
-        balance,
-      }
-    }).sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
-  }, [bills])
-
-  const totalOwed = accounts.reduce((s, a) => s + Math.max(a.balance, 0), 0)
-  const totalCredit = accounts.reduce((s, a) => s + Math.max(-a.balance, 0), 0)
-
-  if (bills.length === 0) {
-    return <div className="py-16 text-center text-sm text-gray-400">No bills data yet.</div>
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-          <div className="text-xs text-red-500 mb-0.5">Total Owed (open balances)</div>
-          <div className="text-lg font-bold text-red-600">US${totalOwed.toFixed(2)}</div>
-        </div>
-        <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
-          <div className="text-xs text-emerald-500 mb-0.5">Total Credit (overpaid)</div>
-          <div className="text-lg font-bold text-emerald-600">US${totalCredit.toFixed(2)}</div>
-        </div>
-      </div>
-
-      {accounts.map(({ key, company_id, utility_name, provider, account_number, currency, ledger, balance }) => {
-        const sym = currency === 'USD' ? 'US$' : 'CA$'
-        return (
-          <div key={key} className="bg-white rounded-xl border border-gray-200 p-5">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[company_id]}`}>
-                  {company_id.toUpperCase()}
-                </span>
-                <span className="font-semibold text-gray-900">{utility_name}</span>
-                {provider && <span className="text-xs text-gray-400">· {provider}</span>}
-                {account_number && <span className="text-xs text-gray-400 font-mono">({account_number})</span>}
-              </div>
-              <div className={`text-sm font-bold ${balanceColor(balance)}`}>
-                {balance > 0.005 ? `${fmtBalance(balance, sym)} owed` : balance < -0.005 ? `${fmtBalance(balance, sym)} credit` : 'Settled'}
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-gray-400 border-b border-gray-100">
-                    <th className="text-left pb-2 pr-3 font-medium">Issued</th>
-                    <th className="text-left pb-2 pr-3 font-medium">Bill #</th>
-                    <th className="text-center pb-2 pr-3 font-medium">Status</th>
-                    <th className="text-right pb-2 pr-3 font-medium">Charge</th>
-                    <th className="text-right pb-2 pr-3 font-medium">Paid</th>
-                    <th className="text-right pb-2 font-medium">Balance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {ledger.map(({ bill, charge, paid, balance: rb }) => (
-                    <tr key={bill.id}>
-                      <td className="py-2 pr-3 text-gray-500">{fmtShortDate(bill.issue_date)}</td>
-                      <td className="py-2 pr-3 font-mono text-gray-500">{bill.bill_number ?? '—'}</td>
-                      <td className="py-2 pr-3 text-center">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${STATUS_BADGE[computeBillStatus(bill)].className}`}>
-                          {STATUS_BADGE[computeBillStatus(bill)].label}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-3 text-right text-gray-700">{charge > 0 ? `${sym}${charge.toFixed(2)}` : '—'}</td>
-                      <td className="py-2 pr-3 text-right text-gray-500">{paid > 0 ? `${sym}${paid.toFixed(2)}` : '—'}</td>
-                      <td className={`py-2 text-right font-semibold ${balanceColor(rb)}`}>{fmtBalance(rb, sym)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )
-      })}
     </div>
   )
 }
@@ -2103,6 +2039,177 @@ function PaymentMethodsModal({
             </button>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ── Credit Modal ────────────────────────────────────────────────────────────────
+
+function CreditModal({
+  credits, onClose, onSave
+}: {
+  credits: Credit[]
+  onClose: () => void
+  onSave: () => void
+}) {
+  const emptyForm = {
+    company_id: 'afs' as Company,
+    utility_name: '',
+    account_number: '',
+    amount: '',
+    credit_date: new Date().toISOString().slice(0, 10),
+    note: '',
+  }
+  const [form,     setForm]    = useState(emptyForm)
+  const [saving,   setSaving]  = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+
+  async function addCredit() {
+    const amount = parseFloat(form.amount)
+    if (!form.utility_name.trim() || !amount || amount <= 0) return
+    setSaving(true)
+    await supabase.from('utility_credits').insert({
+      company_id:     form.company_id,
+      utility_name:   form.utility_name,
+      account_number: form.account_number || null,
+      amount,
+      credit_date:    form.credit_date || null,
+      note:           form.note || null,
+    })
+    setSaving(false)
+    setForm(emptyForm)
+    onSave()
+  }
+
+  async function deleteCredit(id: string) {
+    await supabase.from('utility_credits').delete().eq('id', id)
+    setDeleteId(null)
+    onSave()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-900">💰 Account Credits</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        </div>
+
+        <div className="px-6 py-3 text-xs text-gray-500">
+          A credit is money already paid to a vendor that isn't tied to any specific bill —
+          e.g. a duplicate payment. It reduces that account's running balance and can push it negative.
+        </div>
+
+        <div className="px-6 py-3">
+          {credits.length === 0 ? (
+            <p className="text-sm text-gray-400 py-4 text-center">No credits recorded yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {credits.map(c => (
+                <div key={c.id} className="flex items-start justify-between gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${CO_COLORS[c.company_id]}`}>{c.company_id.toUpperCase()}</span>
+                      <span className="text-sm font-medium text-gray-900">{c.utility_name}</span>
+                      {c.account_number && <span className="text-xs text-gray-400 font-mono">({c.account_number})</span>}
+                    </div>
+                    <div className="text-sm text-emerald-600 font-semibold mt-1">-${c.amount.toFixed(2)}</div>
+                    {c.credit_date && <div className="text-xs text-gray-400">{fmtShortDate(c.credit_date)}</div>}
+                    {c.note && <div className="text-xs text-gray-400 mt-1 italic">{c.note}</div>}
+                  </div>
+                  {deleteId === c.id ? (
+                    <span className="flex items-center gap-1 text-xs shrink-0">
+                      <button onClick={() => deleteCredit(c.id)} className="text-red-600 font-semibold">Del</button>
+                      <button onClick={() => setDeleteId(null)} className="text-gray-400">✕</button>
+                    </span>
+                  ) : (
+                    <button onClick={() => setDeleteId(c.id)} className="text-gray-300 hover:text-red-400 text-sm shrink-0">🗑</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 pb-4 border-t border-gray-100 pt-4 space-y-3">
+          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Add Credit</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Company</label>
+              <select
+                value={form.company_id}
+                onChange={e => setForm(f => ({ ...f, company_id: e.target.value as Company }))}
+                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              >
+                <option value="afs">AFS</option>
+                <option value="tnt">TNT</option>
+                <option value="zfs">ZFS</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Utility Name *</label>
+              <input
+                type="text"
+                placeholder="e.g. Water"
+                value={form.utility_name}
+                onChange={e => setForm(f => ({ ...f, utility_name: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Account Number</label>
+              <input
+                type="text"
+                placeholder="e.g. 10149626-106307"
+                value={form.account_number}
+                onChange={e => setForm(f => ({ ...f, account_number: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Amount *</label>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={form.amount}
+                onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Date</label>
+              <input
+                type="date"
+                value={form.credit_date}
+                onChange={e => setForm(f => ({ ...f, credit_date: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">Note</label>
+              <input
+                type="text"
+                placeholder="e.g. Duplicate EFT payment"
+                value={form.note}
+                onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+          </div>
+          <button
+            onClick={addCredit}
+            disabled={saving || !form.utility_name.trim() || !form.amount}
+            className="w-full px-4 py-2 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors"
+          >
+            {saving ? 'Adding…' : '+ Add Credit'}
+          </button>
+        </div>
       </div>
     </div>
   )

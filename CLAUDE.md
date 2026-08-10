@@ -118,6 +118,26 @@ this tool for ongoing use).
 
 ---
 
+## Utility Account Balance & Credits (`app/utility/page.tsx`)
+
+The "All Bills" tab shows a **Balance** column next to Account — the running
+balance for that bill's account (grouped by `company_id + utility_name +
+account_number`, same key used elsewhere on the page). Positive = still
+owed (red), negative = account is in credit / overpaid (green).
+
+**Calculation**: `computeAccountBalances()` sums `current_charges` (not
+`total_due`, which would double-count a carried-forward previous_balance)
+minus `amount_paid` across every bill in the account, then subtracts any
+`utility_credits` rows for that account. Void/waived bills contribute 0
+charge.
+
+**Credits** (💰 Add Credit button, admin only) are for money already paid
+to a vendor that isn't tied to any single bill — e.g. an accidental
+duplicate payment. They're stored in `utility_credits`, independent of
+`utility_bills`, and simply subtract from the account balance.
+
+---
+
 ## Email Report Feature (`app/hr/[company]/page.tsx`)
 
 ### How it works
@@ -165,4 +185,5 @@ Thank you.
 - [ ] Create the Supabase Auth login (email + password) for `yungyeong.j@afstransco.com` manually in Supabase Dashboard → Authentication → Users
 - [ ] Add ZFS employee data to Supabase `employees` table
 - [ ] Run `supabase/add_utility_bill_imports.sql` in Supabase SQL Editor to enable the Utility Bill Ingestor's audit log/dedup table (`tools/utility_bill_ingestor/`)
+- [ ] Run `supabase/add_utility_credits.sql` in Supabase SQL Editor to enable the "Add Credit" feature on the Utility Bills page (account-level balance adjustments not tied to a specific bill)
 - [ ] Set up `tools/utility_bill_ingestor/.env` (copy from `.env.example`, fill in `SUPABASE_SERVICE_ROLE_KEY` from Supabase Dashboard) before running the ingestor
