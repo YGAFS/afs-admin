@@ -127,22 +127,22 @@ export default function CalendarPage() {
     <div className="p-6">
       {/* Month nav */}
       <div className="flex items-center justify-center gap-4 mb-4">
-        <button onClick={prevMonth} className="px-4 py-2 text-base border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">‹</button>
-        <span className="font-semibold text-gray-800 text-xl">{monthLabel}</span>
-        <button onClick={nextMonth} className="px-4 py-2 text-base border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">›</button>
+        <button onClick={prevMonth} className="px-4 py-2 text-lg border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">‹</button>
+        <span className="font-semibold text-gray-800 text-2xl">{monthLabel}</span>
+        <button onClick={nextMonth} className="px-4 py-2 text-lg border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">›</button>
       </div>
 
       {/* Grid */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-            <div key={d} className="py-3 text-center text-sm font-semibold text-gray-500">{d}</div>
+            <div key={d} className="py-3 text-center text-base font-semibold text-gray-500">{d}</div>
           ))}
         </div>
         <div className="grid grid-cols-7">
           {cells.map((day, i) => {
             if (day === null) {
-              return <div key={i} className="border-r border-b border-gray-100 min-h-[80px] bg-gray-50/50" />
+              return <div key={i} className="border-r border-b border-gray-100 min-h-[130px] bg-gray-50/50" />
             }
             const key = dateKey(day)
             const dueBills = billsByDue.get(key) ?? []
@@ -154,26 +154,28 @@ export default function CalendarPage() {
               <div
                 key={i}
                 onClick={() => setSelected(isSelected ? null : day)}
-                className={`border-r border-b border-gray-100 min-h-[100px] p-2 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                className={`border-r border-b border-gray-100 min-h-[130px] p-2 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
               >
-                <div className={`text-sm font-semibold mb-1 w-7 h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>
+                <div className={`text-base font-semibold mb-1 w-8 h-8 flex items-center justify-center rounded-full ${isToday ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>
                   {day}
                 </div>
                 {issuedBills.slice(0, 2).map(b => (
-                  <div key={`i-${b.id}`} className="text-xs leading-tight px-1 py-0.5 mb-0.5 rounded bg-blue-100 text-blue-700 truncate" title={`Issued: ${b.provider ?? b.utility_name}`}>
-                    ● {b.provider ?? b.utility_name}
+                  <div key={`i-${b.id}`} className="flex items-center gap-1 text-sm leading-tight px-1 py-1 mb-1 rounded bg-blue-100 text-blue-700 truncate" title={`Issued: [${b.company_id.toUpperCase()}] ${b.provider ?? b.utility_name}`}>
+                    <span className={`shrink-0 px-1 rounded text-[10px] font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+                    <span className="truncate">{b.provider ?? b.utility_name}</span>
                   </div>
                 ))}
                 {dueBills.slice(0, 3 - issuedBills.slice(0, 2).length).map(b => (
                   <div key={`d-${b.id}`}
-                    className={`text-xs leading-tight px-1 py-0.5 mb-0.5 rounded truncate ${STATUS_BADGE[computeBillStatus(b)].className}`}
-                    title={`Due: ${b.provider ?? b.utility_name}${b.amount != null ? ` (${fmtAmt(b)})` : ''}`}
+                    className={`flex items-center gap-1 text-sm leading-tight px-1 py-1 mb-1 rounded truncate ${STATUS_BADGE[computeBillStatus(b)].className}`}
+                    title={`Due: [${b.company_id.toUpperCase()}] ${b.provider ?? b.utility_name}${b.amount != null ? ` (${fmtAmt(b)})` : ''}`}
                   >
-                    ⏰ {b.provider ?? b.utility_name}
+                    <span className={`shrink-0 px-1 rounded text-[10px] font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+                    <span className="truncate">{b.provider ?? b.utility_name}</span>
                   </div>
                 ))}
                 {(dueBills.length + issuedBills.length) > 3 && (
-                  <div className="text-xs text-gray-400 px-1">+{dueBills.length + issuedBills.length - 3} more</div>
+                  <div className="text-sm text-gray-400 px-1">+{dueBills.length + issuedBills.length - 3} more</div>
                 )}
               </div>
             )
