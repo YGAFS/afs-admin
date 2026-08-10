@@ -158,7 +158,7 @@ function dueDateLabel(bill: Bill) {
   const days = daysUntilDue(bill)!
   const fmt = new Date(bill.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   const s = computeBillStatus(bill)
-  if (s === 'paid' || s === 'carried_forward' || s === 'waived' || s === 'void') return fmt
+  if (s === 'paid' || s === 'paid_late' || s === 'carried_forward' || s === 'waived' || s === 'void') return fmt
   if (days < 0)   return `${fmt} (${Math.abs(days)}d overdue)`
   if (days === 0) return `${fmt} (Today)`
   if (days <= 7)  return `${fmt} (${days}d left)`
@@ -167,7 +167,7 @@ function dueDateLabel(bill: Bill) {
 
 function dueDateColor(bill: Bill) {
   const s = computeBillStatus(bill)
-  if (s === 'paid' || s === 'carried_forward' || s === 'waived' || s === 'void') return 'text-gray-400'
+  if (s === 'paid' || s === 'paid_late' || s === 'carried_forward' || s === 'waived' || s === 'void') return 'text-gray-400'
   const days = daysUntilDue(bill)
   if (days === null) return 'text-gray-500'
   if (days < 0)   return 'text-red-600 font-semibold'
