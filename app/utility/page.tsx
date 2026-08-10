@@ -1141,10 +1141,10 @@ function StatusDropdown({
             </button>
           ))}
           <button
-            className="w-full text-left px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 transition-colors"
+            className="w-full text-left px-3 py-2 text-xs text-amber-800 hover:bg-amber-50 transition-colors"
             onClick={() => { onPartialPayment(bill); setOpen(false) }}
           >
-            Partially Paid…
+            Paid (Late) / Partial…
           </button>
           <button
             className="w-full text-left px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 transition-colors border-t border-gray-100"
@@ -1220,7 +1220,7 @@ function PartialPaymentModal({
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Late Fee (if any)</label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Late Fee / Interest (if any)</label>
             <input
               type="number" step="0.01" value={lateFee}
               onChange={e => setLateFee(e.target.value)}
