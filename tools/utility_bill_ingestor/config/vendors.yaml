@@ -123,7 +123,17 @@ rogers_tnt_biscayne:
     - Rogers
     - Rogers Communications
     - ROGERS
-  accounts: []
+  accounts:
+    # A Rogers 5G wireless account -> dedicated 5G router/modem -> WiFi
+    # for the Biscayne office. The Rogers *contract* is under AFS's name
+    # ("ACME FREIGHT SALES LIMITED", billed to the Surrey address) even
+    # though the service itself is used at TNT Biscayne -- confirmed by
+    # the user 2026-08-13. This means the bill's own text always says
+    # "Surrey"/AFS, never "Biscayne"/TNT, so classifier.py's site-alias
+    # text fallback would otherwise misroute it to rogers_afs every time
+    # -- the account number below is the *only* reliable signal and must
+    # stay in this list.
+    - "5-0882-6140"
 
 # Two real accounts under the same ZFS/Fontana "Burrtec" vendor row, split
 # into separate keys (both still resolve to the same utility_vendors row
