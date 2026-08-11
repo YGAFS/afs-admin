@@ -228,6 +228,16 @@ function VendorDetailPanel({
 
   async function toggleAccountAutoPay(id: string, value: boolean) {
     await supabase.from('utility_service_accounts').update({ is_auto_pay: value }).eq('id', id)
+    // The Dashboard's Auto Pay badge reads is_auto_pay off each *bill* row
+    // (set once at ingestion time), not off the account -- without this,
+    // toggling it here only affects bills the ingestor creates *after* the
+    // toggle, and the Dashboard silently keeps showing the old state for
+    // every bill that already exists.
+    const account = accounts.find(a => a.id === id)
+    if (account) {
+      await supabase.from('utility_bills').update({ is_auto_pay: value })
+        .eq('company_id', vendor.company_id).eq('account_number', account.account_number)
+    }
     onRefresh()
   }
 
@@ -645,6 +655,7 @@ function VendorModal({
   const [savingMethod, setSavingMethod] = useState(false)
   const [linkingMethodId, setLinkingMethodId] = useState('')
   const [linkingMethod, setLinkingMethod] = useState(false)
+  const [methodsError, setMethodsError] = useState<string | null>(null)
 
   useEffect(() => {
     if (tab !== 'payments' || !vendorId || loadingMethods) return
@@ -653,9 +664,10 @@ function VendorModal({
     Promise.all([
       supabase.from('payment_methods').select('*').order('label'),
       supabase.from('vendor_payment_methods').select('payment_method_id').eq('vendor_id', vendorId),
-    ]).then(([{ data: allMethods }, { data: links }]) => {
+    ]).then(([{ data: allMethods, error: methodsErr }, { data: links, error: linksErr }]) => {
       setMethods((allMethods as PaymentMethod[]) ?? [])
       setLinkedMethodIds(new Set((links ?? []).map((l: { payment_method_id: string }) => l.payment_method_id)))
+      setMethodsError(linksErr?.message ?? methodsErr?.message ?? null)
       setLoadingMethods(false)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -671,7 +683,12 @@ function VendorModal({
     const { error } = await supabase.from('vendor_payment_methods').insert({
       vendor_id: vendorId, payment_method_id: paymentMethodId,
     })
-    if (!error) setLinkedMethodIds(s => new Set(s).add(paymentMethodId))
+    if (!error) {
+      setLinkedMethodIds(s => new Set(s).add(paymentMethodId))
+      setMethodsError(null)
+    } else {
+      setMethodsError(error.message)
+    }
     setLinkingMethod(false)
     setLinkingMethodId('')
   }
@@ -742,8 +759,16 @@ function VendorModal({
   }
 
   async function toggleAccountAutoPay(id: string, value: boolean) {
+    const account = accounts.find(a => a.id === id)
     setAccounts(a => a.map(x => x.id === id ? { ...x, is_auto_pay: value } : x))
     await supabase.from('utility_service_accounts').update({ is_auto_pay: value }).eq('id', id)
+    // See the identical comment in VendorDetailPanel's toggleAccountAutoPay:
+    // the Dashboard reads is_auto_pay off each bill row, not the account, so
+    // existing bills need updating too or the badge silently stays stale.
+    if (account) {
+      await supabase.from('utility_bills').update({ is_auto_pay: value })
+        .eq('company_id', form.company_id).eq('account_number', account.account_number)
+    }
   }
 
   async function save() {
@@ -964,6 +989,11 @@ function VendorModal({
           ) : (
           <>
           <p className="text-xs text-gray-400 -mt-1">Payment methods linked to this vendor</p>
+          {methodsError && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">
+              {methodsError}
+            </p>
+          )}
           {loadingMethods ? (
             <p className="text-xs text-gray-400">Loading…</p>
           ) : (
