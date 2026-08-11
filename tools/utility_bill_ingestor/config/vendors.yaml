@@ -71,8 +71,6 @@ cambridge_water_tnt:
   # Jul/Aug 2026 bills), even though the exact same drive/path setup works
   # fine for every other vendor's flat and nested folders alike.
   flat_archive: true
-  # Confirmed by the user 2026-08-11: this account is on auto-pay.
-  auto_pay: true
 
 enbridge_tnt:
   db_name: "Enbridge"
@@ -131,6 +129,9 @@ fontana_water_zfs:
     - "10149626-106310"
     - "10149626-106311"
     - "10149626-106307"
+  # Confirmed by the user 2026-08-11: this account is on auto-pay (not
+  # Cambridge Water TNT, which a previous fix mistakenly flagged instead).
+  auto_pay: true
 
 orkin_zfs:
   db_name: "Orkin"
