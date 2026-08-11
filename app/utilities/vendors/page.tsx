@@ -607,30 +607,60 @@ function VendorModal({
 
   const companyLocations = locations.filter(l => l.company_id === form.company_id)
 
-  // Payment methods (scoped to the vendor's company)
+  // Payment methods (the pool is company-wide; which ones apply to THIS
+  // vendor is tracked separately via vendor_payment_methods, so an already-
+  // registered method can be linked here instead of re-entered every time)
   const [methods, setMethods] = useState<PaymentMethod[]>([])
   const [loadingMethods, setLoadingMethods] = useState(false)
+  const [linkedMethodIds, setLinkedMethodIds] = useState<Set<string>>(new Set())
   const emptyPM: Omit<PaymentMethod, 'id'> = {
     company_id: form.company_id, label: '', holder_name: '', card_brand: '', bank_name: '', is_auto: false, notes: '',
   }
   const [pmForm, setPmForm] = useState<Omit<PaymentMethod, 'id'>>(emptyPM)
   const [addingMethod, setAddingMethod] = useState(false)
   const [savingMethod, setSavingMethod] = useState(false)
-  const [delMethodConfirm, setDelMethodConfirm] = useState<string | null>(null)
+  const [linkingMethodId, setLinkingMethodId] = useState('')
+  const [linkingMethod, setLinkingMethod] = useState(false)
 
   useEffect(() => {
-    if (tab !== 'payments' || methods.length > 0 || loadingMethods) return
+    if (tab !== 'payments' || !vendorId || loadingMethods) return
+    if (methods.length > 0 && linkedMethodIds.size >= 0) return
     setLoadingMethods(true)
-    supabase.from('payment_methods').select('*').order('label').then(({ data }) => {
-      setMethods((data as PaymentMethod[]) ?? [])
+    Promise.all([
+      supabase.from('payment_methods').select('*').order('label'),
+      supabase.from('vendor_payment_methods').select('payment_method_id').eq('vendor_id', vendorId),
+    ]).then(([{ data: allMethods }, { data: links }]) => {
+      setMethods((allMethods as PaymentMethod[]) ?? [])
+      setLinkedMethodIds(new Set((links ?? []).map((l: { payment_method_id: string }) => l.payment_method_id)))
       setLoadingMethods(false)
     })
-  }, [tab])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, vendorId])
 
   const companyMethods = methods.filter(m => m.company_id === form.company_id)
+  const linkedMethods = companyMethods.filter(m => linkedMethodIds.has(m.id))
+  const unlinkedMethods = companyMethods.filter(m => !linkedMethodIds.has(m.id))
+
+  async function linkMethod(paymentMethodId: string) {
+    if (!paymentMethodId || !vendorId) return
+    setLinkingMethod(true)
+    const { error } = await supabase.from('vendor_payment_methods').insert({
+      vendor_id: vendorId, payment_method_id: paymentMethodId,
+    })
+    if (!error) setLinkedMethodIds(s => new Set(s).add(paymentMethodId))
+    setLinkingMethod(false)
+    setLinkingMethodId('')
+  }
+
+  async function unlinkMethod(paymentMethodId: string) {
+    if (!vendorId) return
+    await supabase.from('vendor_payment_methods')
+      .delete().eq('vendor_id', vendorId).eq('payment_method_id', paymentMethodId)
+    setLinkedMethodIds(s => { const next = new Set(s); next.delete(paymentMethodId); return next })
+  }
 
   async function saveMethod() {
-    if (!pmForm.label.trim()) return
+    if (!pmForm.label.trim() || !vendorId) return
     setSavingMethod(true)
     const { data } = await supabase.from('payment_methods').insert({
       company_id:  form.company_id,
@@ -641,16 +671,13 @@ function VendorModal({
       is_auto:     pmForm.is_auto,
       notes:       pmForm.notes || null,
     }).select().single()
-    if (data) setMethods(m => [...m, data as PaymentMethod])
+    if (data) {
+      setMethods(m => [...m, data as PaymentMethod])
+      await linkMethod((data as PaymentMethod).id)
+    }
     setSavingMethod(false)
     setAddingMethod(false)
     setPmForm({ ...emptyPM, company_id: form.company_id })
-  }
-
-  async function deleteMethod(id: string) {
-    await supabase.from('payment_methods').delete().eq('id', id)
-    setMethods(m => m.filter(x => x.id !== id))
-    setDelMethodConfirm(null)
   }
 
   // Bills for this vendor (matched by provider name, read-only)
@@ -729,7 +756,7 @@ function VendorModal({
           <button onClick={() => setTab('payments')}
             className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               tab === 'payments' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'
-            }`}>Payment Methods{companyMethods.length > 0 ? ` (${companyMethods.length})` : ''}</button>
+            }`}>Payment Methods{linkedMethods.length > 0 ? ` (${linkedMethods.length})` : ''}</button>
           <button onClick={() => setTab('bills')}
             className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               tab === 'bills' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -888,16 +915,20 @@ function VendorModal({
 
         {tab === 'payments' && (
         <div className="p-6 space-y-3">
-          <p className="text-xs text-gray-400 -mt-1">Payment methods for {form.company_id.toUpperCase()}</p>
+          {!vendorId ? (
+            <p className="text-xs text-gray-400">Save the vendor first, then add payment methods here.</p>
+          ) : (
+          <>
+          <p className="text-xs text-gray-400 -mt-1">Payment methods linked to this vendor</p>
           {loadingMethods ? (
             <p className="text-xs text-gray-400">Loading…</p>
           ) : (
             <>
-              {companyMethods.length === 0 && !addingMethod && (
-                <p className="text-xs text-gray-400">No payment methods yet.</p>
+              {linkedMethods.length === 0 && (
+                <p className="text-xs text-gray-400">No payment methods linked yet.</p>
               )}
               <div className="space-y-2">
-                {companyMethods.map(m => (
+                {linkedMethods.map(m => (
                   <div key={m.id} className="group flex items-start justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -909,20 +940,30 @@ function VendorModal({
                       {m.bank_name && <div className="text-xs text-gray-500">🏦 {m.bank_name}</div>}
                       {m.notes && <div className="text-xs text-gray-400 mt-0.5 italic">{m.notes}</div>}
                     </div>
-                    {delMethodConfirm === m.id ? (
-                      <span className="flex items-center gap-1 text-xs shrink-0">
-                        <button onClick={() => deleteMethod(m.id)} className="text-red-600 font-semibold">Del</button>
-                        <button onClick={() => setDelMethodConfirm(null)} className="text-gray-400">✕</button>
-                      </span>
-                    ) : (
-                      <button onClick={() => setDelMethodConfirm(m.id)}
-                        className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs transition-opacity shrink-0 mt-0.5">
-                        ✕
-                      </button>
-                    )}
+                    <button onClick={() => unlinkMethod(m.id)}
+                      title="Unlink from this vendor (the payment method itself isn't deleted)"
+                      className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs transition-opacity shrink-0 mt-0.5">
+                      ✕
+                    </button>
                   </div>
                 ))}
               </div>
+
+              {unlinkedMethods.length > 0 && (
+                <div className="flex gap-2">
+                  <select value={linkingMethodId} onChange={e => setLinkingMethodId(e.target.value)}
+                    className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                    <option value="">Select an existing payment method…</option>
+                    {unlinkedMethods.map(m => (
+                      <option key={m.id} value={m.id}>{m.label}{m.holder_name ? ` — ${m.holder_name}` : ''}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => linkMethod(linkingMethodId)} disabled={!linkingMethodId || linkingMethod}
+                    className="px-3 py-1.5 text-xs text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors">
+                    {linkingMethod ? 'Linking…' : 'Link'}
+                  </button>
+                </div>
+              )}
 
               {addingMethod ? (
                 <div className="p-3 bg-gray-50 rounded-lg space-y-2">
@@ -954,9 +995,11 @@ function VendorModal({
                 </div>
               ) : (
                 <button onClick={() => { setPmForm({ ...emptyPM, company_id: form.company_id }); setAddingMethod(true) }}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add Payment Method</button>
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ New payment method</button>
               )}
             </>
+          )}
+          </>
           )}
         </div>
         )}

@@ -200,3 +200,4 @@ Thank you.
 - [ ] Run `supabase/add_utility_bill_imports.sql` in Supabase SQL Editor to enable the Utility Bill Ingestor's audit log/dedup table (`tools/utility_bill_ingestor/`)
 - [ ] Run `supabase/add_utility_credits.sql` in Supabase SQL Editor to enable the "Add Credit" feature on the Utility Bills page (account-level balance adjustments not tied to a specific bill)
 - [ ] Set up `tools/utility_bill_ingestor/.env` (copy from `.env.example`, fill in `SUPABASE_SERVICE_ROLE_KEY` from Supabase Dashboard) before running the ingestor
+- [ ] Run `supabase/add_vendor_payment_methods.sql` in Supabase SQL Editor to enable linking an already-registered payment method to a vendor (`app/utilities/vendors/page.tsx` Payment Methods tab) instead of re-entering it each time
