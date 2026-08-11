@@ -33,7 +33,7 @@ interface Contact {
 interface ServiceAccount {
   id: string; vendor_id: string; location_id: string | null
   account_number: string; service_label: string | null
-  billing_portal_url: string | null; is_active: boolean; notes: string | null
+  billing_portal_url: string | null; is_active: boolean; is_auto_pay: boolean; notes: string | null
   utility_locations: Location | null
 }
 
@@ -185,7 +185,7 @@ function VendorDetailPanel({
   // Service accounts inline add
   const [addingAccount, setAddingAccount] = useState(false)
   const [acctForm, setAcctForm] = useState({
-    account_number: '', service_label: '', location_id: '', billing_portal_url: '', notes: '',
+    account_number: '', service_label: '', location_id: '', billing_portal_url: '', notes: '', is_auto_pay: false,
   })
   const [savingAcct, setSavingAcct] = useState(false)
 
@@ -213,15 +213,21 @@ function VendorDetailPanel({
       location_id: acctForm.location_id || null,
       billing_portal_url: acctForm.billing_portal_url || null,
       notes: acctForm.notes || null,
+      is_auto_pay: acctForm.is_auto_pay,
     })
     setSavingAcct(false)
     setAddingAccount(false)
-    setAcctForm({ account_number: '', service_label: '', location_id: '', billing_portal_url: '', notes: '' })
+    setAcctForm({ account_number: '', service_label: '', location_id: '', billing_portal_url: '', notes: '', is_auto_pay: false })
     onRefresh()
   }
 
   async function deleteAccount(id: string) {
     await supabase.from('utility_service_accounts').delete().eq('id', id)
+    onRefresh()
+  }
+
+  async function toggleAccountAutoPay(id: string, value: boolean) {
+    await supabase.from('utility_service_accounts').update({ is_auto_pay: value }).eq('id', id)
     onRefresh()
   }
 
@@ -449,6 +455,18 @@ function VendorDetailPanel({
                         className="text-xs text-blue-600 hover:underline mt-0.5 block">💳 Account Portal</a>
                     )}
                     {a.notes && <p className="text-xs text-gray-400 mt-0.5 italic">{a.notes}</p>}
+                    {role === 'admin' ? (
+                      <label className="flex items-center gap-1.5 mt-1 cursor-pointer w-fit">
+                        <input type="checkbox" checked={a.is_auto_pay}
+                          onChange={e => toggleAccountAutoPay(a.id, e.target.checked)}
+                          className="w-3.5 h-3.5 accent-blue-600" />
+                        <span className={`text-xs ${a.is_auto_pay ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+                          {a.is_auto_pay ? '⟳ Auto Pay' : 'Auto Pay'}
+                        </span>
+                      </label>
+                    ) : a.is_auto_pay ? (
+                      <span className="text-xs text-blue-600 font-medium mt-1 block">⟳ Auto Pay</span>
+                    ) : null}
                   </div>
                   {role === 'admin' && (
                     <button onClick={() => deleteAccount(a.id)}
@@ -485,6 +503,12 @@ function VendorDetailPanel({
               <input type="text" placeholder="Notes (optional)" value={acctForm.notes}
                 onChange={e => setAcctForm(f => ({ ...f, notes: e.target.value }))}
                 className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                <input type="checkbox" checked={acctForm.is_auto_pay}
+                  onChange={e => setAcctForm(f => ({ ...f, is_auto_pay: e.target.checked }))}
+                  className="w-3.5 h-3.5 accent-blue-600" />
+                Auto-pay
+              </label>
               <button onClick={saveAccount} disabled={savingAcct || !acctForm.account_number.trim()}
                 className="w-full py-1.5 text-xs text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors">
                 {savingAcct ? 'Saving…' : 'Add Account'}
@@ -602,7 +626,7 @@ function VendorModal({
   const [tab, setTab] = useState<'details' | 'accounts' | 'payments' | 'bills'>('details')
   const [accounts, setAccounts] = useState<ServiceAccount[]>(initial.utility_service_accounts ?? [])
   const [addingAccount, setAddingAccount] = useState(false)
-  const [acctForm, setAcctForm] = useState({ account_number: '', location_id: '', service_label: '' })
+  const [acctForm, setAcctForm] = useState({ account_number: '', location_id: '', service_label: '', is_auto_pay: false })
   const [savingAcct, setSavingAcct] = useState(false)
 
   const companyLocations = locations.filter(l => l.company_id === form.company_id)
@@ -704,16 +728,22 @@ function VendorModal({
       account_number: acctForm.account_number.trim(),
       location_id: acctForm.location_id || null,
       service_label: acctForm.service_label || null,
+      is_auto_pay: acctForm.is_auto_pay,
     }).select('*, utility_locations(*)').single()
     if (data) setAccounts(a => [...a, data as ServiceAccount])
     setSavingAcct(false)
     setAddingAccount(false)
-    setAcctForm({ account_number: '', location_id: '', service_label: '' })
+    setAcctForm({ account_number: '', location_id: '', service_label: '', is_auto_pay: false })
   }
 
   async function deleteAccount(id: string) {
     await supabase.from('utility_service_accounts').delete().eq('id', id)
     setAccounts(a => a.filter(x => x.id !== id))
+  }
+
+  async function toggleAccountAutoPay(id: string, value: boolean) {
+    setAccounts(a => a.map(x => x.id === id ? { ...x, is_auto_pay: value } : x))
+    await supabase.from('utility_service_accounts').update({ is_auto_pay: value }).eq('id', id)
   }
 
   async function save() {
@@ -863,6 +893,14 @@ function VendorModal({
                           {a.service_label && <span className="text-xs text-gray-400">· {a.service_label}</span>}
                         </div>
                         {loc && <span className="text-xs text-gray-500">📍 {loc.name}</span>}
+                        <label className="flex items-center gap-1.5 mt-1 cursor-pointer w-fit">
+                          <input type="checkbox" checked={a.is_auto_pay}
+                            onChange={e => toggleAccountAutoPay(a.id, e.target.checked)}
+                            className="w-3.5 h-3.5 accent-blue-600" />
+                          <span className={`text-xs ${a.is_auto_pay ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+                            {a.is_auto_pay ? '⟳ Auto Pay' : 'Auto Pay'}
+                          </span>
+                        </label>
                       </div>
                       <button onClick={() => deleteAccount(a.id)}
                         className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs transition-opacity shrink-0 mt-0.5">
@@ -895,6 +933,12 @@ function VendorModal({
                       ))}
                     </div>
                   )}
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                    <input type="checkbox" checked={acctForm.is_auto_pay}
+                      onChange={e => setAcctForm(f => ({ ...f, is_auto_pay: e.target.checked }))}
+                      className="w-3.5 h-3.5 accent-blue-600" />
+                    Auto-pay
+                  </label>
                   <div className="flex gap-2">
                     <button onClick={() => setAddingAccount(false)}
                       className="flex-1 py-1.5 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>

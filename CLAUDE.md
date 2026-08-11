@@ -96,6 +96,7 @@ Restricts which top-level sidebar sections (`/hr`, `/utilities`, `/licenses`, `/
 - **This is client-side only** — there is no `middleware.ts` and Supabase RLS on most tables is currently wide-open (`using (true)`) to any authenticated user. A restricted user cannot *see* other sections in the UI, but if the underlying tables' RLS policies allow it, direct API calls could still read/write that data. Treat this as UI-level restriction for trusted internal staff, not a hard security boundary — tighten RLS per-table if that's needed later.
 - To restrict a user: insert/update a row in `user_access`, e.g. `allowed_sections = '{utilities}'` for Utility Dashboard only.
 - **Creating the actual login account (Supabase Auth user + password) must be done manually** in the Supabase Dashboard → Authentication → Users — Claude will not create accounts or set passwords.
+- **Admin panel** (`/admin`, live as of 2026-08-13): a "User Access" section at the bottom of Settings, visible only to `admin@afstransco.com` (hardcoded `ADMIN_EMAILS` in both `app/admin/page.tsx` and `app/api/admin/users/route.ts` — keep the two in sync). Lists every Supabase Auth user with a Full Access checkbox + per-section checkboxes, writing straight to `user_access`. Listing auth users needs the Admin API (service-role key), which the browser can never hold — `app/api/admin/users/route.ts` is this repo's first Next.js API route, using a **server-only** `SUPABASE_SERVICE_ROLE_KEY` env var (deliberately not `NEXT_PUBLIC_`, set in `.env.local` and in Vercel's Production env vars) and verifying the caller's Supabase JWT is one of `ADMIN_EMAILS` before calling `auth.admin.listUsers()`.
 
 ---
 
@@ -128,6 +129,17 @@ application permission (read-only `Files.Read.All` is not enough —
 `tools/utility_bill_ingestor/.env` (`GRAPH_*` vars, gitignored, service-role
 style secret — never share). The 60 bills that existed before this was set
 up were backfilled via `scripts/backfill_onedrive_links.py`.
+
+**Auto Pay per account**: `utility_service_accounts.is_auto_pay` (live as of
+2026-08-13) — toggle in the Vendor edit modal's Accounts tab
+(`app/utilities/vendors/page.tsx`), sets `is_auto_pay=true` on every bill
+the ingestor registers for that account going forward. Independent from
+`vendors.yaml`'s per-vendor `auto_pay: true` flag (`tools/utility_bill_ingestor/config/vendors.yaml`)
+— either one marks a bill auto-pay (see `bill_payload_from_parsed` in
+`tools/utility_bill_ingestor/app/repository.py`). The YAML flag is for a
+whole vendor (all its accounts); the DB flag is for one specific account —
+use the DB/UI one going forward since it doesn't need a code change to
+toggle.
 
 ---
 
@@ -201,3 +213,4 @@ Thank you.
 - [ ] Run `supabase/add_utility_credits.sql` in Supabase SQL Editor to enable the "Add Credit" feature on the Utility Bills page (account-level balance adjustments not tied to a specific bill)
 - [ ] Set up `tools/utility_bill_ingestor/.env` (copy from `.env.example`, fill in `SUPABASE_SERVICE_ROLE_KEY` from Supabase Dashboard) before running the ingestor
 - [ ] Run `supabase/add_vendor_payment_methods.sql` in Supabase SQL Editor to enable linking an already-registered payment method to a vendor (`app/utilities/vendors/page.tsx` Payment Methods tab) instead of re-entering it each time
+- [ ] Run `supabase/add_service_account_auto_pay.sql` in Supabase SQL Editor to enable the Auto Pay toggle on vendor accounts (`app/utilities/vendors/page.tsx` Accounts tab/panel) — until then the toggle will error on save, and `tools/utility_bill_ingestor` must NOT be restarted with its latest code (it now selects this column when resolving a service account, which will error on every bill until the column exists)
