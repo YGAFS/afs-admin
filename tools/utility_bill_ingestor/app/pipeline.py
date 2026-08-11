@@ -20,6 +20,7 @@ from app.config import Settings, load_site_config, load_vendor_config
 from app.extractors import GENERIC_EXTRACTOR, pick_extractor
 from app.extractors.base import ParsedBill
 from app.filename_builder import build_filename, resolve_collision, safe_original_name
+from app.graph_client import GraphClient
 from app.logging_config import get_logger, mask_account
 from app.normalizer import normalize_account_number
 from app.ocr import ocr_available, ocr_pdf_text
@@ -54,9 +55,15 @@ class PipelineResult:
 
 
 class Pipeline:
-    def __init__(self, settings: Settings, repository: Repository | None = None):
+    def __init__(
+        self,
+        settings: Settings,
+        repository: Repository | None = None,
+        graph_client: GraphClient | None = None,
+    ):
         self.settings = settings
         self.repo = repository or Repository(settings)
+        self.graph = graph_client or GraphClient(settings)
         self.vendors = load_vendor_config()
         self.sites = load_site_config()
 
@@ -304,6 +311,9 @@ class Pipeline:
             dest_dir = self._archive_dir(classification)
             dest = self._safe_move(path, dest_dir, filename)
 
+            if bill_id and dest is not None:
+                self._attach_onedrive_link(bill_id, dest)
+
             self._write_import_record(
                 original_filename=original_filename, normalized_filename=filename,
                 file_hash=file_hash, source_path=str(path), archived_path=str(dest) if dest else None,
@@ -342,6 +352,19 @@ class Pipeline:
             warnings=validation.warnings + validation.errors, error_message=None, utility_bill_id=None,
         )
         return PipelineResult("needs_review", "; ".join(validation.errors + validation.warnings) or "needs review", dest)
+
+    def _attach_onedrive_link(self, bill_id: str, archived_path: Path) -> None:
+        """Best-effort: never let a Graph API problem affect the bill that
+        was already successfully registered and archived above."""
+        if self.settings.dry_run or not self.graph.enabled:
+            return
+        try:
+            link = self.graph.create_sharing_link(archived_path)
+        except Exception as exc:  # noqa: BLE001 - deliberately broad, see docstring
+            log.warning("unexpected error creating OneDrive link for %s: %s", archived_path, exc)
+            return
+        if link:
+            self.repo.update_bill(bill_id, {"onedrive_file_url": link})
 
     def _archive_dir(self, classification) -> Path:
         company_upper = (classification.company_id or "UNKNOWN").upper()

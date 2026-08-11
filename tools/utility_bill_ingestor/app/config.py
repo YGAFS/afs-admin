@@ -58,6 +58,26 @@ class Settings:
     dry_run: bool
     stability_window_seconds: float
     amount_tolerance: float
+    graph_tenant_id: str = ""
+    graph_client_id: str = ""
+    graph_client_secret: str = ""
+    graph_drive_id: str = ""
+    graph_drive_root_local: Path | None = None
+    graph_drive_root_remote_prefix: str = ""
+
+    @property
+    def graph_enabled(self) -> bool:
+        """True once the Azure AD app registration + target drive are both
+        configured. Until then, onedrive_file_url is simply left blank —
+        this is a best-effort enrichment, never a requirement to register
+        a bill."""
+        return bool(
+            self.graph_tenant_id
+            and self.graph_client_id
+            and self.graph_client_secret
+            and self.graph_drive_id
+            and self.graph_drive_root_local
+        )
 
 
 def load_settings(*, dry_run_override: bool | None = None) -> Settings:
@@ -70,7 +90,18 @@ def load_settings(*, dry_run_override: bool | None = None) -> Settings:
     if not data_dir.is_absolute():
         data_dir = (PROJECT_DIR / data_dir).resolve()
 
+    # Unlike processing/ (mid-move, must never live somewhere OneDrive syncs
+    # concurrently), a review/ file only ever appears there via a completed
+    # atomic move — no sync-race risk — so putting it in OneDrive (e.g.
+    # alongside _inbox) so it's reachable from any device is fine. Defaults
+    # to local (next to processing/failed/logs) for backwards compatibility.
+    review_dir_override = _env("UTILITY_BILL_REVIEW_DIR")
+    review_dir = Path(review_dir_override) if review_dir_override else data_dir / "review"
+
     dry_run = _env_bool("DRY_RUN", False) if dry_run_override is None else dry_run_override
+
+    drive_root_local_raw = _env("GRAPH_DRIVE_ROOT_LOCAL")
+    drive_root_local = Path(drive_root_local_raw) if drive_root_local_raw else None
 
     settings = Settings(
         supabase_url=supabase_url,
@@ -79,13 +110,19 @@ def load_settings(*, dry_run_override: bool | None = None) -> Settings:
         archive_root=archive_root,
         data_dir=data_dir,
         processing_dir=data_dir / "processing",
-        review_dir=data_dir / "review",
+        review_dir=review_dir,
         failed_dir=data_dir / "failed",
         logs_dir=data_dir / "logs",
         enable_ocr=_env_bool("ENABLE_OCR", False),
         dry_run=dry_run,
         stability_window_seconds=_env_float("STABILITY_WINDOW_SECONDS", 5.0),
         amount_tolerance=_env_float("AMOUNT_TOLERANCE", 0.05),
+        graph_tenant_id=_env("GRAPH_TENANT_ID", "") or "",
+        graph_client_id=_env("GRAPH_CLIENT_ID", "") or "",
+        graph_client_secret=_env("GRAPH_CLIENT_SECRET", "") or "",
+        graph_drive_id=_env("GRAPH_DRIVE_ID", "") or "",
+        graph_drive_root_local=drive_root_local,
+        graph_drive_root_remote_prefix=(_env("GRAPH_DRIVE_ROOT_REMOTE_PREFIX", "") or "").strip("/"),
     )
 
     for d in (settings.processing_dir, settings.review_dir, settings.failed_dir, settings.logs_dir):

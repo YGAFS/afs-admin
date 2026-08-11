@@ -116,6 +116,19 @@ Ported/validated vendor parsing logic originally came from
 `scripts/extract_utility_bills.py` (one-off backfill script, superseded by
 this tool for ongoing use).
 
+**OneDrive file links (Microsoft Graph)**: live as of 2026-08-11. Every
+newly-registered bill also gets an org-scoped OneDrive sharing link written
+to `utility_bills.onedrive_file_url` (the web app already renders this as a
+📎 "Open file" link, no site code changes needed) — see
+`tools/utility_bill_ingestor/app/graph_client.py` and the README's "OneDrive
+file links" section. Separate Azure AD app registration from the HR mail-send
+one (`lib/msal.ts`): app-only client-credentials, `Files.ReadWrite.All`
+application permission (read-only `Files.Read.All` is not enough —
+`createLink` is a write operation). Config lives in
+`tools/utility_bill_ingestor/.env` (`GRAPH_*` vars, gitignored, service-role
+style secret — never share). The 60 bills that existed before this was set
+up were backfilled via `scripts/backfill_onedrive_links.py`.
+
 ---
 
 ## Utility Account Balance & Credits (`app/utility/page.tsx`)

@@ -36,7 +36,15 @@ class CambridgeWaterExtractor:
             re.DOTALL,
         )
         previous = parse_money(block.group(4).replace(" ", ""))
-        current = find_money_after(r"Current Water/Wastewater Charges", text)
+        # NOT find_money_after(r"Current Water/Wastewater Charges", ...): that
+        # label is printed twice on this vendor's layout, and the first
+        # occurrence (immediately after the balance-forward summary block) is
+        # actually followed by the account's total amount due, not this
+        # period's charge — a real bill layout quirk, confirmed against 3
+        # real bills (May/Jun/Aug 2026) where using it made previous+current
+        # never equal total. "Total Charges" on the remittance-stub portion
+        # further down is the one instance of the true per-period amount.
+        current = find_money_after(r"Total Charges", text)
 
         # The account-number row (e.g. "69661\n$453.92\nJun 26, 2026") carries
         # the total for *this* account — use the account we actually parsed,

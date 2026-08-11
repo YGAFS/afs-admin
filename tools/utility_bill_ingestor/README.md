@@ -111,6 +111,9 @@ utility_bill_ingestor/
 │   ├── review/             # needs a human look — nothing was written to the DB
 │   ├── failed/             # unreadable/corrupt/encrypted PDFs — original file preserved
 │   └── logs/                # ingestor.log (rotating)
+├── scripts/
+│   ├── graph_discover_drive.py     # one-off: find GRAPH_DRIVE_ID / GRAPH_DRIVE_ROOT_*
+│   └── backfill_onedrive_links.py  # one-off: link bills registered before Graph was set up
 ├── tests/
 ├── requirements.txt
 ├── .env.example
@@ -133,6 +136,7 @@ utility_bill_ingestor/
 | `validator.py` | Conservative completed/needs_review/failed/duplicate decision |
 | `filename_builder.py` | Standardized filename generation, collision-safe |
 | `repository.py` | All Supabase reads/writes, UUID resolution — nothing else talks to Supabase |
+| `graph_client.py` | Optional: Microsoft Graph app-only client, creates OneDrive sharing links (see "OneDrive file links" below) |
 | `logging_config.py` | Console + rotating file logging, account-number masking |
 | `extractors/` | One module per vendor + a generic fallback |
 
@@ -238,6 +242,63 @@ registering.
 
 A full Windows service is not set up here — not necessary for this workload,
 and the logon-task approach above needs no elevated install.
+
+## OneDrive file links (Microsoft Graph)
+
+Optional. When configured, every bill the ingestor registers also gets an
+**"organization"-scoped OneDrive sharing link** saved to
+`utility_bills.onedrive_file_url` — the web app already renders this as a
+📎 "Open file" link on every bill row, no site code changes needed. Anyone
+signed into the afstrans.co tenant can open the link; no one else can.
+
+This is entirely separate from the HR app's mail-send Graph integration
+(`lib/msal.ts` — a delegated, user-interactive SPA flow). File links use an
+**app-only client-credentials** flow instead, since the ingestor runs
+unattended with no one signed in.
+
+### One-time setup
+
+1. **Azure AD app registration** (needs a Global Admin or Application
+   Administrator on the afstrans.co tenant):
+   - [portal.azure.com](https://portal.azure.com/) → **Microsoft Entra ID** →
+     **App registrations** → **New registration**. Single-tenant, no
+     redirect URI needed.
+   - **Certificates & secrets** → **New client secret** → copy the *Value*
+     immediately (shown once).
+   - **API permissions** → **+ Add a permission** → Microsoft Graph →
+     **Application permissions** (not Delegated) → add **Files.ReadWrite.All**
+     (read-only `Files.Read.All` is *not* enough — creating a sharing link is
+     a write operation on the item's permissions, even for a view-only link).
+     Then **Grant admin consent for afstrans.co**.
+2. Put the 3 values in `.env`: `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`,
+   `GRAPH_CLIENT_SECRET`.
+3. Find the target drive: `python -m scripts.graph_discover_drive` (add
+   `--site-path <name>` once you know the SharePoint site — see the script's
+   own output for how to find that from a folder's "View online" URL). Set
+   `GRAPH_DRIVE_ID` from its output.
+4. Work out `GRAPH_DRIVE_ROOT_LOCAL` / `GRAPH_DRIVE_ROOT_REMOTE_PREFIX` — a
+   local folder and its exact path *inside the drive*. These are often
+   **not** the same string: OneDrive's sync client can rename a shortcut
+   folder locally (e.g. this tenant's `UTILITY_BILL_ARCHIVE_ROOT` sits under
+   a local folder named `afstrans.co - AFS_2023`, but the same folder is
+   just `AFS_2023` on the actual drive). `graph_discover_drive`'s output
+   explains how to read the real remote path off a "View online" URL.
+5. **Verify against one real archived file before trusting it** — a wrong
+   `GRAPH_DRIVE_ROOT_REMOTE_PREFIX` fails as a 404 (`itemNotFound`), not
+   silently:
+   ```powershell
+   python -c "from pathlib import Path; from app.config import load_settings; from app.graph_client import GraphClient; s = load_settings(); print(GraphClient(s).create_sharing_link(Path(r'C:\path\to\a\real\archived\bill.pdf')))"
+   ```
+6. Backfill bills that were registered before this was set up:
+   ```powershell
+   python -m scripts.backfill_onedrive_links --dry-run   # preview
+   python -m scripts.backfill_onedrive_links              # for real
+   ```
+
+Once all 5 `GRAPH_*` values are set, new bills get a link automatically
+(`Pipeline._attach_onedrive_link`, called right after a bill is archived) —
+this is entirely best-effort: if Graph is unreachable or misconfigured, the
+bill still registers normally, just without a link, and a warning is logged.
 
 ## OneDrive sync folder caveats
 

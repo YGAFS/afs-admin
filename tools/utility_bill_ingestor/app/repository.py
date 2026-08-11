@@ -106,6 +106,33 @@ class Repository:
         )
         return _first_row(res.data)
 
+    def get_bill(self, bill_id: str) -> dict[str, Any] | None:
+        if not self.has_client:
+            return None
+        res = (
+            self.client.table("utility_bills")
+            .select("id, onedrive_file_url")
+            .eq("id", bill_id)
+            .limit(1)
+            .execute()
+        )
+        return _first_row(res.data)
+
+    def list_completed_imports_with_archive(self) -> list[dict[str, Any]]:
+        """Import records that produced a bill and have an archived_path on
+        disk — the backfill candidates for scripts/backfill_onedrive_links.py."""
+        if not self.has_client:
+            return []
+        res = (
+            self.client.table("utility_bill_imports")
+            .select("id, utility_bill_id, archived_path")
+            .eq("status", "completed")
+            .not_.is_("utility_bill_id", "null")
+            .not_.is_("archived_path", "null")
+            .execute()
+        )
+        return res.data or []
+
     def find_import_by_hash(self, file_hash: str) -> dict[str, Any] | None:
         if not self.has_client:
             return None
