@@ -94,16 +94,16 @@ grandbridge_tnt:
     - Grand Bridge
   accounts: []
 
-# TNT has two Rogers accounts at two different sites, same as the Burrtec
-# split above -- both still resolve to the same utility_vendors row (Rogers
-# is company-wide, not site-specific), split purely so site_code/accounts
-# can differ. Without the account number below, a Biscayne bill still
-# classifies correctly as long as "Biscayne" appears somewhere in the PDF
-# text (classifier.py's site_alias step, sites.yaml's BISCAYNE aliases) --
-# add the real account number here once known for higher-confidence,
-# instant classification instead of relying on that text match.
+# TNT has two Rogers accounts at two different sites. Originally one shared
+# utility_vendors row ("Rogers"), which merged both sites' bills/averages
+# into a single line in the Vendors UI -- split into two separate DB vendor
+# rows 2026-08-13 ("Cambridge Rogers" / "Biscayne Rogers", db_name below
+# must match each row's `name` exactly for resolve_vendor to find it).
+# archive_folder keeps both filing into the existing TNT\Rogers\... folder
+# tree rather than splitting into new TNT\Cambridge Rogers\... folders.
 rogers_tnt_cambridge:
-  db_name: "Rogers"
+  db_name: "Cambridge Rogers"
+  archive_folder: "Rogers"
   company_id: tnt
   site_code: CAMBRIDGE
   utility_name: "Internet"
@@ -114,8 +114,12 @@ rogers_tnt_cambridge:
   accounts:
     - "860900"
 
+# Without the account number below, a Biscayne bill still classifies
+# correctly as long as "Biscayne" appears somewhere in the PDF text
+# (classifier.py's site_alias step, sites.yaml's BISCAYNE aliases).
 rogers_tnt_biscayne:
-  db_name: "Rogers"
+  db_name: "Biscayne Rogers"
+  archive_folder: "Rogers"
   company_id: tnt
   site_code: BISCAYNE
   utility_name: "Internet (Wifi)"
