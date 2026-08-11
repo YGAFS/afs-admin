@@ -98,7 +98,7 @@ class Repository:
             return None
         res = (
             self.client.table("utility_service_accounts")
-            .select("id, vendor_id, location_id, account_number")
+            .select("id, vendor_id, location_id, account_number, is_auto_pay")
             .eq("vendor_id", vendor_id)
             .eq("account_number", account_number)
             .limit(1)

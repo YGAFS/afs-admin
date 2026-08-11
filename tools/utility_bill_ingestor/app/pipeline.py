@@ -294,7 +294,12 @@ class Pipeline:
                 parsed=parsed,
                 location_id=(location_row or {}).get("id"),
                 service_account_id=(service_account_row or {}).get("id"),
-                auto_pay=bool(classification.vendor_cfg and classification.vendor_cfg.auto_pay),
+                # Two independent sources: the YAML vendor config (set by editing
+                # vendors.yaml) and the per-account DB flag (settable from the
+                # Vendor edit modal's Accounts tab in the web app) -- either one
+                # marks a bill auto-pay.
+                auto_pay=bool(classification.vendor_cfg and classification.vendor_cfg.auto_pay)
+                or bool((service_account_row or {}).get("is_auto_pay")),
             )
             bill_id = self.repo.insert_bill(payload)
 
