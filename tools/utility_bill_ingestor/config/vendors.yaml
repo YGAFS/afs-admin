@@ -106,7 +106,11 @@ rogers_tnt:
   accounts:
     - "860900"
 
-burrtec_zfs:
+# Two real accounts under the same ZFS/Fontana "Burrtec" vendor row, split
+# into separate keys (both still resolve to the same utility_vendors row
+# and the same archive folder, since db_name/company_id match) purely so
+# auto_pay can be tracked per account -- they're not on the same schedule.
+burrtec_zfs_5222:
   db_name: "Burrtec"
   company_id: zfs
   site_code: FONTANA
@@ -114,7 +118,26 @@ burrtec_zfs:
   aliases:
     - Burrtec
     - Burrtec Waste Industries
-  accounts: []
+  accounts:
+    - "136675222"
+  # Confirmed by the user 2026-08-13, and the bill itself printed "You are
+  # enrolled in Auto Pay" (2026-03 statement).
+  auto_pay: true
+
+burrtec_zfs_9184:
+  db_name: "Burrtec"
+  company_id: zfs
+  site_code: FONTANA
+  utility_name: "Garbage"
+  aliases:
+    - Burrtec
+    - Burrtec Waste Industries
+  accounts:
+    - "136689184"
+  # NOT auto-pay yet -- user says Auto Pay starts 2026-08-15. Flip this to
+  # true once a bill after that date confirms it actually took effect
+  # (see TNT Cambridge Water's auto_pay mixup earlier this session for why
+  # this shouldn't be pre-set before it's actually live).
 
 fontana_water_zfs:
   db_name: "Fontana Water"
