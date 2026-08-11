@@ -43,9 +43,40 @@ class BurrtecExtractor:
         if not total_match:
             warnings.append("total_due not found in body")
 
-        previous_match = re.search(r"Total Previous Balance\s+([\d,]+\.\d{2})", text)
-        previous = parse_money(previous_match.group(1)) if previous_match else parse_money("0.00")
-        current = (total - previous) if total is not None else None
+        # The "Total Previous Balance" printed on the bill is only the
+        # *starting* balance, before an "Other Charges and Payments" block
+        # that mixes in more charges, credits, *and* payments (in no fixed
+        # order) — not reliably parseable into a clean previous/current
+        # split. What's reliable: the "Current Charges" section immediately
+        # before "Total Amount Due" always lists exactly this period's new
+        # line items (confirmed against real ZFS Burrtec bills for account
+        # 136689184, incl. ones with mid-statement credits/payments), so sum
+        # that block directly and back out previous_balance from the total
+        # instead of trying to replay the whole ledger. This guarantees
+        # previous+current==total by construction (can go negative when a
+        # payment/credit more than covered the old balance — a real signal,
+        # not an error, so it's left as-is rather than floored at zero).
+        # Each line item in that block linearizes as 4 separate lines — date,
+        # quantity, description, amount, in that order — so anchor on that
+        # shape rather than just summing every 2-decimal number in the block:
+        # a quantity can itself have 2 decimals (e.g. "2.38" tons on a dump-
+        # fee line) and would otherwise get miscounted as a dollar amount.
+        current_block_match = re.search(r"Current Charges\s*(.*?)Total Amount Due", text, re.DOTALL)
+        current = None
+        if current_block_match:
+            amounts = re.findall(
+                r"\d{2}/\d{2}/\d{2}\s*\n[\d.,]+\s*\n[^\n]+\n([\d,]+\.\d{2})",
+                current_block_match.group(1),
+            )
+            if amounts:
+                current = sum((parse_money(a) for a in amounts[1:]), parse_money(amounts[0]))
+        if current is None:
+            warnings.append("Current Charges section not found — falling back to Total Previous Balance for the split")
+            previous_match = re.search(r"Total Previous Balance\s+([\d,]+\.\d{2})", text)
+            previous = parse_money(previous_match.group(1)) if previous_match else parse_money("0.00")
+            current = (total - previous) if total is not None else None
+        else:
+            previous = (total - current) if total is not None else None
 
         return ParsedBill(
             vendor_name="Burrtec",
