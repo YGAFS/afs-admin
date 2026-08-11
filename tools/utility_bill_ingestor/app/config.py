@@ -149,6 +149,8 @@ class VendorConfig:
     aliases: list[str]
     accounts: list[str]
     archive_folder: str = ""
+    flat_archive: bool = False
+    auto_pay: bool = False
 
     @property
     def folder_name(self) -> str:
@@ -184,6 +186,8 @@ def load_vendor_config(path: Path | None = None) -> dict[str, VendorConfig]:
             aliases=list(entry.get("aliases", [])),
             accounts=[str(a) for a in entry.get("accounts", [])],
             archive_folder=entry.get("archive_folder", ""),
+            flat_archive=bool(entry.get("flat_archive", False)),
+            auto_pay=bool(entry.get("auto_pay", False)),
         )
     return out
 

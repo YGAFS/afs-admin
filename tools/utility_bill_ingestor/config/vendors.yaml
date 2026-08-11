@@ -18,6 +18,17 @@
 # when the folder already on disk doesn't exactly match db_name, so new
 # bills land next to the existing historical ones instead of splitting the
 # archive across two folders.
+#
+# flat_archive (optional, default false): skip nesting into a per-site
+# subfolder (ROOT/{COMPANY}/{VENDOR}/{SITE}/) even when the company is
+# multi_site — file straight into ROOT/{COMPANY}/{VENDOR}/ instead. Set this
+# for a vendor whose existing archive folder is already flat, or whose name
+# already implies the site (e.g. "Cambridge Water").
+#
+# auto_pay (optional, default false): every bill this vendor's extractor
+# registers gets is_auto_pay=true, even though nothing in the PDF itself
+# says so (unlike e.g. Orkin, whose $0-printed total is a real in-PDF
+# signal) — for accounts you know are on auto-pay from outside the bill.
 
 rogers_afs:
   db_name: "Rogers"
@@ -53,6 +64,15 @@ cambridge_water_tnt:
     - City of Cambridge
     - City of Cambridge Water
   accounts: []
+  # Existing archive (May/June bills) is flat, no "Cambridge" subfolder —
+  # and nesting one caused a real, repeatable problem: files placed in a
+  # brand-new "Cambridge" subfolder kept ending up unreachable via the
+  # OneDrive share link generated right after archiving (confirmed on the
+  # Jul/Aug 2026 bills), even though the exact same drive/path setup works
+  # fine for every other vendor's flat and nested folders alike.
+  flat_archive: true
+  # Confirmed by the user 2026-08-11: this account is on auto-pay.
+  auto_pay: true
 
 enbridge_tnt:
   db_name: "Enbridge"

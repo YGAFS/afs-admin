@@ -215,6 +215,7 @@ def bill_payload_from_parsed(
     parsed,  # ParsedBill
     location_id: str | None,
     service_account_id: str | None,
+    auto_pay: bool = False,
 ) -> dict[str, Any]:
     """Map a ParsedBill onto real utility_bills columns. `amount` and
     `total_due` both get the same computed total (legacy + new balance
@@ -266,7 +267,7 @@ def bill_payload_from_parsed(
         "account_number": parsed.account_number,
         "location_id": location_id,
         "service_account_id": service_account_id,
-        "is_auto_pay": already_paid,
+        "is_auto_pay": already_paid or auto_pay,
         "is_paid": already_paid,
         "balance_status": "paid" if already_paid else "open",
         "invoice_status": "active",

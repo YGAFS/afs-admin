@@ -294,6 +294,7 @@ class Pipeline:
                 parsed=parsed,
                 location_id=(location_row or {}).get("id"),
                 service_account_id=(service_account_row or {}).get("id"),
+                auto_pay=bool(classification.vendor_cfg and classification.vendor_cfg.auto_pay),
             )
             bill_id = self.repo.insert_bill(payload)
 
@@ -370,6 +371,8 @@ class Pipeline:
         company_upper = (classification.company_id or "UNKNOWN").upper()
         vendor_folder = classification.vendor_cfg.folder_name if classification.vendor_cfg else "Unknown"
         base = self.settings.archive_root / company_upper / vendor_folder
+        if classification.vendor_cfg and classification.vendor_cfg.flat_archive:
+            return base
         company_cfg = self.sites.get(classification.company_id) if classification.company_id else None
         if company_cfg and company_cfg.multi_site and classification.site_code:
             return base / classification.site_code.title()
