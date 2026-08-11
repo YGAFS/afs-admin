@@ -188,6 +188,7 @@ function VendorDetailPanel({
     account_number: '', service_label: '', location_id: '', billing_portal_url: '', notes: '', is_auto_pay: false,
   })
   const [savingAcct, setSavingAcct] = useState(false)
+  const [acctError, setAcctError] = useState<string | null>(null)
 
   // Contacts inline add
   const [addingContact, setAddingContact] = useState(false)
@@ -227,7 +228,12 @@ function VendorDetailPanel({
   }
 
   async function toggleAccountAutoPay(id: string, value: boolean) {
-    await supabase.from('utility_service_accounts').update({ is_auto_pay: value }).eq('id', id)
+    setAcctError(null)
+    const { error } = await supabase.from('utility_service_accounts').update({ is_auto_pay: value }).eq('id', id)
+    if (error) {
+      setAcctError(error.message)
+      return
+    }
     // The Dashboard's Auto Pay badge reads is_auto_pay off each *bill* row
     // (set once at ingestion time), not off the account -- without this,
     // toggling it here only affects bills the ingestor creates *after* the
@@ -235,8 +241,9 @@ function VendorDetailPanel({
     // every bill that already exists.
     const account = accounts.find(a => a.id === id)
     if (account) {
-      await supabase.from('utility_bills').update({ is_auto_pay: value })
+      const { error: billsError } = await supabase.from('utility_bills').update({ is_auto_pay: value })
         .eq('company_id', vendor.company_id).eq('account_number', account.account_number)
+      if (billsError) setAcctError(billsError.message)
     }
     onRefresh()
   }
@@ -441,6 +448,11 @@ function VendorDetailPanel({
             )}
           </div>
 
+          {acctError && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5 mb-2">
+              {acctError}
+            </p>
+          )}
           {accounts.length === 0 && !addingAccount && (
             <p className="text-xs text-gray-400">No service accounts.</p>
           )}
@@ -638,6 +650,7 @@ function VendorModal({
   const [addingAccount, setAddingAccount] = useState(false)
   const [acctForm, setAcctForm] = useState({ account_number: '', location_id: '', service_label: '', is_auto_pay: false })
   const [savingAcct, setSavingAcct] = useState(false)
+  const [acctError, setAcctError] = useState<string | null>(null)
 
   const companyLocations = locations.filter(l => l.company_id === form.company_id)
 
@@ -760,14 +773,25 @@ function VendorModal({
 
   async function toggleAccountAutoPay(id: string, value: boolean) {
     const account = accounts.find(a => a.id === id)
+    // Optimistic, but reverted below if the write actually fails -- it was
+    // silently staying "on" in this modal even on failure before, which is
+    // exactly how an account went unpaid on the Dashboard despite looking
+    // toggled here.
     setAccounts(a => a.map(x => x.id === id ? { ...x, is_auto_pay: value } : x))
-    await supabase.from('utility_service_accounts').update({ is_auto_pay: value }).eq('id', id)
+    setAcctError(null)
+    const { error } = await supabase.from('utility_service_accounts').update({ is_auto_pay: value }).eq('id', id)
+    if (error) {
+      setAccounts(a => a.map(x => x.id === id ? { ...x, is_auto_pay: !value } : x))
+      setAcctError(error.message)
+      return
+    }
     // See the identical comment in VendorDetailPanel's toggleAccountAutoPay:
     // the Dashboard reads is_auto_pay off each bill row, not the account, so
     // existing bills need updating too or the badge silently stays stale.
     if (account) {
-      await supabase.from('utility_bills').update({ is_auto_pay: value })
+      const { error: billsError } = await supabase.from('utility_bills').update({ is_auto_pay: value })
         .eq('company_id', form.company_id).eq('account_number', account.account_number)
+      if (billsError) setAcctError(billsError.message)
     }
   }
 
@@ -904,6 +928,11 @@ function VendorModal({
             <p className="text-xs text-gray-400">Save the vendor first, then add accounts here.</p>
           ) : (
             <>
+              {acctError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">
+                  {acctError}
+                </p>
+              )}
               {accounts.length === 0 && !addingAccount && (
                 <p className="text-xs text-gray-400">No accounts yet.</p>
               )}
