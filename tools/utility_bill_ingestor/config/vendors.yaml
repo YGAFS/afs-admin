@@ -94,7 +94,15 @@ grandbridge_tnt:
     - Grand Bridge
   accounts: []
 
-rogers_tnt:
+# TNT has two Rogers accounts at two different sites, same as the Burrtec
+# split above -- both still resolve to the same utility_vendors row (Rogers
+# is company-wide, not site-specific), split purely so site_code/accounts
+# can differ. Without the account number below, a Biscayne bill still
+# classifies correctly as long as "Biscayne" appears somewhere in the PDF
+# text (classifier.py's site_alias step, sites.yaml's BISCAYNE aliases) --
+# add the real account number here once known for higher-confidence,
+# instant classification instead of relying on that text match.
+rogers_tnt_cambridge:
   db_name: "Rogers"
   company_id: tnt
   site_code: CAMBRIDGE
@@ -105,6 +113,17 @@ rogers_tnt:
     - ROGERS
   accounts:
     - "860900"
+
+rogers_tnt_biscayne:
+  db_name: "Rogers"
+  company_id: tnt
+  site_code: BISCAYNE
+  utility_name: "Internet (Wifi)"
+  aliases:
+    - Rogers
+    - Rogers Communications
+    - ROGERS
+  accounts: []
 
 # Two real accounts under the same ZFS/Fontana "Burrtec" vendor row, split
 # into separate keys (both still resolve to the same utility_vendors row
