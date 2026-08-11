@@ -1741,6 +1741,27 @@ function DashboardTab({
   function toggleBill(id: string) {
     setExpandedBillId(prev => prev === id ? null : id)
   }
+
+  // Year groups within a vendor's history: current year open by default,
+  // older years collapsed by default — toggling flips from that default
+  // independently per year, so any number of years can be open at once.
+  const currentYear = new Date().getFullYear()
+  const [toggledYearKeys, setToggledYearKeys] = useState<Set<string>>(new Set())
+  function isYearOpen(year: number, key: string) {
+    const defaultOpen = year === currentYear
+    return toggledYearKeys.has(key) ? !defaultOpen : defaultOpen
+  }
+  function toggleYear(key: string) {
+    setToggledYearKeys(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
+  function billYear(b: Bill): number {
+    const dateStr = b.issue_date ?? b.due_date
+    return dateStr ? new Date(dateStr + 'T00:00:00').getFullYear() : 0
+  }
   // Scope the vendor history to the selected company + search term
   const scoped = bills.filter(b => {
     if (coFilter !== 'all' && b.company_id !== coFilter) return false
@@ -1907,50 +1928,76 @@ function DashboardTab({
                     </div>
                     <span className="text-sm text-gray-400">{v.bills.length} bill{v.bills.length !== 1 ? 's' : ''}</span>
                   </button>
-                  {isOpen && (
-                    <div className="px-4 pb-3">
-                      {v.bills.map(b => {
-                        const isBillOpen = expandedBillId === b.id
-                        return (
-                          <div key={b.id} className="pl-6 py-1.5 border-t border-gray-50 first:border-t-0">
-                            <div
-                              onClick={() => toggleBill(b.id)}
-                              className="flex items-center justify-between gap-2 cursor-pointer"
-                            >
-                              <span className="flex items-center gap-2 min-w-0">
-                                {v.hasMultipleAccounts && (
-                                  <span className="text-xs text-gray-400 font-mono truncate">{b.account_number ?? '—'}</span>
-                                )}
-                                <span className="text-sm font-semibold text-gray-800">{monthYearLabel(b)}</span>
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-gray-800">{fmtAmt(b)}</span>
-                                <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_BADGE[computeBillStatus(b)].className}`}>
-                                  {STATUS_BADGE[computeBillStatus(b)].label}
-                                </span>
-                              </div>
+                  {isOpen && (() => {
+                    const byYear = new Map<number, Bill[]>()
+                    for (const b of v.bills) {
+                      const y = billYear(b)
+                      if (!byYear.has(y)) byYear.set(y, [])
+                      byYear.get(y)!.push(b)
+                    }
+                    const years = [...byYear.keys()].sort((a, b) => b - a)
+                    return (
+                      <div className="px-4 pb-3">
+                        {years.map(year => {
+                          const yearBills = byYear.get(year)!
+                          const yearKey = `${v.name}-${year}`
+                          const yearOpen = isYearOpen(year, yearKey)
+                          return (
+                            <div key={year}>
+                              <button
+                                onClick={() => toggleYear(yearKey)}
+                                className="w-full flex items-center gap-2 py-1.5 pl-6 text-left hover:bg-gray-50 transition-colors"
+                              >
+                                <span className={`text-xs transition-transform inline-block ${yearOpen ? 'rotate-90' : ''}`}>▸</span>
+                                <span className="text-sm font-semibold text-gray-600">{year || 'Unknown'}</span>
+                                <span className="text-xs text-gray-400">({yearBills.length})</span>
+                              </button>
+                              {yearOpen && yearBills.map(b => {
+                                const isBillOpen = expandedBillId === b.id
+                                return (
+                                  <div key={b.id} className="pl-10 py-1.5 border-t border-gray-50 first:border-t-0">
+                                    <div
+                                      onClick={() => toggleBill(b.id)}
+                                      className="flex items-center justify-between gap-2 cursor-pointer"
+                                    >
+                                      <span className="flex items-center gap-2 min-w-0">
+                                        {v.hasMultipleAccounts && (
+                                          <span className="text-xs text-gray-400 font-mono truncate">{b.account_number ?? '—'}</span>
+                                        )}
+                                        <span className="text-sm font-semibold text-gray-800">{monthYearLabel(b)}</span>
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium text-gray-800">{fmtAmt(b)}</span>
+                                        <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_BADGE[computeBillStatus(b)].className}`}>
+                                          {STATUS_BADGE[computeBillStatus(b)].label}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    {isBillOpen && (
+                                      <BillExpandPanel
+                                        bill={b}
+                                        role={role}
+                                        onUpdateStatus={onUpdateStatus}
+                                        onCarryForward={onCarryForward}
+                                        onPartialPayment={onPartialPayment}
+                                        onEdit={onEdit}
+                                        deleteConfirm={deleteConfirm}
+                                        setDeleteConfirm={setDeleteConfirm}
+                                        onDelete={onDelete}
+                                        noteEdit={noteEdit}
+                                        setNoteEdit={setNoteEdit}
+                                        onSaveNote={onSaveNote}
+                                      />
+                                    )}
+                                  </div>
+                                )
+                              })}
                             </div>
-                            {isBillOpen && (
-                              <BillExpandPanel
-                                bill={b}
-                                role={role}
-                                onUpdateStatus={onUpdateStatus}
-                                onCarryForward={onCarryForward}
-                                onPartialPayment={onPartialPayment}
-                                onEdit={onEdit}
-                                deleteConfirm={deleteConfirm}
-                                setDeleteConfirm={setDeleteConfirm}
-                                onDelete={onDelete}
-                                noteEdit={noteEdit}
-                                setNoteEdit={setNoteEdit}
-                                onSaveNote={onSaveNote}
-                              />
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
+                          )
+                        })}
+                      </div>
+                    )
+                  })()}
                 </div>
               )
             })}
