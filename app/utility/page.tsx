@@ -1794,13 +1794,22 @@ function DashboardTab({
           <div className="flex items-center gap-2 shrink-0">
             <span className={`text-sm font-medium ${amountClassName}`}>{fmtAmt(b)}</span>
             <span className={`text-sm ${dateClassName}`}>{dueDateLabel(b)}</span>
-            <button
-              onClick={e => { e.stopPropagation(); onUpdateStatus(b, 'paid') }}
-              className="text-xs px-2 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
-              title="Mark paid"
-            >
-              ✓ Paid
-            </button>
+            {b.is_auto_pay ? (
+              <span
+                className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 font-medium"
+                title="Automatically paid — no manual action needed"
+              >
+                ⟳ Auto Pay
+              </span>
+            ) : (
+              <button
+                onClick={e => { e.stopPropagation(); onUpdateStatus(b, 'paid') }}
+                className="text-xs px-2 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                title="Mark paid"
+              >
+                ✓ Paid
+              </button>
+            )}
           </div>
         </div>
         {isOpen && (
