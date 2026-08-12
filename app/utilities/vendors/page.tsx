@@ -207,15 +207,30 @@ function VendorDetailPanel({
   async function saveAccount() {
     if (!acctForm.account_number.trim()) return
     setSavingAcct(true)
-    await supabase.from('utility_service_accounts').insert({
+    setAcctError(null)
+    const accountNumber = acctForm.account_number.trim()
+    const { error } = await supabase.from('utility_service_accounts').insert({
       vendor_id: vendor.id,
-      account_number: acctForm.account_number.trim(),
+      account_number: accountNumber,
       service_label: acctForm.service_label || null,
       location_id: acctForm.location_id || null,
       billing_portal_url: acctForm.billing_portal_url || null,
       notes: acctForm.notes || null,
       is_auto_pay: acctForm.is_auto_pay,
     })
+    if (error) {
+      setAcctError(error.message)
+      setSavingAcct(false)
+      return
+    }
+    // Same reasoning as toggleAccountAutoPay: a brand-new account can be
+    // added with Auto-pay already checked, and existing bills for that
+    // account number won't pick that up on their own.
+    if (acctForm.is_auto_pay) {
+      const { error: billsError } = await supabase.from('utility_bills').update({ is_auto_pay: true })
+        .eq('company_id', vendor.company_id).eq('account_number', accountNumber)
+      if (billsError) setAcctError(billsError.message)
+    }
     setSavingAcct(false)
     setAddingAccount(false)
     setAcctForm({ account_number: '', service_label: '', location_id: '', billing_portal_url: '', notes: '', is_auto_pay: false })
@@ -753,14 +768,29 @@ function VendorModal({
   async function saveAccount() {
     if (!acctForm.account_number.trim() || !vendorId) return
     setSavingAcct(true)
-    const { data } = await supabase.from('utility_service_accounts').insert({
+    setAcctError(null)
+    const accountNumber = acctForm.account_number.trim()
+    const { data, error } = await supabase.from('utility_service_accounts').insert({
       vendor_id: vendorId,
-      account_number: acctForm.account_number.trim(),
+      account_number: accountNumber,
       location_id: acctForm.location_id || null,
       service_label: acctForm.service_label || null,
       is_auto_pay: acctForm.is_auto_pay,
     }).select('*, utility_locations(*)').single()
+    if (error) {
+      setAcctError(error.message)
+      setSavingAcct(false)
+      return
+    }
     if (data) setAccounts(a => [...a, data as ServiceAccount])
+    // Same reasoning as toggleAccountAutoPay: a brand-new account can be
+    // added with Auto-pay already checked, and existing bills for that
+    // account number won't pick that up on their own.
+    if (acctForm.is_auto_pay) {
+      const { error: billsError } = await supabase.from('utility_bills').update({ is_auto_pay: true })
+        .eq('company_id', form.company_id).eq('account_number', accountNumber)
+      if (billsError) setAcctError(billsError.message)
+    }
     setSavingAcct(false)
     setAddingAccount(false)
     setAcctForm({ account_number: '', location_id: '', service_label: '', is_auto_pay: false })
