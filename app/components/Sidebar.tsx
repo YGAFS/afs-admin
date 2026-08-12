@@ -90,16 +90,30 @@ function GearIcon() {
 }
 function UtilitySidebar() {
   const path = usePathname()
+  const { allowedSections } = useAuth()
+  // UtilitySidebar fully replaces the main Sidebar (with its /hr, /admin, etc.
+  // nav) while inside /utilities/* -- without this there's no way back to the
+  // HR dashboard from here. Only show it to users who can actually see /hr.
+  const canSeeHr = !allowedSections || allowedSections.includes('hr')
 
   return (
     <aside className="w-56 shrink-0 h-screen flex flex-col bg-white border-r border-gray-200 overflow-hidden">
 
       {/* Logo */}
       <div className="px-4 py-4 border-b border-gray-100">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2">
           <div className="w-7 h-7 bg-blue-600 rounded-md flex items-center justify-center">
             <span className="text-white text-xs font-bold">AFS</span>
           </div>
+          {canSeeHr && (
+            <Link href="/hr"
+              title="Back to HR Dashboard"
+              className="w-7 h-7 rounded-md flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
+              <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15l-5-5 5-5M8 10h9" />
+              </svg>
+            </Link>
+          )}
         </div>
       </div>
 
