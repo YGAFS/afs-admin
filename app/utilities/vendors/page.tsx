@@ -1047,7 +1047,39 @@ function VendorModal({
             <p className="text-xs text-gray-400">Save the vendor first, then add payment methods here.</p>
           ) : (
           <>
-          <p className="text-xs text-gray-400 -mt-1">Payment methods linked to this vendor</p>
+          {/* Auto Pay lives on the service account, not the payment method --
+              linking an "⟳ Auto" payment method below does NOT by itself turn
+              on Auto Pay, and Auto Pay can be on with no payment method linked
+              at all. Surfacing the actual Dashboard-driving toggle here (same
+              accounts as the Accounts tab, same sync-to-bills behavior) avoids
+              that mismatch being invisible. */}
+          <div>
+            <p className="text-xs text-gray-400 mb-1.5">Auto Pay (drives the Dashboard badge)</p>
+            {acctError && (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5 mb-1.5">
+                {acctError}
+              </p>
+            )}
+            {accounts.length === 0 ? (
+              <p className="text-xs text-gray-400">No accounts yet — add one in the Accounts tab.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {accounts.map(a => (
+                  <label key={a.id} className="flex items-center gap-1.5 cursor-pointer w-fit">
+                    <input type="checkbox" checked={a.is_auto_pay}
+                      onChange={e => toggleAccountAutoPay(a.id, e.target.checked)}
+                      className="w-3.5 h-3.5 accent-blue-600" />
+                    <span className="font-mono text-xs text-gray-600">{a.account_number}</span>
+                    <span className={`text-xs ${a.is_auto_pay ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+                      {a.is_auto_pay ? '⟳ Auto Pay' : 'Auto Pay'}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <p className="text-xs text-gray-400 -mt-1 pt-2 border-t border-gray-100">Payment methods linked to this vendor</p>
           {methodsError && (
             <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">
               {methodsError}
