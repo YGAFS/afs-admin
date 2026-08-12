@@ -339,26 +339,6 @@ function StatCard({ icon, label, value, sub, color = 'text-gray-900', bg = 'bg-w
   )
 }
 
-// ── AlertRow ──────────────────────────────────────────────────────────────────
-
-function AlertRow({ icon, color, label, value, sub, href }: {
-  icon: string; color: string; label: string; value: string | number
-  sub?: string; href?: string
-}) {
-  const content = (
-    <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${color} group`}>
-      <span className="text-lg shrink-0">{icon}</span>
-      <div className="flex-1 min-w-0">
-        <span className="font-semibold text-sm">{label}</span>
-        {sub && <span className="text-xs ml-2 opacity-70">{sub}</span>}
-      </div>
-      <span className="font-bold text-lg shrink-0">{value}</span>
-      {href && <span className="text-xs opacity-50 group-hover:opacity-100 transition-opacity">→</span>}
-    </div>
-  )
-  return href ? <Link href={href}>{content}</Link> : content
-}
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 function OverviewContent() {
@@ -595,36 +575,6 @@ function OverviewContent() {
   return (
     <div className="h-full overflow-auto">
     <div className="p-6 space-y-5">
-
-      {/* ── Alert bar ─────────────────────────────────────────────────────── */}
-      {(stats.overdueCount > 0 || missingBills.length > 0 || abnormalBills.length > 0) && (
-        <div className="space-y-2">
-          {stats.overdueCount > 0 && (
-            <AlertRow
-              icon="🔴" color="border-red-200 bg-red-50 text-red-800"
-              label="Overdue Bills" value={stats.overdueCount}
-              sub={fmtAmt(stats.overdueAmt) + ' total due'}
-              href="/utilities/bills?status=overdue"
-            />
-          )}
-          {missingBills.length > 0 && (
-            <AlertRow
-              icon="🔍" color="border-orange-200 bg-orange-50 text-orange-800"
-              label="Missing Bills (not yet received)"
-              value={missingBills.length}
-              sub={missingBills.map(m => m.provider).join(', ')}
-            />
-          )}
-          {abnormalBills.length > 0 && (
-            <AlertRow
-              icon="📈" color="border-yellow-200 bg-yellow-50 text-yellow-800"
-              label="Abnormal Charges (±25% from avg)"
-              value={abnormalBills.length}
-              sub={abnormalBills.map(b => b.provider ?? b.utility_name).join(', ')}
-            />
-          )}
-        </div>
-      )}
 
       {/* ── Stat cards ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-5 gap-4">
