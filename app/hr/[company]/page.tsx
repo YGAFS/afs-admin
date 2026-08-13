@@ -53,14 +53,14 @@ function ContactMgr({ label, contacts, selectedId, onSelect, storageKey, onChang
   return (
     <div className="mb-4">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-medium text-gray-600">{label}</span>
+        <span className="text-xs font-medium text-ink-muted">{label}</span>
         <button onClick={() => { setOpen(o => !o); setEditId(null); setNewName(''); setNewEmail('') }}
-          className="text-xs text-blue-500 hover:text-blue-700">
+          className="text-xs text-ink-muted hover:text-ink">
           {open ? (locale === 'ko' ? '닫기' : 'Close') : (locale === 'ko' ? '+ 추가/관리' : '+ Add/Manage')}
         </button>
       </div>
       <select value={selectedId} onChange={e => onSelect(e.target.value)}
-        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink bg-white">
         <option value="">{locale === 'ko' ? '— 선택 —' : '— Select —'}</option>
         {contacts.map(c => (
           <option key={c.id} value={c.id}>
@@ -69,49 +69,49 @@ function ContactMgr({ label, contacts, selectedId, onSelect, storageKey, onChang
         ))}
       </select>
       {open && (
-        <div className="mt-2 border rounded-lg p-3 bg-gray-50 space-y-2">
+        <div className="mt-2 border rounded-lg p-3 bg-pill space-y-2">
           {!contacts.length && (
-            <p className="text-xs text-gray-400 text-center py-1">
+            <p className="text-xs text-ink-faint text-center py-1">
               {locale === 'ko' ? '등록된 연락처 없음' : 'No contacts yet'}
             </p>
           )}
           {contacts.map(c => (
-            <div key={c.id} className={`bg-white rounded-lg p-2 border ${!validEmail(c.email) ? 'border-orange-300' : ''}`}>
+            <div key={c.id} className={`bg-white rounded-lg p-2 border ${!validEmail(c.email) ? 'border-amber-300' : ''}`}>
               {editId === c.id ? (
                 <div className="flex gap-1 flex-wrap">
                   <input value={editName} onChange={e => setEditName(e.target.value)}
                     placeholder={locale === 'ko' ? '이름' : 'Name'}
-                    className="flex-1 min-w-20 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                    className="flex-1 min-w-20 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ink" />
                   <div className="flex-1 min-w-32">
                     <input value={editEmail} onChange={e => setEditEmail(e.target.value)}
                       type="email" placeholder="user@company.com"
-                      className={`w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 ${editEmailInvalid ? 'border-red-400 focus:ring-red-400' : 'focus:ring-blue-400'}`} />
-                    {editEmailInvalid && <p className="text-red-500 text-[10px] mt-0.5">user@domain.com 형식 필요</p>}
+                      className={`w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 ${editEmailInvalid ? 'border-signal-neg focus:ring-signal-neg' : 'focus:ring-ink'}`} />
+                    {editEmailInvalid && <p className="text-signal-neg text-[10px] mt-0.5">user@domain.com 형식 필요</p>}
                   </div>
                   <button disabled={!editName.trim() || !validEmail(editEmail.trim())}
                     onClick={() => { save(contacts.map(x => x.id === c.id ? { id: c.id, name: editName.trim(), email: editEmail.trim() } : x)); setEditId(null) }}
-                    className="text-xs bg-blue-500 disabled:bg-gray-300 text-white px-2 py-1 rounded">
+                    className="text-xs bg-ink disabled:bg-line text-white px-2 py-1 rounded">
                     {locale === 'ko' ? '저장' : 'Save'}
                   </button>
                   <button onClick={() => setEditId(null)}
-                    className="text-xs border px-2 py-1 rounded text-gray-500 hover:bg-gray-50">
+                    className="text-xs border px-2 py-1 rounded text-ink-muted hover:bg-pill">
                     {locale === 'ko' ? '취소' : 'Cancel'}
                   </button>
                 </div>
               ) : (
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <span className="text-xs font-medium text-gray-700">{c.name}</span>
-                    <span className={`text-xs ml-2 ${!validEmail(c.email) ? 'text-orange-500 font-medium' : 'text-gray-400'}`}>{c.email}</span>
-                    {!validEmail(c.email) && <span className="text-[10px] text-orange-500 ml-1">← 수정 필요</span>}
+                    <span className="text-xs font-medium text-ink-muted">{c.name}</span>
+                    <span className={`text-xs ml-2 ${!validEmail(c.email) ? 'text-amber-600 font-medium' : 'text-ink-faint'}`}>{c.email}</span>
+                    {!validEmail(c.email) && <span className="text-[10px] text-amber-600 ml-1">← 수정 필요</span>}
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
                     <button onClick={() => { setEditId(c.id); setEditName(c.name); setEditEmail(c.email) }}
-                      className="text-xs text-blue-500 hover:text-blue-700">
+                      className="text-xs text-ink-muted hover:text-ink">
                       {locale === 'ko' ? '수정' : 'Edit'}
                     </button>
                     <button onClick={() => { save(contacts.filter(x => x.id !== c.id)); if (selectedId === c.id) onSelect('') }}
-                      className="text-xs text-red-400 hover:text-red-600">
+                      className="text-xs text-ink-faint hover:text-signal-neg">
                       {locale === 'ko' ? '삭제' : 'Del'}
                     </button>
                   </div>
@@ -119,22 +119,22 @@ function ContactMgr({ label, contacts, selectedId, onSelect, storageKey, onChang
               )}
             </div>
           ))}
-          <div className="flex gap-1 pt-2 border-t border-gray-200 flex-wrap">
+          <div className="flex gap-1 pt-2 border-t border-line flex-wrap">
             <input value={newName} onChange={e => setNewName(e.target.value)}
               placeholder={locale === 'ko' ? '이름' : 'Name'}
-              className="flex-1 min-w-16 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+              className="flex-1 min-w-16 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ink" />
             <div className="flex-1 min-w-28">
               <input value={newEmail} onChange={e => setNewEmail(e.target.value)}
                 placeholder="user@company.com" type="email"
-                className={`w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 ${newEmailInvalid ? 'border-red-400 focus:ring-red-400' : 'focus:ring-blue-400'}`} />
-              {newEmailInvalid && <p className="text-red-500 text-[10px] mt-0.5">user@domain.com 형식 필요</p>}
+                className={`w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 ${newEmailInvalid ? 'border-signal-neg focus:ring-signal-neg' : 'focus:ring-ink'}`} />
+              {newEmailInvalid && <p className="text-signal-neg text-[10px] mt-0.5">user@domain.com 형식 필요</p>}
             </div>
             <button disabled={!newName.trim() || !validEmail(newEmail.trim())}
               onClick={() => {
                 const c = { id: Math.random().toString(36).slice(2), name: newName.trim(), email: newEmail.trim() }
                 save([...contacts, c]); setNewName(''); setNewEmail('')
               }}
-              className="text-xs bg-green-600 disabled:bg-gray-300 text-white px-2 py-1 rounded whitespace-nowrap">
+              className="text-xs bg-ink disabled:bg-line text-white px-2 py-1 rounded whitespace-nowrap">
               + {locale === 'ko' ? '추가' : 'Add'}
             </button>
           </div>
@@ -399,33 +399,33 @@ export default function CompanyAttendancePage() {
     { code: 'L3',       label: t('hr.legend.hourly_leave', locale), color: 'bg-green-50  text-green-600'  },
     { code: 'S/S1/S2', label: t('hr.legend.sick', locale),         color: 'bg-red-100   text-red-800'    },
     { code: 'W',        label: t('hr.legend.wfh', locale),          color: 'bg-blue-100  text-blue-800'   },
-    { code: 'T',        label: 'Unpaid',                            color: 'bg-gray-200  text-gray-700'   },
-    { code: 'B',        label: t('hr.legend.holiday', locale),      color: 'bg-gray-100  text-gray-500'   },
+    { code: 'T',        label: 'Unpaid',                            color: 'bg-line  text-ink-muted'   },
+    { code: 'B',        label: t('hr.legend.holiday', locale),      color: 'bg-pill  text-ink-muted'   },
   ]
 
   return (
     <div className="p-6">
       <div className="flex items-center gap-4 mb-5">
-        <Link href="/hr" className="text-sm text-gray-400 hover:text-gray-700">← HR</Link>
-        <h1 className="text-2xl font-bold text-gray-900">
+        <Link href="/hr" className="text-sm text-ink-faint hover:text-ink-muted">← HR</Link>
+        <h1 className="text-2xl font-bold text-ink">
           {COMPANY_MAP[company]} {t('hr.attendance.management', locale)}
         </h1>
         <div className="flex items-center gap-2 ml-auto">
-          <button onClick={() => shiftMonth(-1)} className="px-3 py-1.5 border rounded-lg text-sm hover:bg-gray-50">◀</button>
+          <button onClick={() => shiftMonth(-1)} className="px-3 py-1.5 border rounded-lg text-sm hover:bg-pill">◀</button>
           <div className="relative" ref={pickerRef}>
             <button
               onClick={() => { setPickerYear(year); setShowPicker(p => !p) }}
-              className="text-base font-semibold w-32 text-center px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+              className="text-base font-semibold w-32 text-center px-2 py-1.5 rounded-lg hover:bg-pill transition-colors">
               {monthLabel}
             </button>
             {showPicker && (
-              <div className="absolute top-10 left-1/2 -translate-x-1/2 bg-white border border-gray-200 rounded-xl shadow-xl p-3 z-50 w-56">
+              <div className="absolute top-10 left-1/2 -translate-x-1/2 bg-white border border-line rounded-xl shadow-xl p-3 z-50 w-56">
                 <div className="flex items-center justify-between mb-2">
                   <button onClick={() => setPickerYear(y => y - 1)}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 text-xs font-bold">◀</button>
-                  <span className="text-sm font-bold text-gray-800">{pickerYear}</span>
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-pill text-ink-muted text-xs font-bold">◀</button>
+                  <span className="text-sm font-bold text-ink">{pickerYear}</span>
                   <button onClick={() => setPickerYear(y => y + 1)}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 text-xs font-bold">▶</button>
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-pill text-ink-muted text-xs font-bold">▶</button>
                 </div>
                 <div className="grid grid-cols-4 gap-1">
                   {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
@@ -433,8 +433,8 @@ export default function CompanyAttendancePage() {
                       onClick={() => { setYear(pickerYear); setMonth(m); setShowPicker(false) }}
                       className={`py-1.5 text-xs rounded-lg font-medium transition-colors ${
                         pickerYear === year && m === month
-                          ? 'bg-blue-600 text-white'
-                          : 'hover:bg-blue-50 text-gray-700'
+                          ? 'bg-ink text-white'
+                          : 'hover:bg-pill text-ink-muted'
                       }`}>
                       {t(`month.${m}`, locale)}
                     </button>
@@ -443,9 +443,9 @@ export default function CompanyAttendancePage() {
               </div>
             )}
           </div>
-          <button onClick={() => shiftMonth(1)} className="px-3 py-1.5 border rounded-lg text-sm hover:bg-gray-50">▶</button>
+          <button onClick={() => shiftMonth(1)} className="px-3 py-1.5 border rounded-lg text-sm hover:bg-pill">▶</button>
           <button onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth() + 1); setShowPicker(false) }}
-            className="px-3 py-1.5 border rounded-lg text-sm text-blue-600 hover:bg-blue-50">
+            className="px-3 py-1.5 border rounded-lg text-sm text-ink-muted hover:bg-pill">
             {t('hr.attendance.this_month', locale)}
           </button>
           <button
@@ -472,8 +472,8 @@ export default function CompanyAttendancePage() {
               }).catch(() => {})
             }}
             disabled={!companyId}
-            className="px-3 py-1.5 border rounded-lg text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 whitespace-nowrap">
-            📧 {locale === 'ko' ? '리포트' : 'Report'}
+            className="px-3 py-1.5 border rounded-lg text-sm text-ink-muted hover:bg-pill disabled:opacity-40 whitespace-nowrap">
+            {locale === 'ko' ? '리포트' : 'Report'}
           </button>
         </div>
       </div>
@@ -487,17 +487,17 @@ export default function CompanyAttendancePage() {
       {companyId
         ? <AttendanceGrid key={gridKey} companyId={companyId} year={year} month={month}
             onReactivate={() => { setGridKey(k => k + 1); loadTerminated() }} />
-        : <div className="text-center py-16 text-gray-400">{t('common.loading', locale)}</div>
+        : <div className="text-center py-16 text-ink-faint">{t('common.loading', locale)}</div>
       }
 
       {/* Terminated employees */}
       <div className="mt-8">
         <button onClick={() => setShowTerminated(!showTerminated)}
-          className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 py-2">
+          className="flex items-center gap-2 text-sm text-ink-muted hover:text-ink-muted py-2">
           <span className={`transition-transform inline-block ${showTerminated ? 'rotate-90' : ''}`}>▶</span>
           {t('hr.terminated.title', locale)}
           {showTerminated && terminated.length > 0 && (
-            <span className="bg-gray-200 text-gray-600 text-xs px-1.5 py-0.5 rounded-full">{terminated.length}</span>
+            <span className="bg-line text-ink-muted text-xs px-1.5 py-0.5 rounded-full">{terminated.length}</span>
           )}
         </button>
 
@@ -505,39 +505,39 @@ export default function CompanyAttendancePage() {
           <div className="border rounded-xl overflow-hidden mt-2">
             {terminated.length > 0 ? (
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-pill">
                   <tr>
-                    <th className="text-left px-4 py-2 text-gray-600 font-medium">{t('hr.terminated.name', locale)}</th>
-                    <th className="text-left px-4 py-2 text-gray-600 font-medium">{t('hr.terminated.team_pos', locale)}</th>
-                    <th className="text-center px-4 py-2 text-gray-600 font-medium">{t('hr.terminated.start_date', locale)}</th>
-                    <th className="text-center px-4 py-2 text-gray-600 font-medium">{t('hr.terminated.end_date', locale)}</th>
+                    <th className="text-left px-4 py-2 text-ink-muted font-medium">{t('hr.terminated.name', locale)}</th>
+                    <th className="text-left px-4 py-2 text-ink-muted font-medium">{t('hr.terminated.team_pos', locale)}</th>
+                    <th className="text-center px-4 py-2 text-ink-muted font-medium">{t('hr.terminated.start_date', locale)}</th>
+                    <th className="text-center px-4 py-2 text-ink-muted font-medium">{t('hr.terminated.end_date', locale)}</th>
                     <th className="px-4 py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {terminated.map(emp => (
-                    <tr key={emp.id} className="border-t hover:bg-gray-50">
-                      <td className="px-4 py-2 text-gray-700 font-medium">{emp.name}</td>
-                      <td className="px-4 py-2 text-gray-500 text-xs">
+                    <tr key={emp.id} className="border-t hover:bg-pill">
+                      <td className="px-4 py-2 text-ink-muted font-medium">{emp.name}</td>
+                      <td className="px-4 py-2 text-ink-muted text-xs">
                         {emp.team || '—'}{emp.position ? ` · ${emp.position}` : ''}
                       </td>
                       <td className="px-4 py-2 text-center">
                         <button
                           onClick={() => { setDateEdit({ emp, field: 'start_date' }); setDateValue(emp.start_date ?? '') }}
-                          className="text-xs text-gray-600 hover:text-blue-600 hover:underline">
+                          className="text-xs text-ink-muted hover:text-ink hover:underline">
                           {fmtDate(emp.start_date)}
                         </button>
                       </td>
                       <td className="px-4 py-2 text-center">
                         <button
                           onClick={() => { setDateEdit({ emp, field: 'end_date' }); setDateValue(emp.end_date ?? '') }}
-                          className="text-xs text-red-500 hover:text-red-700 hover:underline">
+                          className="text-xs text-signal-neg hover:opacity-70 hover:underline">
                           {fmtDate(emp.end_date)}
                         </button>
                       </td>
                       <td className="px-4 py-2 text-right flex items-center justify-end gap-2">
                         <button onClick={() => reactivate(emp.id)}
-                          className="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 px-2 py-1 rounded hover:bg-blue-50">
+                          className="text-xs text-signal-pos hover:opacity-70 border border-line px-2 py-1 rounded hover:bg-pill">
                           {t('hr.terminated.reactivate', locale)}
                         </button>
                       </td>
@@ -546,7 +546,7 @@ export default function CompanyAttendancePage() {
                 </tbody>
               </table>
             ) : (
-              <div className="px-4 py-8 text-center text-gray-400 text-sm">{t('hr.terminated.empty', locale)}</div>
+              <div className="px-4 py-8 text-center text-ink-faint text-sm">{t('hr.terminated.empty', locale)}</div>
             )}
           </div>
         )}
@@ -558,20 +558,20 @@ export default function CompanyAttendancePage() {
           onClick={e => { if (e.target === e.currentTarget) setShowEmailModal(false) }}>
           <div className="bg-white rounded-xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-xl"
             onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold text-gray-900 mb-4 text-base">
-              📧 {locale === 'ko'
+            <h3 className="font-semibold text-ink mb-4 text-base">
+              {locale === 'ko'
                 ? `${COMPANY_MAP[company]} 근태 리포트 전송`
                 : `Send ${COMPANY_MAP[company]} Attendance Report`}
             </h3>
 
             {emailLoading ? (
-              <div className="text-center py-12 text-gray-400 text-sm">{t('common.loading', locale)}</div>
+              <div className="text-center py-12 text-ink-faint text-sm">{t('common.loading', locale)}</div>
             ) : (
               <>
                 {/* Date grid */}
                 <div className="mb-5">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium text-gray-500">
+                    <p className="text-xs font-medium text-ink-muted">
                       {locale === 'ko' ? '날짜 선택 (복수 선택 가능)' : 'Select dates (multi-select)'}
                     </p>
                     <div className="flex items-center gap-2">
@@ -581,10 +581,10 @@ export default function CompanyAttendancePage() {
                           const ny = d.getFullYear(); const nm = d.getMonth() + 1
                           setCalYear(ny); setCalMonth(nm); loadEmailData(ny, nm)
                         }}
-                        className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 text-sm">
+                        className="w-6 h-6 flex items-center justify-center rounded hover:bg-pill text-ink-muted text-sm">
                         ‹
                       </button>
-                      <span className="text-xs font-semibold text-gray-700 min-w-20 text-center">
+                      <span className="text-xs font-semibold text-ink-muted min-w-20 text-center">
                         {new Date(calYear, calMonth - 1).toLocaleString('en', { month: 'long', year: 'numeric' })}
                       </span>
                       <button
@@ -593,7 +593,7 @@ export default function CompanyAttendancePage() {
                           const ny = d.getFullYear(); const nm = d.getMonth() + 1
                           setCalYear(ny); setCalMonth(nm); loadEmailData(ny, nm)
                         }}
-                        className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 text-sm">
+                        className="w-6 h-6 flex items-center justify-center rounded hover:bg-pill text-ink-muted text-sm">
                         ›
                       </button>
                     </div>
@@ -603,7 +603,7 @@ export default function CompanyAttendancePage() {
                       ? ['일', '월', '화', '수', '목', '금', '토']
                       : ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
                     ).map(d => (
-                      <div key={d} className="text-center text-xs text-gray-400 py-0.5 font-medium">{d}</div>
+                      <div key={d} className="text-center text-xs text-ink-faint py-0.5 font-medium">{d}</div>
                     ))}
                     {Array.from({ length: new Date(calYear, calMonth - 1, 1).getDay() }).map((_, i) => (
                       <div key={`gap-${i}`} />
@@ -612,7 +612,6 @@ export default function CompanyAttendancePage() {
                       const ds       = `${calYear}-${padFn(calMonth)}-${padFn(day)}`
                       const hasEntry = emailEntries.some(e => e.date === ds)
                       const isSel    = emailDates.has(ds)
-                      const dow      = new Date(calYear, calMonth - 1, day).getDay()
                       return (
                         <button key={day}
                           onClick={() => setEmailDates(prev => {
@@ -622,14 +621,10 @@ export default function CompanyAttendancePage() {
                           })}
                           className={`relative py-1.5 rounded-lg text-xs font-medium transition-colors
                             ${isSel
-                              ? 'bg-blue-600 text-white'
+                              ? 'bg-ink text-white'
                               : hasEntry
-                                ? dow === 0 ? 'bg-red-50 text-red-600 hover:bg-blue-100'
-                                : dow === 6 ? 'bg-sky-50 text-sky-600 hover:bg-blue-100'
-                                :             'bg-gray-50 text-gray-700 hover:bg-blue-100'
-                                : dow === 0 ? 'text-red-300 hover:bg-red-50'
-                                : dow === 6 ? 'text-sky-300 hover:bg-sky-50'
-                                :             'text-gray-300 hover:bg-gray-50'
+                                ? 'bg-pill text-ink-muted hover:bg-line'
+                                : 'text-ink-faint hover:bg-pill'
                             }`}>
                           {day}
                           {hasEntry && !isSel && (
@@ -639,13 +634,13 @@ export default function CompanyAttendancePage() {
                       )
                     })}
                   </div>
-                  <div className="flex gap-4 mt-2 text-xs text-gray-400">
+                  <div className="flex gap-4 mt-2 text-xs text-ink-faint">
                     <span className="flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
                       {locale === 'ko' ? '기록 있음' : 'Has entries'}
                     </span>
                     <span className="flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-ink inline-block" />
                       {locale === 'ko' ? '선택됨' : 'Selected'}
                     </span>
                   </div>
@@ -668,16 +663,16 @@ export default function CompanyAttendancePage() {
                 {/* CC */}
                 {emailRecips.filter(c => c.id !== toId).length > 0 && (
                   <div className="mb-4">
-                    <p className="text-xs font-medium text-gray-700 mb-1.5">CC</p>
+                    <p className="text-xs font-medium text-ink-muted mb-1.5">CC</p>
                     <div className="flex flex-col gap-1">
                       {emailRecips.filter(c => c.id !== toId).map(c => (
-                        <label key={c.id} className="flex items-center gap-2 text-xs cursor-pointer px-2 py-1 rounded hover:bg-gray-50">
+                        <label key={c.id} className="flex items-center gap-2 text-xs cursor-pointer px-2 py-1 rounded hover:bg-pill">
                           <input type="checkbox"
                             checked={ccIds.has(c.id)}
                             onChange={() => setCcIds(prev => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n })}
                           />
-                          <span className="text-gray-700">{c.name}</span>
-                          <span className="text-gray-400">{c.email}</span>
+                          <span className="text-ink-muted">{c.name}</span>
+                          <span className="text-ink-faint">{c.email}</span>
                         </label>
                       ))}
                     </div>
@@ -687,24 +682,24 @@ export default function CompanyAttendancePage() {
                 {/* Preview — editable before sending */}
                 {emailDates.size > 0 ? (
                   <div className="mb-4">
-                    <p className="text-xs font-medium text-gray-500 mb-1.5">
+                    <p className="text-xs font-medium text-ink-muted mb-1.5">
                       {locale === 'ko' ? '제목 (수정 가능)' : 'Subject (editable)'}
                     </p>
                     <input type="text"
                       value={subjectEdit ?? buildEmailBody().subject}
                       onChange={e => setSubjectEdit(e.target.value)}
-                      className="w-full border rounded-lg px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 mb-2" />
-                    <p className="text-xs font-medium text-gray-500 mb-1.5">
+                      className="w-full border rounded-lg px-3 py-2 text-xs text-ink-muted focus:outline-none focus:ring-2 focus:ring-ink mb-2" />
+                    <p className="text-xs font-medium text-ink-muted mb-1.5">
                       {locale === 'ko' ? '메시지 (수정 가능)' : 'Message (editable)'}
                     </p>
                     <textarea
                       value={bodyEdit ?? buildEmailBody().body}
                       onChange={e => setBodyEdit(e.target.value)}
                       rows={8}
-                      className="w-full bg-gray-50 border rounded-lg p-3 text-xs text-gray-700 whitespace-pre-wrap font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y" />
+                      className="w-full bg-pill border rounded-lg p-3 text-xs text-ink-muted whitespace-pre-wrap font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-ink resize-y" />
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-400 text-center mb-4">
+                  <p className="text-xs text-ink-faint text-center mb-4">
                     {locale === 'ko' ? '날짜를 선택하면 미리보기가 표시됩니다.' : 'Select dates to preview.'}
                   </p>
                 )}
@@ -712,13 +707,13 @@ export default function CompanyAttendancePage() {
                 {/* Microsoft account status */}
                 <div className="flex items-center justify-between mb-3 text-xs">
                   {msalUser ? (
-                    <span className="text-green-600 font-medium">✓ {msalUser}</span>
+                    <span className="text-signal-pos font-medium">✓ {msalUser}</span>
                   ) : (
-                    <span className="text-gray-400">Microsoft 계정 미연결 — 전송 시 로그인 페이지로 이동</span>
+                    <span className="text-ink-faint">Microsoft 계정 미연결 — 전송 시 로그인 페이지로 이동</span>
                   )}
                   {msalUser && (
                     <button onClick={async () => { await msalLogout(); setMsalUser(null) }}
-                      className="text-gray-400 hover:text-red-500 underline">
+                      className="text-ink-faint hover:text-signal-neg underline">
                       로그아웃
                     </button>
                   )}
@@ -726,24 +721,24 @@ export default function CompanyAttendancePage() {
 
                 {/* Send result feedback */}
                 {sendResult === 'ok' && (
-                  <div className="mb-3 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700 font-medium">
-                    ✅ 이메일이 전송됐어요.
+                  <div className="mb-3 bg-white border border-line rounded-lg px-3 py-2 text-xs text-signal-pos font-medium">
+                    이메일이 전송됐어요.
                   </div>
                 )}
                 {sendResult === 'error' && (
-                  <div className="mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
-                    <div>❌ 전송 실패: {sendError}</div>
+                  <div className="mb-3 bg-white border border-line rounded-lg px-3 py-2 text-xs text-signal-neg">
+                    <div>전송 실패: {sendError}</div>
                   </div>
                 )}
 
                 <div className="flex gap-2">
                   <button onClick={sendEmail}
                     disabled={emailDates.size === 0 || !toId || sending}
-                    className="flex-1 bg-blue-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 transition-colors">
-                    {sending ? '전송 중...' : '📧 Send Email'}
+                    className="flex-1 bg-ink disabled:bg-line text-white rounded-lg py-2 text-sm font-medium hover:bg-ink/90 transition-colors">
+                    {sending ? '전송 중...' : 'Send Email'}
                   </button>
                   <button onClick={() => setShowEmailModal(false)}
-                    className="px-5 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                    className="px-5 border border-line rounded-lg py-2 text-sm text-ink-muted hover:bg-pill">
                     {t('common.cancel', locale)}
                   </button>
                 </div>
@@ -758,14 +753,14 @@ export default function CompanyAttendancePage() {
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
           onClick={() => setDateEdit(null)}>
           <div className="bg-white rounded-xl p-6 w-72 shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold text-gray-900 mb-1">
+            <h3 className="font-semibold text-ink mb-1">
               {dateEdit.field === 'start_date'
                 ? t('hr.date_edit.start', locale)
                 : t('hr.date_edit.end', locale)}
             </h3>
-            <p className="text-sm text-gray-800 font-medium mb-3">{dateEdit.emp.name}</p>
+            <p className="text-sm text-ink font-medium mb-3">{dateEdit.emp.name}</p>
             <div className="mb-4">
-              <label className="text-xs text-gray-500 mb-1 block">
+              <label className="text-xs text-ink-muted mb-1 block">
                 {dateEdit.field === 'start_date'
                   ? t('hr.terminated.start_date', locale)
                   : t('hr.terminated.end_date', locale)}
@@ -773,18 +768,18 @@ export default function CompanyAttendancePage() {
               <input type="date" value={dateValue}
                 onChange={e => setDateValue(e.target.value)}
                 className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
-                  dateEdit.field === 'end_date' ? 'focus:ring-red-400' : 'focus:ring-blue-400'
+                  dateEdit.field === 'end_date' ? 'focus:ring-signal-neg' : 'focus:ring-ink'
                 }`} />
             </div>
             <div className="flex gap-2">
               <button onClick={confirmDateEdit} disabled={!dateValue || saving}
-                className={`flex-1 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium ${
-                  dateEdit.field === 'end_date' ? 'bg-red-600' : 'bg-blue-600'
+                className={`flex-1 disabled:bg-line text-white rounded-lg py-2 text-sm font-medium ${
+                  dateEdit.field === 'end_date' ? 'bg-signal-neg' : 'bg-ink'
                 }`}>
                 {t('common.save', locale)}
               </button>
               <button onClick={() => setDateEdit(null)}
-                className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                className="flex-1 border border-line rounded-lg py-2 text-sm text-ink-muted hover:bg-pill">
                 {t('common.cancel', locale)}
               </button>
             </div>

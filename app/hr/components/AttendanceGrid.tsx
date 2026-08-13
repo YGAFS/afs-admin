@@ -33,10 +33,10 @@ const CODE_COLOR: Record<string, string> = {
   S2: 'bg-red-100   text-red-700',    S3: 'bg-red-50    text-red-600',
   W:  'bg-blue-200  text-blue-800',   W1: 'bg-blue-100  text-blue-700',
   W2: 'bg-blue-100  text-blue-700',   W3: 'bg-blue-50   text-blue-600',
-  T:  'bg-gray-200  text-gray-700',
-  T1: 'bg-gray-100  text-gray-600',   T2: 'bg-gray-100  text-gray-600',
-  T3: 'bg-gray-50   text-gray-500',   B:  'bg-gray-100  text-gray-500',
-  O:  'bg-orange-200 text-orange-800',
+  T:  'bg-line  text-ink-muted',
+  T1: 'bg-pill  text-ink-muted',   T2: 'bg-pill  text-ink-muted',
+  T3: 'bg-pill   text-ink-muted',   B:  'bg-pill  text-ink-muted',
+  O:  'bg-amber-200 text-amber-800',
   C:  'bg-purple-200 text-purple-800',
 }
 
@@ -449,11 +449,11 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
 
   return (
     <>
-      <div className="overflow-x-auto border-2 border-gray-300 rounded-xl shadow-md">
+      <div className="overflow-x-auto border-2 border-line-strong rounded-xl">
         <table className="border-collapse text-xs min-w-full">
           <thead>
-            <tr className="bg-slate-100">
-              <th className="sticky left-0 z-10 bg-slate-100 border border-gray-400 px-3 py-2 text-left text-gray-800 min-w-44 font-bold">
+            <tr className="bg-pill">
+              <th className="sticky left-0 z-10 bg-pill border border-line-strong px-3 py-2 text-left text-ink min-w-44 font-bold">
                 {t('grid.col.employee', locale)}
               </th>
               {days.map(d => {
@@ -470,24 +470,24 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                         left: Math.min(rect.left, window.innerWidth - 164),
                       })
                     }}
-                    className={`border border-gray-400 w-8 text-center py-1 font-medium cursor-pointer select-none
-                      ${isColMenuOpen ? 'ring-2 ring-inset ring-blue-400' : ''}
-                      ${isToday ? 'bg-amber-200 text-amber-800' : dow === 0 ? 'bg-red-200 text-red-600' : dow === 6 ? 'bg-sky-200 text-sky-600' : 'text-gray-500 hover:bg-slate-200'}`}>
+                    className={`border border-line-strong w-8 text-center py-1 font-medium cursor-pointer select-none
+                      ${isColMenuOpen ? 'ring-2 ring-inset ring-ink' : ''}
+                      ${isToday ? 'bg-amber-100 text-amber-700' : (dow === 0 || dow === 6) ? 'bg-line text-ink-muted' : 'text-ink-muted hover:bg-line'}`}>
                     <div className="font-semibold">{d}</div>
-                    <div className="font-normal text-gray-400 text-xs">{t(`grid.dow.${dow}`, locale)}</div>
+                    <div className="font-normal text-ink-faint text-xs">{t(`grid.dow.${dow}`, locale)}</div>
                   </th>
                 )
               })}
-              <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-20 whitespace-nowrap font-semibold">
+              <th className="border border-line px-2 py-2 text-center text-ink-muted min-w-20 whitespace-nowrap font-semibold">
                 {t('grid.col.leave_left', locale)}
               </th>
-              <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-20 whitespace-nowrap font-semibold">
+              <th className="border border-line px-2 py-2 text-center text-ink-muted min-w-20 whitespace-nowrap font-semibold">
                 {t('grid.col.sick_left', locale)}
               </th>
-              <th className="border border-gray-300 px-2 py-2 text-center text-gray-700 min-w-12 font-semibold">
+              <th className="border border-line px-2 py-2 text-center text-ink-muted min-w-12 font-semibold">
                 {t('grid.col.wfh', locale)}
               </th>
-              <th className="border border-gray-300 px-2 py-2 text-center text-orange-700 min-w-14 whitespace-nowrap font-semibold">
+              <th className="border border-line px-2 py-2 text-center text-amber-600 min-w-14 whitespace-nowrap font-semibold">
                 {t('grid.col.ot', locale)}
               </th>
             </tr>
@@ -497,7 +497,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
               <>
                 <tr key={`th-${team}`}>
                   <td colSpan={daysInMonth + 5}
-                    className="sticky left-0 bg-gray-200 border-y-2 border-gray-400 border-l-4 border-l-blue-600 px-3 py-1.5 font-bold text-slate-700 text-xs">
+                    className="sticky left-0 bg-line border-y-2 border-line-strong border-l-4 border-l-ink px-3 py-1.5 font-bold text-ink text-xs">
                     {team}
                   </td>
                 </tr>
@@ -510,24 +510,24 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                   const empYS         = ys[emp.id]
                   const vacInfo       = vacDisplay(emp, vacStatMap[emp.id] ?? null, empYS?.vacTaken ?? 0)
                   const totalSick     = empYS?.sick ?? 0
-                  const rowBg         = isUpcoming ? 'bg-blue-50' : isTerminated ? 'bg-red-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                  const rowBg         = idx % 2 === 0 ? 'bg-white' : 'bg-pill'
 
                   return (
                     <tr key={emp.id} className={rowBg}>
-                      <td className={`sticky left-0 z-10 border border-gray-200 px-3 py-1.5 group ${rowBg}`}>
+                      <td className={`sticky left-0 z-10 border border-line px-3 py-1.5 group ${rowBg}`}>
                         <div className="flex items-center justify-between gap-1">
                           <div className="min-w-0">
-                            <div className={`font-medium leading-4 ${isTerminated ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                            <div className={`font-medium leading-4 ${isTerminated ? 'text-ink-faint line-through' : 'text-ink'}`}>
                               {emp.name}
                             </div>
-                            {emp.position && <div className="text-xs text-gray-400">{emp.position}</div>}
+                            {emp.position && <div className="text-xs text-ink-faint">{emp.position}</div>}
                             {isUpcoming && emp.start_date && (
-                              <div className="text-xs text-blue-400">
+                              <div className="text-xs text-ink-muted">
                                 {fmtDate(emp.start_date)} {t('grid.upcoming', locale)}
                               </div>
                             )}
                             {isTerminated && emp.end_date && (
-                              <div className="text-xs text-red-400">
+                              <div className="text-xs text-signal-neg">
                                 {fmtDate(emp.end_date)} {t('grid.terminated_label', locale)}
                               </div>
                             )}
@@ -535,7 +535,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                               const todStr = todayIso()
                               const on = emp.probation_start <= todStr && (!emp.probation_end || emp.probation_end >= todStr)
                               return on ? (
-                                <div className="text-xs text-orange-500">
+                                <div className="text-xs text-amber-600">
                                   {t('grid.probation_active', locale)}{emp.probation_end ? ` (~${fmtDate(emp.probation_end)})` : ''}
                                 </div>
                               ) : null
@@ -543,7 +543,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                           </div>
                           <button
                             onClick={e => openManageMenu(e, emp)}
-                            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-700 px-1 rounded text-base leading-none flex-shrink-0">
+                            className="opacity-0 group-hover:opacity-100 text-ink-faint hover:text-ink-muted px-1 rounded text-base leading-none flex-shrink-0">
                             ⋮
                           </button>
                         </div>
@@ -558,10 +558,9 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                         const isBeforeStart = !!(startDateObj && cellDate < startDateObj)
                         const isAfterEnd    = !!(endDateObj   && cellDate > endDateObj)
                         const blocked       = isBeforeStart || isAfterEnd
-                        const cellBg        = blocked ? 'bg-gray-200'
+                        const cellBg        = blocked ? 'bg-line'
                                             : isToday  ? 'bg-amber-100'
-                                            : dow === 0 ? 'bg-red-100'
-                                            : dow === 6 ? 'bg-sky-100' : ''
+                                            : (dow === 0 || dow === 6) ? 'bg-pill' : ''
 
                         const noteKey = `${emp.id}_${d}`
                         const cellNote = noteMap[noteKey]
@@ -575,8 +574,8 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                         ].filter(Boolean) as string[]
                         return (
                           <td key={d}
-                            className={`border border-gray-300 w-8 h-7 text-center relative select-none group
-                              ${cellBg} ${blocked ? 'cursor-default' : 'hover:bg-blue-100/60 cursor-pointer'}`}
+                            className={`border border-line w-8 h-7 text-center relative select-none group
+                              ${cellBg} ${blocked ? 'cursor-default' : 'hover:bg-pill cursor-pointer'}`}
                             onClick={e => {
                               if (blocked) return
                               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -595,7 +594,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                             {/* note/flag tooltip */}
                             {tooltipLines.length > 0 && (
                               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-50
-                                bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap
+                                bg-ink text-white text-xs px-2 py-1 rounded whitespace-nowrap
                                 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity
                                 max-w-48 overflow-hidden text-ellipsis shadow-lg text-left">
                                 {tooltipLines.map((line, i) => <div key={i}>{line}</div>)}
@@ -607,14 +606,14 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                             )}
                             {/* late-arrival indicator */}
                             {lateFlag && !blocked && (
-                              <span className="absolute top-0.5 left-0.5 w-1 h-1 rounded-full bg-red-500" />
+                              <span className="absolute top-0.5 left-0.5 w-1 h-1 rounded-full bg-signal-neg" />
                             )}
                             {/* early-leave indicator */}
                             {earlyFlag && !blocked && (
                               <span className="absolute bottom-0.5 left-0.5 w-1 h-1 rounded-full bg-purple-500" />
                             )}
                             {blocked ? (
-                              <span className="text-gray-300 text-xs">—</span>
+                              <span className="text-ink-faint text-xs">—</span>
                             ) : entries.length ? (
                               <div className="flex flex-col items-center gap-0.5 py-0.5">
                                 {entries.map(en => (
@@ -629,33 +628,33 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                         )
                       })}
 
-                      <td className="border border-gray-300 text-center px-1">
-                        {isUpcoming || isTerminated ? <span className="text-xs text-gray-300">—</span>
+                      <td className="border border-line text-center px-1">
+                        {isUpcoming || isTerminated ? <span className="text-xs text-ink-faint">—</span>
                           : vacInfo ? (
                             <div>
-                              <span className={`text-xs font-semibold ${vacInfo.alert ? 'text-red-600' : 'text-green-700'}`}>{vacInfo.text}</span>
-                              <div className="text-gray-400 leading-none" style={{ fontSize: 9 }}>{vacInfo.hours}h</div>
+                              <span className={`text-xs font-semibold ${vacInfo.alert ? 'text-signal-neg' : 'text-ink'}`}>{vacInfo.text}</span>
+                              <div className="text-ink-faint leading-none" style={{ fontSize: 9 }}>{vacInfo.hours}h</div>
                             </div>
                           )
-                          : <span className="text-xs text-gray-300">—</span>}
+                          : <span className="text-xs text-ink-faint">—</span>}
                       </td>
-                      <td className="border border-gray-300 text-center px-1">
+                      <td className="border border-line text-center px-1">
                         {totalSick > 0 ? (() => {
                           const left = Math.max(0, Math.round((5 - totalSick) * 10) / 10)
                           return (
-                            <span className={`text-xs font-semibold ${left === 0 ? 'text-red-600' : left <= 2 ? 'text-orange-500' : 'text-gray-700'}`}>
+                            <span className={`text-xs font-semibold ${left === 0 ? 'text-signal-neg' : left <= 2 ? 'text-amber-600' : 'text-ink-muted'}`}>
                               {left}/5
                             </span>
                           )
-                        })() : <span className="text-xs text-gray-300">—</span>}
+                        })() : <span className="text-xs text-ink-faint">—</span>}
                       </td>
-                      <td className="border border-gray-300 text-center">
-                        <span className={`text-xs ${(empYS?.wfh ?? 0) > 0 ? 'text-blue-500' : 'text-gray-300'}`}>
+                      <td className="border border-line text-center">
+                        <span className={`text-xs ${(empYS?.wfh ?? 0) > 0 ? 'text-ink' : 'text-ink-faint'}`}>
                           {(empYS?.wfh ?? 0) > 0 ? empYS!.wfh : '—'}
                         </span>
                       </td>
-                      <td className="border border-gray-300 text-center">
-                        <span className={`text-xs ${(empYS?.ot ?? 0) > 0 ? 'text-orange-600 font-semibold' : 'text-gray-300'}`}>
+                      <td className="border border-line text-center">
+                        <span className={`text-xs ${(empYS?.ot ?? 0) > 0 ? 'text-amber-600 font-semibold' : 'text-ink-faint'}`}>
                           {(empYS?.ot ?? 0) > 0 ? `${empYS!.ot}h` : '—'}
                         </span>
                       </td>
@@ -664,9 +663,9 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                 })}
 
                 <tr key={`add-${team}`}>
-                  <td colSpan={daysInMonth + 5} className="border-b border-gray-200 bg-white">
+                  <td colSpan={daysInMonth + 5} className="border-b border-line bg-white">
                     <button onClick={() => setAddingToTeam(team)}
-                      className="w-full px-4 py-1.5 text-xs text-blue-500 hover:text-blue-700 hover:bg-blue-50/50 text-left transition-colors">
+                      className="w-full px-4 py-1.5 text-xs text-ink-muted hover:text-ink hover:bg-pill text-left transition-colors">
                       {locale === 'ko' ? `+ ${team}에 직원 추가` : `+ Add Employee — ${team}`}
                     </button>
                   </td>
@@ -684,7 +683,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
         return (
           <div ref={dropRef}
             style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, zIndex: 9999 }}
-            className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 w-52 max-h-96 overflow-y-auto">
+            className="bg-white border border-line rounded-lg shadow-xl py-1 w-52 max-h-96 overflow-y-auto">
             {dayEntries.length > 0 && (
               <>
                 {dayEntries.map(en => (
@@ -694,32 +693,32 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                       className="text-current opacity-60 hover:opacity-100 font-bold px-1">✕</button>
                   </div>
                 ))}
-                <div className="border-t border-gray-100 my-1" />
+                <div className="border-t border-line-soft my-1" />
               </>
             )}
             <button onClick={e => { e.stopPropagation(); clearCell(editing.empId, editing.day) }}
-              className="w-full text-left px-3 py-1 text-xs hover:bg-gray-100 text-gray-400">
+              className="w-full text-left px-3 py-1 text-xs hover:bg-pill text-ink-faint">
               {t('grid.clear_cell', locale)}
             </button>
-            <div className="border-t border-gray-100 my-1" />
+            <div className="border-t border-line-soft my-1" />
             {CODE_OPTIONS.map(opt => {
               const label = t(`grid.code.${opt.code}`, locale)
               const isSelected = selectedCodes.has(opt.code)
               if (opt.needsHours && pendingCode === opt.code) {
                 return (
-                  <div key={opt.code} className="px-3 py-2 bg-gray-50">
-                    <div className="text-xs text-gray-600 mb-1.5">{label}</div>
+                  <div key={opt.code} className="px-3 py-2 bg-pill">
+                    <div className="text-xs text-ink-muted mb-1.5">{label}</div>
                     <div className="flex gap-1 items-center">
                       <input type="number" value={pendingHours}
                         onChange={e => setPendingHours(e.target.value)}
                         placeholder={t('grid.hours_placeholder', locale)}
                         min="0.5" max="24" step="0.5" autoFocus
-                        className="w-16 border rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        className="w-16 border rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-ink"
                         onClick={e => e.stopPropagation()} />
-                      <span className="text-xs text-gray-500">{t('grid.hours', locale)}</span>
+                      <span className="text-xs text-ink-muted">{t('grid.hours', locale)}</span>
                       <button disabled={!pendingHours}
                         onClick={e => { e.stopPropagation(); if (pendingHours) addEntry(editing.empId, editing.day, opt.code, parseFloat(pendingHours)) }}
-                        className="bg-blue-500 disabled:bg-gray-300 text-white px-2 py-0.5 rounded text-xs ml-1">
+                        className="bg-pill0 disabled:bg-line text-white px-2 py-0.5 rounded text-xs ml-1">
                         {t('grid.confirm', locale)}
                       </button>
                     </div>
@@ -747,10 +746,10 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       {managingEmp && menuPos && (
         <div ref={menuRef}
           style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
-          className="bg-white border border-gray-200 rounded-lg shadow-xl min-w-44 py-1">
-          <div className="px-3 py-1.5 text-xs text-gray-500 border-b font-medium">{managingEmp.name}</div>
+          className="bg-white border border-line rounded-lg shadow-xl min-w-44 py-1">
+          <div className="px-3 py-1.5 text-xs text-ink-muted border-b font-medium">{managingEmp.name}</div>
           <button onClick={() => openDateModal('start_date')}
-            className="w-full text-left px-3 py-2 text-xs text-blue-600 hover:bg-blue-50">
+            className="w-full text-left px-3 py-2 text-xs text-ink-muted hover:bg-pill">
             {t('grid.menu.edit_start', locale)}{managingEmp.start_date ? ` (${fmtDate(managingEmp.start_date)})` : ''}
           </button>
           <button onClick={() => {
@@ -758,7 +757,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
             setPosModal({ emp: managingEmp })
             setManagingEmp(null); setMenuPos(null)
           }}
-            className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
+            className="w-full text-left px-3 py-2 text-xs text-ink-muted hover:bg-pill">
             {t('grid.menu.edit_position', locale)}{managingEmp.position ? ` (${managingEmp.position})` : ''}
           </button>
           <button onClick={() => {
@@ -777,26 +776,26 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
             setProbModal({ emp })
             setManagingEmp(null); setMenuPos(null)
           }}
-            className="w-full text-left px-3 py-2 text-xs text-orange-600 hover:bg-orange-50">
+            className="w-full text-left px-3 py-2 text-xs text-amber-600 hover:bg-pill">
             {t('grid.menu.set_probation', locale)}{managingEmp.probation_start ? ' ✓' : ''}
           </button>
           {managingEmp.end_date ? (
             <>
               <button onClick={() => openDateModal('end_date')}
-                className="w-full text-left px-3 py-2 text-xs text-orange-600 hover:bg-orange-50">
+                className="w-full text-left px-3 py-2 text-xs text-amber-600 hover:bg-pill">
                 {t('grid.menu.edit_end', locale)} ({fmtDate(managingEmp.end_date!)})
               </button>
-              <div className="border-t border-gray-100 my-1" />
+              <div className="border-t border-line-soft my-1" />
               <button onClick={() => openDateModal('reactivate')}
-                className="w-full text-left px-3 py-2 text-xs text-green-600 hover:bg-green-50">
+                className="w-full text-left px-3 py-2 text-xs text-signal-pos hover:bg-pill">
                 {t('grid.menu.reactivate', locale)}
               </button>
             </>
           ) : (
             <>
-              <div className="border-t border-gray-100 my-1" />
+              <div className="border-t border-line-soft my-1" />
               <button onClick={() => openDateModal('end_date')}
-                className="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50">
+                className="w-full text-left px-3 py-2 text-xs text-signal-neg hover:bg-pill">
                 {t('grid.menu.terminate', locale)}
               </button>
             </>
@@ -811,37 +810,37 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
           <div className="bg-white rounded-xl p-6 w-80 shadow-xl" onClick={e => e.stopPropagation()}>
             {dateModal.field === 'reactivate' ? (
               <>
-                <h3 className="font-semibold text-gray-900 mb-1">{t('grid.reactivate.title', locale)}</h3>
-                <p className="text-sm text-gray-500 mb-6">
-                  <strong className="text-gray-800">{dateModal.emp.name}</strong>
+                <h3 className="font-semibold text-ink mb-1">{t('grid.reactivate.title', locale)}</h3>
+                <p className="text-sm text-ink-muted mb-6">
+                  <strong className="text-ink">{dateModal.emp.name}</strong>
                   <br /><span className="text-xs">{t('grid.reactivate.note', locale)}</span>
                 </p>
                 <div className="flex gap-2">
                   <button onClick={confirmDateModal} disabled={saving}
-                    className="flex-1 bg-green-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium">
+                    className="flex-1 bg-signal-pos disabled:bg-line text-white rounded-lg py-2 text-sm font-medium">
                     {t('grid.menu.reactivate', locale)}
                   </button>
                   <button onClick={() => setDateModal(null)}
-                    className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                    className="flex-1 border border-line rounded-lg py-2 text-sm text-ink-muted hover:bg-pill">
                     {t('common.cancel', locale)}
                   </button>
                 </div>
               </>
             ) : (
               <>
-                <h3 className="font-semibold text-gray-900 mb-1">
+                <h3 className="font-semibold text-ink mb-1">
                   {dateModal.field === 'start_date'
                     ? t('grid.date_modal.start_title', locale)
                     : t('grid.date_modal.end_title', locale)}
                 </h3>
-                <p className="text-sm text-gray-800 font-medium mb-1">{dateModal.emp.name}</p>
-                <p className="text-xs text-gray-400 mb-4">
+                <p className="text-sm text-ink font-medium mb-1">{dateModal.emp.name}</p>
+                <p className="text-xs text-ink-faint mb-4">
                   {dateModal.field === 'start_date'
                     ? t('grid.date_modal.start_note', locale)
                     : t('grid.date_modal.end_note', locale)}
                 </p>
                 <div className="mb-4">
-                  <label className="text-xs text-gray-500 mb-1 block">
+                  <label className="text-xs text-ink-muted mb-1 block">
                     {dateModal.field === 'start_date'
                       ? t('grid.date_modal.start_label', locale)
                       : t('grid.date_modal.end_label', locale)}
@@ -849,11 +848,11 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                   <input type="date" value={dateValue}
                     onChange={e => setDateValue(e.target.value)}
                     className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
-                      dateModal.field === 'end_date' ? 'focus:ring-red-400' : 'focus:ring-blue-400'
+                      dateModal.field === 'end_date' ? 'focus:ring-signal-neg' : 'focus:ring-ink'
                     }`} />
                   {dateModal.field === 'start_date' && (
                     <button onClick={() => setDateValue('')}
-                      className="mt-1 text-xs text-gray-400 hover:text-gray-600">
+                      className="mt-1 text-xs text-ink-faint hover:text-ink-muted">
                       {t('grid.date_modal.clear', locale)}
                     </button>
                   )}
@@ -861,13 +860,13 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                 <div className="flex gap-2">
                   <button onClick={confirmDateModal}
                     disabled={(dateModal.field === 'end_date' && !dateValue) || saving}
-                    className={`flex-1 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium ${
-                      dateModal.field === 'end_date' ? 'bg-red-600' : 'bg-blue-600'
+                    className={`flex-1 disabled:bg-line text-white rounded-lg py-2 text-sm font-medium ${
+                      dateModal.field === 'end_date' ? 'bg-signal-neg' : 'bg-ink'
                     }`}>
                     {t('common.save', locale)}
                   </button>
                   <button onClick={() => setDateModal(null)}
-                    className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                    className="flex-1 border border-line rounded-lg py-2 text-sm text-ink-muted hover:bg-pill">
                     {t('common.cancel', locale)}
                   </button>
                 </div>
@@ -882,29 +881,29 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
           onClick={() => setAddingToTeam(null)}>
           <div className="bg-white rounded-xl p-6 w-80 shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold text-gray-900 mb-1">{t('grid.add_emp.title', locale)}</h3>
-            <div className="text-xs text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg mb-4">{addingToTeam}</div>
+            <h3 className="font-semibold text-ink mb-1">{t('grid.add_emp.title', locale)}</h3>
+            <div className="text-xs text-ink-muted bg-pill px-3 py-1.5 rounded-lg mb-4">{addingToTeam}</div>
             <div className="space-y-3">
               <input placeholder={t('grid.add_emp.name_ph', locale)} value={newEmp.name}
                 onChange={e => setNewEmp(p => ({ ...p, name: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
               <input placeholder={t('grid.add_emp.position_ph', locale)} value={newEmp.position}
                 onChange={e => setNewEmp(p => ({ ...p, position: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">{t('grid.add_emp.start_date', locale)}</label>
+                <label className="text-xs text-ink-muted mb-1 block">{t('grid.add_emp.start_date', locale)}</label>
                 <input type="date" value={newEmp.start_date}
                   onChange={e => setNewEmp(p => ({ ...p, start_date: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
               </div>
               <div className="flex gap-3 items-end">
                 <div className="flex-1">
-                  <label className="text-xs text-gray-500 mb-1 block">{t('grid.add_emp.annual_leave', locale)}</label>
+                  <label className="text-xs text-ink-muted mb-1 block">{t('grid.add_emp.annual_leave', locale)}</label>
                   <input type="number" value={newEmp.vacation_allowance}
                     onChange={e => setNewEmp(p => ({ ...p, vacation_allowance: +e.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
                 </div>
-                <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer pb-2">
+                <label className="flex items-center gap-1.5 text-sm text-ink-muted cursor-pointer pb-2">
                   <input type="checkbox" checked={newEmp.uses_accrual}
                     onChange={e => setNewEmp(p => ({ ...p, uses_accrual: e.target.checked }))} className="rounded" />
                   {t('grid.add_emp.accrual', locale)}
@@ -913,11 +912,11 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
             </div>
             <div className="flex gap-2 mt-5">
               <button onClick={handleAddEmployee} disabled={!newEmp.name.trim()}
-                className="flex-1 bg-blue-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium">
+                className="flex-1 bg-ink disabled:bg-line text-white rounded-lg py-2 text-sm font-medium">
                 {t('common.add', locale)}
               </button>
               <button onClick={() => setAddingToTeam(null)}
-                className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                className="flex-1 border border-line rounded-lg py-2 text-sm text-ink-muted hover:bg-pill">
                 {t('common.cancel', locale)}
               </button>
             </div>
@@ -930,14 +929,14 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
              onClick={e => { if (e.target === e.currentTarget) setPosModal(null) }}>
           <div className="bg-white rounded-xl p-6 w-72 shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold text-gray-900 mb-1">{t('grid.pos_modal.title', locale)}</h3>
-            <p className="text-sm text-gray-500 mb-3">{posModal.emp.name}</p>
+            <h3 className="font-semibold text-ink mb-1">{t('grid.pos_modal.title', locale)}</h3>
+            <p className="text-sm text-ink-muted mb-3">{posModal.emp.name}</p>
             <input
               type="text" value={posValue} autoFocus
               onChange={e => setPosValue(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') document.getElementById('pos-save')?.click() }}
               placeholder="e.g. Manager, Driver, Coordinator"
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4"
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink mb-4"
             />
             <div className="flex gap-2">
               <button id="pos-save"
@@ -948,11 +947,11 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                   ))
                   setPosModal(null)
                 }}
-                className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700">
+                className="flex-1 bg-ink text-white rounded-lg py-2 text-sm font-medium hover:bg-ink/90">
                 {t('common.save', locale)}
               </button>
               <button onClick={() => setPosModal(null)}
-                className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                className="flex-1 border border-line rounded-lg py-2 text-sm text-ink-muted hover:bg-pill">
                 {t('common.cancel', locale)}
               </button>
             </div>
@@ -983,13 +982,13 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
           <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
                onClick={e => { if (e.target === e.currentTarget) setProbModal(null) }}>
             <div className="bg-white rounded-xl p-6 w-80 shadow-xl space-y-4" onClick={e => e.stopPropagation()}>
-              <h3 className="font-semibold text-gray-900">{t('grid.menu.set_probation', locale)} — {emp.name}</h3>
+              <h3 className="font-semibold text-ink">{t('grid.menu.set_probation', locale)} — {emp.name}</h3>
 
               <div className="space-y-1.5">
-                <p className="text-xs text-gray-500 font-medium">{t('grid.prob_modal.start', locale)}</p>
+                <p className="text-xs text-ink-muted font-medium">{t('grid.prob_modal.start', locale)}</p>
                 <div className="flex gap-2">
                   <button
-                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probStartMode === 'hire' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probStartMode === 'hire' ? 'bg-ink text-white border-ink' : 'border-line text-ink-muted hover:bg-pill'}`}
                     onClick={() => {
                       setProbStartMode('hire')
                       if (probEndMode === '90d' && emp.start_date) {
@@ -998,11 +997,11 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                       }
                     }}>{t('grid.prob_modal.hire_btn', locale)}</button>
                   <button
-                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probStartMode === 'custom' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probStartMode === 'custom' ? 'bg-ink text-white border-ink' : 'border-line text-ink-muted hover:bg-pill'}`}
                     onClick={() => setProbStartMode('custom')}>{t('grid.prob_modal.custom', locale)}</button>
                 </div>
                 {probStartMode === 'hire'
-                  ? <p className="text-xs text-gray-400">
+                  ? <p className="text-xs text-ink-faint">
                       {t('grid.prob_modal.hire_label', locale)} {emp.start_date ?? t('common.not_set', locale)}
                     </p>
                   : <input type="date" value={probStartVal}
@@ -1013,42 +1012,42 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                           setProbEndVal(d.toISOString().split('T')[0])
                         }
                       }}
-                      className="w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                      className="w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
                 }
               </div>
 
               <div className="space-y-1.5">
-                <p className="text-xs text-gray-500 font-medium">{t('grid.prob_modal.end', locale)}</p>
+                <p className="text-xs text-ink-muted font-medium">{t('grid.prob_modal.end', locale)}</p>
                 <div className="flex gap-2">
                   <button
-                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probEndMode === '90d' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probEndMode === '90d' ? 'bg-ink text-white border-ink' : 'border-line text-ink-muted hover:bg-pill'}`}
                     onClick={() => {
                       setProbEndMode('90d')
                       const ref = probStartMode === 'hire' ? emp.start_date : probStartVal
                       if (ref) { const d = new Date(ref); d.setDate(d.getDate() + 90); setProbEndVal(d.toISOString().split('T')[0]) }
                     }}>{t('grid.prob_modal.plus90', locale)}</button>
                   <button
-                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probEndMode === 'custom' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    className={`flex-1 py-1.5 text-xs rounded-lg border transition-colors ${probEndMode === 'custom' ? 'bg-ink text-white border-ink' : 'border-line text-ink-muted hover:bg-pill'}`}
                     onClick={() => setProbEndMode('custom')}>{t('grid.prob_modal.custom', locale)}</button>
                 </div>
                 <input type="date" value={probEndVal}
                   readOnly={probEndMode === '90d'}
                   onChange={e => { if (probEndMode === 'custom') setProbEndVal(e.target.value) }}
-                  className={`w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 ${probEndMode === '90d' ? 'bg-gray-50 text-gray-500' : ''}`} />
+                  className={`w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink ${probEndMode === '90d' ? 'bg-pill text-ink-muted' : ''}`} />
               </div>
 
               <div className="flex gap-2 pt-1">
                 <button onClick={saveProb}
-                  className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700">
+                  className="flex-1 bg-ink text-white rounded-lg py-2 text-sm font-medium hover:bg-ink/90">
                   {t('common.save', locale)}
                 </button>
                 <button onClick={() => setProbModal(null)}
-                  className="px-4 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                  className="px-4 border border-line rounded-lg py-2 text-sm text-ink-muted hover:bg-pill">
                   {t('common.cancel', locale)}
                 </button>
                 {emp.probation_start && (
                   <button onClick={deleteProb}
-                    className="px-4 border border-red-200 text-red-600 rounded-lg py-2 text-sm hover:bg-red-50">
+                    className="px-4 border border-line text-signal-neg rounded-lg py-2 text-sm hover:bg-pill">
                     {t('common.delete', locale)}
                   </button>
                 )}
@@ -1071,28 +1070,28 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
         return (
           <div ref={noteCtxRef}
             style={{ position: 'fixed', top: noteCtx.y, left: noteCtx.x, zIndex: 9999 }}
-            className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-40">
+            className="bg-white border border-line rounded-lg shadow-xl py-1 min-w-40">
             <button onClick={() => openFlag('late')}
-              className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-pill">
               {flags?.late ? t('grid.flag.late.edit', locale) : t('grid.flag.late.mark', locale)}
             </button>
             {flags?.late && (
               <button onClick={() => deleteFlag(noteCtx.empId, noteCtx.day, 'late')}
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-500">
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-pill text-signal-neg">
                 {t('grid.flag.late.delete', locale)}
               </button>
             )}
             <button onClick={() => openFlag('early_leave')}
-              className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-pill">
               {flags?.early_leave ? t('grid.flag.early.edit', locale) : t('grid.flag.early.mark', locale)}
             </button>
             {flags?.early_leave && (
               <button onClick={() => deleteFlag(noteCtx.empId, noteCtx.day, 'early_leave')}
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-500">
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-pill text-signal-neg">
                 {t('grid.flag.early.delete', locale)}
               </button>
             )}
-            <div className="border-t border-gray-100 my-1" />
+            <div className="border-t border-line-soft my-1" />
             {noteMap[`${noteCtx.empId}_${noteCtx.day}`] ? (
               <>
                 <button
@@ -1102,12 +1101,12 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                     setNoteModal({ empId: noteCtx.empId, day: noteCtx.day, existing })
                     setNoteCtx(null)
                   }}
-                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-pill">
                   {t('grid.note.edit', locale)}
                 </button>
                 <button
                   onClick={() => deleteNote(noteCtx.empId, noteCtx.day)}
-                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-500">
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-pill text-signal-neg">
                   {t('grid.note.delete', locale)}
                 </button>
               </>
@@ -1118,7 +1117,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                   setNoteModal({ empId: noteCtx.empId, day: noteCtx.day, existing: '' })
                   setNoteCtx(null)
                 }}
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-pill">
                 {t('grid.note.add', locale)}
               </button>
             )}
@@ -1131,10 +1130,10 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
           onClick={e => { if (e.target === e.currentTarget) setNoteModal(null) }}>
           <div className="bg-white rounded-xl p-5 w-80 shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold text-gray-900 mb-1 text-sm">
+            <h3 className="font-semibold text-ink mb-1 text-sm">
               {noteModal.existing ? t('grid.note.edit', locale) : t('grid.note.add', locale)}
             </h3>
-            <p className="text-xs text-gray-400 mb-3">
+            <p className="text-xs text-ink-faint mb-3">
               {employees.find(e => e.id === noteModal.empId)?.name} · {year}-{pad(month)}-{pad(noteModal.day)}
             </p>
             <textarea
@@ -1143,17 +1142,17 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
               value={noteText}
               onChange={e => setNoteText(e.target.value)}
               placeholder={t('grid.note.placeholder', locale)}
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none mb-3"
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink resize-none mb-3"
             />
             <div className="flex gap-2">
               <button
                 onClick={() => { if (noteText.trim()) saveNote(noteModal.empId, noteModal.day, noteText.trim()) }}
                 disabled={!noteText.trim()}
-                className="flex-1 bg-blue-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium">
+                className="flex-1 bg-ink disabled:bg-line text-white rounded-lg py-2 text-sm font-medium">
                 {t('common.save', locale)}
               </button>
               <button onClick={() => setNoteModal(null)}
-                className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                className="flex-1 border border-line rounded-lg py-2 text-sm text-ink-muted hover:bg-pill">
                 {t('common.cancel', locale)}
               </button>
             </div>
@@ -1166,36 +1165,36 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center"
           onClick={e => { if (e.target === e.currentTarget) setFlagModal(null) }}>
           <div className="bg-white rounded-xl p-5 w-80 shadow-xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold text-gray-900 mb-1 text-sm">
+            <h3 className="font-semibold text-ink mb-1 text-sm">
               {flagModal.type === 'late' ? t('grid.flag.title_late', locale) : t('grid.flag.title_early', locale)}
             </h3>
-            <p className="text-xs text-gray-400 mb-3">
+            <p className="text-xs text-ink-faint mb-3">
               {employees.find(e => e.id === flagModal.empId)?.name} · {year}-{pad(month)}-{pad(flagModal.day)}
             </p>
-            <label className="text-xs text-gray-500 mb-1 block">{t('grid.flag.time_label', locale)}</label>
+            <label className="text-xs text-ink-muted mb-1 block">{t('grid.flag.time_label', locale)}</label>
             <input
               type="time"
               value={flagTime}
               onChange={e => setFlagTime(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mb-3"
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink mb-3"
             />
-            <label className="text-xs text-gray-500 mb-1 block">{t('grid.flag.reason_label', locale)}</label>
+            <label className="text-xs text-ink-muted mb-1 block">{t('grid.flag.reason_label', locale)}</label>
             <textarea
               rows={3}
               value={flagReason}
               onChange={e => setFlagReason(e.target.value)}
               placeholder={t('grid.flag.reason_ph', locale)}
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none mb-3"
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink resize-none mb-3"
             />
             <div className="flex gap-2">
               <button
                 onClick={() => saveFlag(flagModal.empId, flagModal.day, flagModal.type, flagTime, flagReason)}
                 disabled={!flagTime && !flagReason.trim()}
-                className="flex-1 bg-blue-600 disabled:bg-gray-300 text-white rounded-lg py-2 text-sm font-medium">
+                className="flex-1 bg-ink disabled:bg-line text-white rounded-lg py-2 text-sm font-medium">
                 {t('common.save', locale)}
               </button>
               <button onClick={() => setFlagModal(null)}
-                className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+                className="flex-1 border border-line rounded-lg py-2 text-sm text-ink-muted hover:bg-pill">
                 {t('common.cancel', locale)}
               </button>
             </div>
@@ -1207,25 +1206,25 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       {colMenu && (
         <div ref={colMenuRef}
           style={{ position: 'fixed', top: colMenu.top, left: colMenu.left, zIndex: 9999 }}
-          className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-40">
-          <div className="px-3 py-1.5 text-xs text-gray-500 border-b font-medium">
+          className="bg-white border border-line rounded-lg shadow-xl py-1 min-w-40">
+          <div className="px-3 py-1.5 text-xs text-ink-muted border-b font-medium">
             {year}-{pad(month)}-{pad(colMenu.day)}
           </div>
           <button
             onClick={() => setColumnHoliday(colMenu.day)}
-            className="w-full text-left px-3 py-2 text-xs text-red-700 font-medium hover:bg-red-50">
+            className="w-full text-left px-3 py-2 text-xs text-signal-neg font-medium hover:bg-pill">
             Set Holiday (B) for All
           </button>
           <button
             onClick={() => clearColumn(colMenu.day)}
-            className="w-full text-left px-3 py-2 text-xs text-gray-600 hover:bg-gray-50">
+            className="w-full text-left px-3 py-2 text-xs text-ink-muted hover:bg-pill">
             Clear All This Day
           </button>
         </div>
       )}
 
       {saving && (
-        <div className="fixed bottom-4 right-4 bg-gray-800 text-white text-xs px-3 py-2 rounded-lg shadow">
+        <div className="fixed bottom-4 right-4 bg-ink text-white text-xs px-3 py-2 rounded-lg shadow">
           {t('grid.saving', locale)}
         </div>
       )}
