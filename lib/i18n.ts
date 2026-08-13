@@ -379,9 +379,9 @@ const translations: Record<Locale, Record<string, string>> = {
     // Cost section
     'emp.cost.title':     'Monthly Cost (Licenses)',
     'emp.cost.per_month': 'CAD/mo',
-    'emp.licenses.title': '📧 Email Accounts',
-    'emp.assets.title':   '💻 IT Assets',
-    'emp.subs.title':     '📋 Subscriptions',
+    'emp.licenses.title': 'Email Accounts',
+    'emp.assets.title':   'IT Assets',
+    'emp.subs.title':     'Subscriptions',
     // Empty state
     'emp.empty': 'Select an employee from the list',
     // Add modal
@@ -783,9 +783,9 @@ const translations: Record<Locale, Record<string, string>> = {
     'emp.monthly.wfh':   '재택',
     'emp.cost.title':     '월 유지 비용 (라이선스)',
     'emp.cost.per_month': 'CAD/월',
-    'emp.licenses.title': '📧 이메일 계정',
-    'emp.assets.title':   '💻 IT 자산',
-    'emp.subs.title':     '📋 기타 구독',
+    'emp.licenses.title': '이메일 계정',
+    'emp.assets.title':   'IT 자산',
+    'emp.subs.title':     '기타 구독',
     'emp.empty': '좌측에서 직원을 선택하세요',
     'emp.add_modal.title':       '직원 추가',
     'emp.add_modal.company':     '회사 *',

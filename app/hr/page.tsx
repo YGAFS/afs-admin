@@ -11,16 +11,16 @@ export default function HrPage() {
   const { locale } = useLocale()
 
   const COMPANIES: { slug: string; labelKey: string; color: string; disabled?: boolean }[] = [
-    { slug: 'afs', labelKey: 'hr.afs_attendance', color: 'bg-blue-600  hover:bg-blue-700  text-white' },
-    { slug: 'tnt', labelKey: 'hr.tnt_attendance', color: 'bg-green-600 hover:bg-green-700 text-white' },
-    { slug: 'zfs', labelKey: 'hr.zfs_attendance',  color: 'bg-purple-600 hover:bg-purple-700 text-white' },
+    { slug: 'afs', labelKey: 'hr.afs_attendance', color: 'bg-white border border-line text-blue-600 hover:bg-pill' },
+    { slug: 'tnt', labelKey: 'hr.tnt_attendance', color: 'bg-white border border-line text-amber-600 hover:bg-pill' },
+    { slug: 'zfs', labelKey: 'hr.zfs_attendance',  color: 'bg-white border border-line text-emerald-600 hover:bg-pill' },
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-pill">
       <div className="max-w-screen-xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">{t('hr.title', locale)}</h1>
+          <h1 className="text-3xl font-semibold text-ink">{t('hr.title', locale)}</h1>
           <div className="flex gap-2">
             {COMPANIES.map(c => (
               <button key={c.slug}
@@ -35,9 +35,9 @@ export default function HrPage() {
 
         <HrSummaryCards />
 
-        <div className="mt-8 bg-white border border-gray-300 rounded-2xl p-6 shadow-sm">
+        <div className="mt-8 bg-white border border-line rounded-2xl p-6">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-bold text-gray-900">{t('hr.employee_search', locale)}</h2>
+            <h2 className="text-lg font-semibold text-ink">{t('hr.employee_search', locale)}</h2>
           </div>
           <EmployeeSearch />
         </div>

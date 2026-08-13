@@ -68,47 +68,35 @@ export default function HrSummaryCards() {
       label: t('hr.cards.total', locale),
       value: stats.total,
       unit,
-      bg: 'bg-blue-50',
-      border: 'border-blue-200',
-      numColor: 'text-blue-700',
-      labelColor: 'text-blue-600',
+      numColor: 'text-ink',
     },
     {
       label: t('hr.cards.absent', locale),
       value: stats.absent,
       unit,
-      bg: 'bg-red-50',
-      border: 'border-red-200',
-      numColor: 'text-red-600',
-      labelColor: 'text-red-500',
+      numColor: 'text-signal-neg',
     },
     {
       label: t('hr.cards.wfh', locale),
       value: stats.wfh,
       unit,
-      bg: 'bg-purple-50',
-      border: 'border-purple-200',
-      numColor: 'text-purple-700',
-      labelColor: 'text-purple-500',
+      numColor: 'text-ink',
     },
     {
       label: t('hr.cards.high_vac', locale),
       value: stats.highVac,
       unit,
-      bg: 'bg-amber-50',
-      border: 'border-amber-200',
-      numColor: 'text-amber-700',
-      labelColor: 'text-amber-600',
+      numColor: 'text-amber-600',
     },
   ]
 
   return (
     <div className="grid grid-cols-4 gap-4">
       {cards.map(c => (
-        <div key={c.label} className={`${c.bg} border ${c.border} rounded-2xl px-6 py-5 shadow-sm`}>
-          <div className={`text-sm font-semibold ${c.labelColor} mb-2`}>{c.label}</div>
-          <div className={`text-4xl font-bold ${c.numColor}`}>
-            {c.value}<span className="text-xl font-semibold ml-1">{c.unit}</span>
+        <div key={c.label} className="bg-white border border-line rounded-2xl px-6 py-5">
+          <div className="text-sm font-medium text-ink-muted mb-2">{c.label}</div>
+          <div className={`text-4xl font-semibold ${c.numColor}`}>
+            {c.value}<span className="text-xl font-medium ml-1">{c.unit}</span>
           </div>
         </div>
       ))}
