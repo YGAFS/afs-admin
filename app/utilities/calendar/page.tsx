@@ -29,10 +29,23 @@ interface Bill {
   invoice_status: InvoiceStatus | null
 }
 
-const CO_COLORS: Record<Company, string> = {
-  afs: 'bg-blue-100 text-blue-700',
-  tnt: 'bg-amber-100 text-amber-700',
-  zfs: 'bg-emerald-100 text-emerald-700',
+const CO_DOT: Record<Company, string> = {
+  afs: 'bg-blue-500',
+  tnt: 'bg-amber-500',
+  zfs: 'bg-emerald-500',
+}
+
+const STATUS_DOT: Record<ReturnType<typeof computeBillStatus>, string> = {
+  paid:            'bg-signal-pos',
+  paid_late:       'bg-amber-400',
+  carried_forward: 'bg-purple-400',
+  waived:          'bg-ink-faint',
+  void:            'bg-ink-faint',
+  overdue:         'bg-signal-neg',
+  overdue_partial: 'bg-signal-neg',
+  due_today:       'bg-amber-500',
+  upcoming:        'bg-amber-400',
+  open:            'bg-ink-faint',
 }
 
 function fmtAmt(bill: Bill) {
@@ -119,7 +132,7 @@ export default function CalendarPage() {
   const selectedIssued = selected ? (billsByIssue.get(dateKey(selected)) ?? []) : []
 
   if (loading) {
-    return <div className="p-6 text-sm text-gray-400">Loading...</div>
+    return <div className="p-6 text-sm text-ink-faint">Loading...</div>
   }
 
   return (
@@ -127,55 +140,59 @@ export default function CalendarPage() {
     <div className="p-6">
       {/* Month nav */}
       <div className="flex items-center justify-center gap-4 mb-4">
-        <button onClick={prevMonth} className="px-4 py-2 text-lg border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">‹</button>
-        <span className="font-semibold text-gray-800 text-2xl">{monthLabel}</span>
-        <button onClick={nextMonth} className="px-4 py-2 text-lg border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors">›</button>
+        <button onClick={prevMonth} className="px-4 py-2 text-lg border border-line rounded-lg bg-white hover:bg-pill transition-colors">‹</button>
+        <span className="font-semibold text-ink text-2xl">{monthLabel}</span>
+        <button onClick={nextMonth} className="px-4 py-2 text-lg border border-line rounded-lg bg-white hover:bg-pill transition-colors">›</button>
       </div>
 
       {/* Grid */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
+      <div className="bg-white rounded-xl border border-line overflow-hidden">
+        <div className="grid grid-cols-7 border-b border-line bg-pill">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-            <div key={d} className="py-3 text-center text-base font-semibold text-gray-500">{d}</div>
+            <div key={d} className="py-3 text-center text-base font-semibold text-ink-muted">{d}</div>
           ))}
         </div>
         <div className="grid grid-cols-7">
           {cells.map((day, i) => {
             if (day === null) {
-              return <div key={i} className="border-r border-b border-gray-100 min-h-[130px] bg-gray-50/50" />
+              return <div key={i} className="border-r border-b border-line-soft min-h-[130px] bg-pill/40" />
             }
             const key = dateKey(day)
             const dueBills = billsByDue.get(key) ?? []
             const issuedBills = billsByIssue.get(key) ?? []
             const isToday = day === todayReal.getDate() && month === todayReal.getMonth() && year === todayReal.getFullYear()
             const isSelected = selected === day
+            const shownIssued = issuedBills.slice(0, 2)
+            const shownDue = dueBills.slice(0, 3 - shownIssued.length)
+            const overflow = (dueBills.length + issuedBills.length) - (shownIssued.length + shownDue.length)
 
             return (
               <div
                 key={i}
                 onClick={() => setSelected(isSelected ? null : day)}
-                className={`border-r border-b border-gray-100 min-h-[130px] p-2 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                className={`border-r border-b border-line-soft min-h-[130px] p-2 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50/60' : 'hover:bg-pill/60'}`}
               >
-                <div className={`text-base font-semibold mb-1 w-8 h-8 flex items-center justify-center rounded-full ${isToday ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>
+                <div className={`text-base font-semibold mb-1.5 w-8 h-8 flex items-center justify-center rounded-full ${isToday ? 'bg-ink text-white' : isSelected ? 'text-signal-pos' : 'text-ink'}`}>
                   {day}
                 </div>
-                {issuedBills.slice(0, 2).map(b => (
-                  <div key={`i-${b.id}`} className="flex items-center gap-1 text-sm leading-tight px-1 py-1 mb-1 rounded bg-blue-100 text-blue-700 truncate" title={`Issued: [${b.company_id.toUpperCase()}] ${b.provider ?? b.utility_name}`}>
-                    <span className={`shrink-0 px-1 rounded text-[10px] font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
-                    <span className="truncate">{b.provider ?? b.utility_name}</span>
-                  </div>
-                ))}
-                {dueBills.slice(0, 3 - issuedBills.slice(0, 2).length).map(b => (
-                  <div key={`d-${b.id}`}
-                    className={`flex items-center gap-1 text-sm leading-tight px-1 py-1 mb-1 rounded truncate ${STATUS_BADGE[computeBillStatus(b)].className}`}
-                    title={`Due: [${b.company_id.toUpperCase()}] ${b.provider ?? b.utility_name}${b.amount != null ? ` (${fmtAmt(b)})` : ''}`}
-                  >
-                    <span className={`shrink-0 px-1 rounded text-[10px] font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
-                    <span className="truncate">{b.provider ?? b.utility_name}</span>
-                  </div>
-                ))}
-                {(dueBills.length + issuedBills.length) > 3 && (
-                  <div className="text-sm text-gray-400 px-1">+{dueBills.length + issuedBills.length - 3} more</div>
+                <div className="space-y-1">
+                  {shownIssued.map(b => (
+                    <div key={`i-${b.id}`} className="flex items-center gap-1.5 text-xs leading-tight" title={`Issued: [${b.company_id.toUpperCase()}] ${b.provider ?? b.utility_name}`}>
+                      <span className="w-1.5 h-1.5 rounded-full bg-ink-faint shrink-0" />
+                      <span className="truncate text-ink-muted">{b.provider ?? b.utility_name}</span>
+                    </div>
+                  ))}
+                  {shownDue.map(b => (
+                    <div key={`d-${b.id}`} className="flex items-center gap-1.5 text-xs leading-tight"
+                      title={`Due: [${b.company_id.toUpperCase()}] ${b.provider ?? b.utility_name}${b.amount != null ? ` (${fmtAmt(b)})` : ''}`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[computeBillStatus(b)]}`} />
+                      <span className="truncate text-ink-muted">{b.provider ?? b.utility_name}</span>
+                    </div>
+                  ))}
+                </div>
+                {overflow > 0 && (
+                  <div className="text-xs text-ink-faint mt-1">+{overflow} more</div>
                 )}
               </div>
             )
@@ -185,20 +202,21 @@ export default function CalendarPage() {
 
       {/* Selected day detail */}
       {selected !== null && (selectedDue.length > 0 || selectedIssued.length > 0) && (
-        <div className="mt-4 bg-white rounded-xl border border-gray-200 p-4">
-          <div className="font-semibold text-gray-800 mb-3 text-base">
+        <div className="mt-4 bg-white rounded-xl border border-line p-4">
+          <div className="font-semibold text-ink mb-3 text-base">
             {new Date(year, month, selected).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
           </div>
           {selectedIssued.length > 0 && (
             <div className="mb-4">
-              <div className="text-sm font-semibold text-blue-600 uppercase tracking-wide mb-2">Issued</div>
+              <div className="text-sm font-semibold text-ink-muted uppercase tracking-wide mb-2">Issued</div>
               <div className="space-y-2">
                 {selectedIssued.map(b => (
                   <div key={b.id} className="flex items-center gap-2 text-base">
-                    <span className={`px-2 py-0.5 rounded-full text-sm font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
-                    <span className="font-medium text-gray-900">{b.provider ?? b.utility_name}</span>
-                    {b.provider && <span className="text-gray-400 text-sm">· {b.utility_name}</span>}
-                    {b.bill_number && <span className="text-gray-400 text-sm font-mono">#{b.bill_number}</span>}
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${CO_DOT[b.company_id]}`} />
+                    <span className="text-xs font-semibold text-ink-muted">{b.company_id.toUpperCase()}</span>
+                    <span className="font-medium text-ink">{b.provider ?? b.utility_name}</span>
+                    {b.provider && <span className="text-ink-faint text-sm">· {b.utility_name}</span>}
+                    {b.bill_number && <span className="text-ink-faint text-sm font-mono">#{b.bill_number}</span>}
                   </div>
                 ))}
               </div>
@@ -206,21 +224,22 @@ export default function CalendarPage() {
           )}
           {selectedDue.length > 0 && (
             <div>
-              <div className="text-sm font-semibold text-amber-600 uppercase tracking-wide mb-2">Due</div>
+              <div className="text-sm font-semibold text-ink-muted uppercase tracking-wide mb-2">Due</div>
               <div className="space-y-2">
                 {selectedDue.map(b => (
                   <div key={b.id} className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 text-base min-w-0">
-                      <span className={`shrink-0 px-2 py-0.5 rounded-full text-sm font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
-                      <span className="font-medium text-gray-900 truncate">{b.provider ?? b.utility_name}</span>
-                      {b.provider && <span className="text-gray-400 text-sm hidden sm:inline">· {b.utility_name}</span>}
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${CO_DOT[b.company_id]}`} />
+                      <span className="text-xs font-semibold text-ink-muted shrink-0">{b.company_id.toUpperCase()}</span>
+                      <span className="font-medium text-ink truncate">{b.provider ?? b.utility_name}</span>
+                      {b.provider && <span className="text-ink-faint text-sm hidden sm:inline">· {b.utility_name}</span>}
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-base font-medium text-gray-800">{fmtAmt(b)}</span>
+                      <span className="text-base font-medium text-ink">{fmtAmt(b)}</span>
                       <span className={`text-sm font-medium px-1.5 py-0.5 rounded ${STATUS_BADGE[computeBillStatus(b)].className}`}>
                         {STATUS_BADGE[computeBillStatus(b)].label}
                       </span>
-                      <input type="checkbox" checked={b.is_paid} onChange={() => togglePaid(b)} className="w-4 h-4 accent-emerald-600 cursor-pointer" />
+                      <input type="checkbox" checked={b.is_paid} onChange={() => togglePaid(b)} className="w-4 h-4 accent-signal-pos cursor-pointer" />
                     </div>
                   </div>
                 ))}
@@ -231,11 +250,11 @@ export default function CalendarPage() {
       )}
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-500">
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-100 inline-block" />Issued</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-amber-100 inline-block" />Due (unpaid)</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-100 inline-block" />Overdue</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-100 inline-block" />Paid</span>
+      <div className="flex flex-wrap gap-4 mt-3 text-xs text-ink-muted">
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-ink-faint inline-block" />Issued</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Due (unpaid)</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-signal-neg inline-block" />Overdue</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-signal-pos inline-block" />Paid</span>
       </div>
     </div>
     </div>

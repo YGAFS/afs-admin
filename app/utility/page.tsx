@@ -95,9 +95,9 @@ const COMPANIES: { id: Company | 'all'; label: string }[] = [
 ]
 
 const CO_COLORS: Record<Company, string> = {
-  afs: 'bg-blue-100 text-blue-700',
-  tnt: 'bg-amber-100 text-amber-700',
-  zfs: 'bg-emerald-100 text-emerald-700',
+  afs: 'text-blue-600',
+  tnt: 'text-amber-600',
+  zfs: 'text-emerald-600',
 }
 
 const STATUS_FILTER_OPTIONS: { id: StatusFilter; label: string }[] = [
@@ -167,13 +167,13 @@ function dueDateLabel(bill: Bill) {
 
 function dueDateColor(bill: Bill) {
   const s = computeBillStatus(bill)
-  if (s === 'paid' || s === 'paid_late' || s === 'carried_forward' || s === 'waived' || s === 'void') return 'text-gray-400'
+  if (s === 'paid' || s === 'paid_late' || s === 'carried_forward' || s === 'waived' || s === 'void') return 'text-ink-faint'
   const days = daysUntilDue(bill)
-  if (days === null) return 'text-gray-500'
+  if (days === null) return 'text-ink-muted'
   if (days < 0)   return 'text-red-600 font-semibold'
   if (days <= 3)  return 'text-red-500 font-medium'
   if (days <= 7)  return 'text-amber-600 font-medium'
-  return 'text-gray-700'
+  return 'text-ink-muted'
 }
 
 function fmtAmt(bill: Bill) {
@@ -241,7 +241,7 @@ function fmtBalance(balance: number, sym: string): string {
 function balanceColor(balance: number): string {
   if (balance > 0.005) return 'text-red-600'
   if (balance < -0.005) return 'text-emerald-600'
-  return 'text-gray-400'
+  return 'text-ink-faint'
 }
 
 const emptyBill: Omit<Bill, 'id' | 'created_at' | 'payment_methods'> = {
@@ -574,26 +574,26 @@ export default function UtilityPage() {
   }
 
   return (
-    <div className="h-full overflow-auto bg-gray-50">
+    <div className="h-full overflow-auto bg-pill">
     <div className="p-6">
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Utility Bills</h1>
+          <h1 className="text-xl font-bold text-ink">Utility Bills</h1>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
+          <div className="flex gap-1 bg-white border border-line rounded-lg p-1">
             {([
-              ['dashboard', '🏠 Dashboard'],
-              ['all',       '📋 All Bills'],
-              ['analytics', '📊 Analytics'],
+              ['dashboard', 'Dashboard'],
+              ['all',       'All Bills'],
+              ['analytics', 'Analytics'],
             ] as [MainTab, string][]).map(([tab, label]) => (
               <button
                 key={tab}
                 onClick={() => setMainTab(tab)}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  mainTab === tab ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
+                  mainTab === tab ? 'bg-ink text-white' : 'text-ink-muted hover:text-ink'
                 }`}
               >
                 {label}
@@ -602,22 +602,22 @@ export default function UtilityPage() {
           </div>
           <button
             onClick={() => setShowPMModal(true)}
-            className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 bg-white rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-3 py-1.5 text-sm text-ink-muted border border-line bg-white rounded-lg hover:bg-pill transition-colors"
           >
-            💳 Payment Methods
+            Payment Methods
           </button>
           {role === 'admin' && (
             <button
               onClick={() => setShowCreditModal(true)}
-              className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 bg-white rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-3 py-1.5 text-sm text-ink-muted border border-line bg-white rounded-lg hover:bg-pill transition-colors"
             >
-              💰 Add Credit
+              Add Credit
             </button>
           )}
           {role === 'admin' && (
             <button
               onClick={() => { setEditBill(emptyBill); setEditingId(null); setShowModal(true) }}
-              className="px-3 py-1.5 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-700 transition-colors"
+              className="px-3 py-1.5 text-sm text-white bg-ink rounded-lg hover:bg-ink/90 transition-colors"
             >
               + Add Bill
             </button>
@@ -657,19 +657,19 @@ export default function UtilityPage() {
           {/* Stats row — clickable to filter */}
           <div className="grid grid-cols-5 gap-3 mb-5">
             {[
-              { label: 'Total',        value: stats.total,          color: 'text-gray-700',    bg: 'bg-white',       sf: 'all'            as StatusFilter },
-              { label: 'Outstanding',  value: stats.outstanding,    color: 'text-amber-600',   bg: 'bg-amber-50',    sf: 'open'           as StatusFilter },
-              { label: 'Overdue',      value: stats.overdue,        color: 'text-red-600',     bg: 'bg-red-50',      sf: 'overdue'        as StatusFilter },
-              { label: 'Paid',         value: stats.paid,           color: 'text-emerald-600', bg: 'bg-emerald-50',  sf: 'paid'           as StatusFilter },
-              { label: 'Carried Fwd',  value: stats.carriedForward, color: 'text-purple-600',  bg: 'bg-purple-50',   sf: 'carried_forward' as StatusFilter },
+              { label: 'Total',        value: stats.total,          color: 'text-ink',         sf: 'all'            as StatusFilter },
+              { label: 'Outstanding',  value: stats.outstanding,    color: 'text-amber-600',   sf: 'open'           as StatusFilter },
+              { label: 'Overdue',      value: stats.overdue,        color: 'text-signal-neg',  sf: 'overdue'        as StatusFilter },
+              { label: 'Paid',         value: stats.paid,           color: 'text-signal-pos',  sf: 'paid'           as StatusFilter },
+              { label: 'Carried Fwd',  value: stats.carriedForward, color: 'text-purple-600',  sf: 'carried_forward' as StatusFilter },
             ].map(s => (
               <button
                 key={s.label}
                 onClick={() => setStatusFilter(s.sf)}
-                className={`${s.bg} rounded-xl border border-gray-200 px-4 py-3 text-left hover:shadow-sm transition-shadow ${statusFilter === s.sf ? 'ring-2 ring-gray-900' : ''}`}
+                className={`bg-white rounded-xl border border-line px-4 py-3 text-left transition-colors ${statusFilter === s.sf ? 'ring-2 ring-ink' : 'hover:border-ink-faint'}`}
               >
-                <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
-                <div className="text-xs text-gray-500 mt-0.5">{s.label}</div>
+                <div className={`text-2xl font-semibold ${s.color}`}>{s.value}</div>
+                <div className="text-xs text-ink-muted mt-0.5">{s.label}</div>
               </button>
             ))}
           </div>
@@ -678,20 +678,20 @@ export default function UtilityPage() {
           {(overdueBills.length > 0 || upcomingBills.length > 0) && (
             <div className={`grid gap-3 mb-5 ${overdueBills.length > 0 && upcomingBills.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
               {overdueBills.length > 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                  <div className="text-red-600 font-semibold text-sm mb-2.5">🚨 Overdue ({overdueBills.length})</div>
+                <div className="bg-white border border-line rounded-xl p-4">
+                  <div className="text-signal-neg font-semibold text-sm mb-2.5">Overdue ({overdueBills.length})</div>
                   <div className="space-y-2">
                     {overdueBills.map(b => (
                       <div key={b.id} className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
-                          <span className="text-xs font-medium text-gray-800 truncate">{b.utility_name}</span>
-                          {b.provider && <span className="text-xs text-gray-400 hidden sm:inline">· {b.provider}</span>}
+                          <span className={`shrink-0 text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+                          <span className="text-xs font-medium text-ink truncate">{b.utility_name}</span>
+                          {b.provider && <span className="text-xs text-ink-faint hidden sm:inline">· {b.provider}</span>}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs font-semibold text-red-600">{fmtAmt(b)}</span>
-                          <span className="text-xs text-red-500">{dueDateLabel(b)}</span>
-                          <button onClick={() => updateBillStatus(b, 'paid')} className="text-xs px-2 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors" title="Mark paid">✓ Paid</button>
+                          <span className="text-xs font-semibold text-signal-neg">{fmtAmt(b)}</span>
+                          <span className="text-xs text-signal-neg">{dueDateLabel(b)}</span>
+                          <button onClick={() => updateBillStatus(b, 'paid')} className="text-xs px-2 py-0.5 rounded bg-ink text-white hover:bg-ink/90 transition-colors" title="Mark paid">Paid</button>
                         </div>
                       </div>
                     ))}
@@ -700,20 +700,20 @@ export default function UtilityPage() {
               )}
 
               {upcomingBills.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                  <div className="text-amber-700 font-semibold text-sm mb-2.5">⏰ Due This Week ({upcomingBills.length})</div>
+                <div className="bg-white border border-line rounded-xl p-4">
+                  <div className="text-amber-600 font-semibold text-sm mb-2.5">Due this week ({upcomingBills.length})</div>
                   <div className="space-y-2">
                     {upcomingBills.map(b => (
                       <div key={b.id} className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
-                          <span className="text-xs font-medium text-gray-800 truncate">{b.utility_name}</span>
-                          {b.provider && <span className="text-xs text-gray-400 hidden sm:inline">· {b.provider}</span>}
+                          <span className={`shrink-0 text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+                          <span className="text-xs font-medium text-ink truncate">{b.utility_name}</span>
+                          {b.provider && <span className="text-xs text-ink-faint hidden sm:inline">· {b.provider}</span>}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs font-medium text-gray-800">{fmtAmt(b)}</span>
+                          <span className="text-xs font-medium text-ink">{fmtAmt(b)}</span>
                           <span className={`text-xs ${dueDateColor(b)}`}>{dueDateLabel(b)}</span>
-                          <button onClick={() => updateBillStatus(b, 'paid')} className="text-xs px-2 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors" title="Mark paid">✓ Paid</button>
+                          <button onClick={() => updateBillStatus(b, 'paid')} className="text-xs px-2 py-0.5 rounded bg-ink text-white hover:bg-ink/90 transition-colors" title="Mark paid">Paid</button>
                         </div>
                       </div>
                     ))}
@@ -725,26 +725,26 @@ export default function UtilityPage() {
 
           {/* Filters */}
           <div className="flex items-center gap-3 mb-4 flex-wrap">
-            <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
+            <div className="flex gap-1 bg-white border border-line rounded-lg p-1">
               {COMPANIES.map(c => (
                 <button
                   key={c.id}
                   onClick={() => setCoFilter(c.id as Company | 'all')}
                   className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
-                    coFilter === c.id ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
+                    coFilter === c.id ? 'bg-ink text-white' : 'text-ink-muted hover:text-ink'
                   }`}
                 >
                   {c.label}
                 </button>
               ))}
             </div>
-            <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1 flex-wrap">
+            <div className="flex gap-1 bg-white border border-line rounded-lg p-1 flex-wrap">
               {STATUS_FILTER_OPTIONS.map(s => (
                 <button
                   key={s.id}
                   onClick={() => setStatusFilter(s.id)}
                   className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
-                    statusFilter === s.id ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
+                    statusFilter === s.id ? 'bg-ink text-white' : 'text-ink-muted hover:text-ink'
                   }`}
                 >
                   {s.label}
@@ -756,37 +756,37 @@ export default function UtilityPage() {
               placeholder="Search utility / provider / bill # / account…"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="ml-auto px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 w-60"
+              className="ml-auto px-3 py-1.5 text-sm border border-line rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ink w-60"
             />
           </div>
 
           {/* Table */}
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-xl border border-line overflow-hidden">
             {loading ? (
-              <div className="py-16 text-center text-sm text-gray-400">Loading…</div>
+              <div className="py-16 text-center text-sm text-ink-faint">Loading…</div>
             ) : filtered.length === 0 ? (
-              <div className="py-16 text-center text-sm text-gray-400">No bills found.</div>
+              <div className="py-16 text-center text-sm text-ink-faint">No bills found.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Co</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Utility</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Bill #</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Provider</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Account</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Balance</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Amount</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Issued</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Due Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Payment</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    <tr className="bg-pill border-b border-line">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Co</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Utility</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Bill #</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Provider</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Account</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-ink-muted uppercase tracking-wide">Balance</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Amount</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Issued</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Due Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Payment</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Notes</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Status</th>
                       {role === 'admin' && <th className="px-4 py-3" />}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-line-soft">
                     {rows.map(row => row.kind === 'credit' ? (
                       <CreditRow
                         key={`credit-${row.credit.id}`}
@@ -797,24 +797,24 @@ export default function UtilityPage() {
                         onDelete={deleteCredit}
                       />
                     ) : (() => { const bill = row.bill; return (
-                      <tr key={bill.id} className={`hover:bg-gray-50 transition-colors ${computeBillStatus(bill) === 'paid' || computeBillStatus(bill) === 'waived' || computeBillStatus(bill) === 'void' ? 'opacity-60' : ''}`}>
+                      <tr key={bill.id} className={`hover:bg-pill transition-colors ${computeBillStatus(bill) === 'paid' || computeBillStatus(bill) === 'waived' || computeBillStatus(bill) === 'void' ? 'opacity-60' : ''}`}>
                         <td className="px-4 py-3">
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[bill.company_id]}`}>
+                          <span className={`inline-block text-xs font-bold ${CO_COLORS[bill.company_id]}`}>
                             {bill.company_id.toUpperCase()}
                           </span>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-medium text-gray-900">{bill.utility_name}</span>
+                            <span className="font-medium text-ink">{bill.utility_name}</span>
                             {isAbnormalBill(bill, bills) && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium shrink-0">±25%</span>
+                              <span className="text-[10px] uppercase tracking-wide text-amber-600 font-medium shrink-0">±25%</span>
                             )}
                           </div>
-                          {bill.billing_period && <div className="text-xs text-gray-400">{bill.billing_period}</div>}
+                          {bill.billing_period && <div className="text-xs text-ink-faint">{bill.billing_period}</div>}
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500 font-mono">{bill.bill_number ?? '—'}</td>
-                        <td className="px-4 py-3 text-gray-600 text-xs">{bill.provider ?? '—'}</td>
-                        <td className="px-4 py-3 text-xs text-gray-500 font-mono">{bill.account_number ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-ink-muted font-mono">{bill.bill_number ?? '—'}</td>
+                        <td className="px-4 py-3 text-ink-muted text-xs">{bill.provider ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-ink-muted font-mono">{bill.account_number ?? '—'}</td>
                         <td className="px-4 py-3 text-right">
                           {(() => {
                             const key = accountKey(bill.company_id, bill.utility_name, bill.account_number)
@@ -827,10 +827,10 @@ export default function UtilityPage() {
                         <td className="px-4 py-3">
                           {bill.current_charges != null ? (
                             <div>
-                              <span className="font-medium text-gray-900">
+                              <span className="font-medium text-ink">
                                 {bill.currency === 'USD' ? 'US$' : 'CA$'}{((bill.previous_balance ?? 0) + bill.current_charges).toFixed(2)}
                               </span>
-                              <div className="text-[10px] text-gray-400 mt-0.5 space-x-1.5">
+                              <div className="text-[10px] text-ink-faint mt-0.5 space-x-1.5">
                                 {(bill.previous_balance ?? 0) > 0 && (
                                   <span>prev {bill.currency === 'USD' ? 'US$' : 'CA$'}{bill.previous_balance!.toFixed(2)}</span>
                                 )}
@@ -838,26 +838,26 @@ export default function UtilityPage() {
                               </div>
                             </div>
                           ) : bill.amount != null ? (
-                            <span className="font-medium text-gray-900">{fmtAmt(bill)}</span>
+                            <span className="font-medium text-ink">{fmtAmt(bill)}</span>
                           ) : '—'}
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500">{fmtShortDate(bill.issue_date)}</td>
+                        <td className="px-4 py-3 text-xs text-ink-muted">{fmtShortDate(bill.issue_date)}</td>
                         <td className={`px-4 py-3 text-xs ${dueDateColor(bill)}`}>{dueDateLabel(bill)}</td>
                         <td className="px-4 py-3">
                           {bill.payment_methods ? (
                             <div>
-                              <div className="text-xs font-medium text-gray-700">
-                                {bill.is_auto_pay && <span className="text-blue-500 mr-1">⟳</span>}
+                              <div className="text-xs font-medium text-ink-muted">
+                                {bill.is_auto_pay && <span className="text-signal-pos mr-1">⟳</span>}
                                 {bill.payment_methods.label}
                               </div>
                               {bill.payment_methods.holder_name && (
-                                <div className="text-xs text-gray-400">{bill.payment_methods.holder_name}</div>
+                                <div className="text-xs text-ink-faint">{bill.payment_methods.holder_name}</div>
                               )}
                             </div>
                           ) : bill.is_auto_pay ? (
-                            <span className="text-xs text-blue-500">⟳ Auto</span>
+                            <span className="text-xs text-signal-pos">⟳ Auto</span>
                           ) : (
-                            <span className="text-xs text-gray-400">—</span>
+                            <span className="text-xs text-ink-faint">—</span>
                           )}
                         </td>
                         <td className="px-4 py-3 max-w-[180px]">
@@ -871,20 +871,20 @@ export default function UtilityPage() {
                                   if (e.key === 'Enter') saveNote(bill.id, noteEdit.value)
                                   if (e.key === 'Escape') setNoteEdit(null)
                                 }}
-                                className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-900 min-w-0"
+                                className="flex-1 text-xs border border-line rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ink min-w-0"
                               />
-                              <button onClick={() => saveNote(bill.id, noteEdit.value)} className="text-emerald-600 text-xs font-bold">✓</button>
-                              <button onClick={() => setNoteEdit(null)} className="text-gray-400 text-xs">✕</button>
+                              <button onClick={() => saveNote(bill.id, noteEdit.value)} className="text-signal-pos text-xs font-bold">✓</button>
+                              <button onClick={() => setNoteEdit(null)} className="text-ink-faint text-xs">✕</button>
                             </div>
                           ) : (
                             <div
                               onClick={() => setNoteEdit({ id: bill.id, value: bill.notes ?? '' })}
-                              className="text-xs text-gray-500 cursor-pointer hover:text-gray-800 truncate group"
+                              className="text-xs text-ink-muted cursor-pointer hover:text-ink truncate group"
                               title={bill.notes ?? 'Click to add note'}
                             >
                               {bill.notes
                                 ? <span>{bill.notes}</span>
-                                : <span className="text-gray-300 group-hover:text-gray-400">+ note</span>}
+                                : <span className="text-ink-faint group-hover:text-ink-faint">+ note</span>}
                             </div>
                           )}
                         </td>
@@ -896,7 +896,7 @@ export default function UtilityPage() {
                             <div className="flex items-center gap-1">
                               {bill.onedrive_file_url && (
                                 <a href={bill.onedrive_file_url} target="_blank" rel="noreferrer"
-                                  className="p-1 text-gray-400 hover:text-blue-500 transition-colors" title="Open file">📎</a>
+                                  className="px-1.5 py-0.5 text-[11px] text-ink-faint hover:text-signal-pos transition-colors" title="Open file">File</a>
                               )}
                               {(() => {
                                 const s = computeBillStatus(bill)
@@ -910,21 +910,21 @@ export default function UtilityPage() {
                                 const sym = bill.currency === 'USD' ? 'US$' : 'CA$'
                                 return applyConfirm === bill.id ? (
                                   <span className="flex items-center gap-1 text-xs">
-                                    <button onClick={() => applyCredit(bill)} className="text-emerald-600 font-semibold">Apply {sym}{applyAmt.toFixed(2)}?</button>
-                                    <button onClick={() => setApplyConfirm(null)} className="text-gray-400">✕</button>
+                                    <button onClick={() => applyCredit(bill)} className="text-signal-pos font-semibold">Apply {sym}{applyAmt.toFixed(2)}?</button>
+                                    <button onClick={() => setApplyConfirm(null)} className="text-ink-faint">✕</button>
                                   </span>
                                 ) : (
-                                  <button onClick={() => setApplyConfirm(bill.id)} className="p-1 text-gray-400 hover:text-emerald-500 transition-colors" title={`Apply account credit (${sym}${avail.toFixed(2)} available)`}>💰</button>
+                                  <button onClick={() => setApplyConfirm(bill.id)} className="px-1.5 py-0.5 text-[11px] text-ink-faint hover:text-signal-pos transition-colors" title={`Apply account credit (${sym}${avail.toFixed(2)} available)`}>Credit</button>
                                 )
                               })()}
-                              <button onClick={() => openEdit(bill)} className="p-1 text-gray-400 hover:text-gray-700 transition-colors" title="Edit">✏️</button>
+                              <button onClick={() => openEdit(bill)} className="px-1.5 py-0.5 text-[11px] text-ink-faint hover:text-ink transition-colors" title="Edit">Edit</button>
                               {deleteConfirm === bill.id ? (
                                 <span className="flex items-center gap-1 text-xs">
-                                  <button onClick={() => deleteBill(bill.id)} className="text-red-600 font-semibold">Del</button>
-                                  <button onClick={() => setDeleteConfirm(null)} className="text-gray-400">✕</button>
+                                  <button onClick={() => deleteBill(bill.id)} className="text-signal-neg font-semibold">Del</button>
+                                  <button onClick={() => setDeleteConfirm(null)} className="text-ink-faint">✕</button>
                                 </span>
                               ) : (
-                                <button onClick={() => setDeleteConfirm(bill.id)} className="p-1 text-gray-300 hover:text-red-400 transition-colors" title="Delete">🗑</button>
+                                <button onClick={() => setDeleteConfirm(bill.id)} className="px-1.5 py-0.5 text-[11px] text-ink-faint hover:text-signal-neg transition-colors" title="Delete">Del</button>
                               )}
                             </div>
                           </td>
@@ -938,7 +938,7 @@ export default function UtilityPage() {
           </div>
 
           {role === 'ap' && (
-            <p className="text-xs text-gray-400 mt-3 text-center">
+            <p className="text-xs text-ink-faint mt-3 text-center">
               AP view — you can mark bills as paid and add notes. Contact admin to add or edit bills.
             </p>
           )}
@@ -952,20 +952,20 @@ export default function UtilityPage() {
       {showModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">{editingId ? 'Edit Bill' : 'Add Bill'}</h2>
-              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-700">✕</button>
+            <div className="px-6 py-4 border-b border-line-soft flex items-center justify-between">
+              <h2 className="font-semibold text-ink">{editingId ? 'Edit Bill' : 'Add Bill'}</h2>
+              <button onClick={() => setShowModal(false)} className="text-ink-faint hover:text-ink-muted">✕</button>
             </div>
             <div className="px-6 py-4 space-y-4">
 
               {/* Company + Currency */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Company</label>
+                  <label className="block text-xs font-semibold text-ink-muted mb-1">Company</label>
                   <select
                     value={editBill.company_id}
                     onChange={e => setEditBill(b => ({ ...b, company_id: e.target.value as Company }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                   >
                     <option value="afs">AFS</option>
                     <option value="tnt">TNT</option>
@@ -973,11 +973,11 @@ export default function UtilityPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Currency</label>
+                  <label className="block text-xs font-semibold text-ink-muted mb-1">Currency</label>
                   <select
                     value={editBill.currency}
                     onChange={e => setEditBill(b => ({ ...b, currency: e.target.value as Currency }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                   >
                     <option value="CAD">CAD (CA$)</option>
                     <option value="USD">USD (US$)</option>
@@ -987,49 +987,49 @@ export default function UtilityPage() {
 
               {/* Utility name */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Utility Name *</label>
+                <label className="block text-xs font-semibold text-ink-muted mb-1">Utility Name *</label>
                 <input
                   type="text"
                   placeholder="e.g. Electricity, Gas, Internet"
                   value={editBill.utility_name ?? ''}
                   onChange={e => setEditBill(b => ({ ...b, utility_name: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                 />
               </div>
 
               {/* Provider + Account Number */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Provider</label>
+                  <label className="block text-xs font-semibold text-ink-muted mb-1">Provider</label>
                   <input
                     type="text"
                     placeholder="e.g. BC Hydro"
                     value={editBill.provider ?? ''}
                     onChange={e => setEditBill(b => ({ ...b, provider: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Account Number</label>
+                  <label className="block text-xs font-semibold text-ink-muted mb-1">Account Number</label>
                   <input
                     type="text"
                     placeholder="e.g. 1234567890"
                     value={editBill.account_number ?? ''}
                     onChange={e => setEditBill(b => ({ ...b, account_number: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                   />
                 </div>
               </div>
 
               {/* Bill Number */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Bill Number</label>
+                <label className="block text-xs font-semibold text-ink-muted mb-1">Bill Number</label>
                 <input
                   type="text"
                   placeholder="e.g. INV-2026-001"
                   value={editBill.bill_number ?? ''}
                   onChange={e => setEditBill(b => ({ ...b, bill_number: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                 />
               </div>
 
@@ -1037,33 +1037,33 @@ export default function UtilityPage() {
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Previous Balance</label>
+                    <label className="block text-xs font-semibold text-ink-muted mb-1">Previous Balance</label>
                     <input
                       type="number"
                       step="0.01"
                       placeholder="0.00"
                       value={editBill.previous_balance ?? ''}
                       onChange={e => setEditBill(b => ({ ...b, previous_balance: e.target.value ? parseFloat(e.target.value) : null }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Current Charges</label>
+                    <label className="block text-xs font-semibold text-ink-muted mb-1">Current Charges</label>
                     <input
                       type="number"
                       step="0.01"
                       placeholder="0.00"
                       value={editBill.current_charges ?? ''}
                       onChange={e => setEditBill(b => ({ ...b, current_charges: e.target.value ? parseFloat(e.target.value) : null }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  <label className="block text-xs font-semibold text-ink-muted mb-1">
                     Total Due
                     {editBill.previous_balance != null && editBill.current_charges != null && (
-                      <span className="ml-2 text-gray-400 font-normal">
+                      <span className="ml-2 text-ink-faint font-normal">
                         (auto: {editBill.currency === 'USD' ? 'US$' : 'CA$'}{((editBill.previous_balance ?? 0) + (editBill.current_charges ?? 0)).toFixed(2)})
                       </span>
                     )}
@@ -1077,7 +1077,7 @@ export default function UtilityPage() {
                       : (editBill.amount ?? '')}
                     disabled={editBill.previous_balance != null && editBill.current_charges != null}
                     onChange={e => setEditBill(b => ({ ...b, amount: e.target.value ? parseFloat(e.target.value) : null }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink disabled:bg-pill disabled:text-ink-faint"
                   />
                 </div>
               </div>
@@ -1085,44 +1085,44 @@ export default function UtilityPage() {
               {/* Issue date + Due date */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Issue Date</label>
+                  <label className="block text-xs font-semibold text-ink-muted mb-1">Issue Date</label>
                   <input
                     type="date"
                     value={editBill.issue_date ?? ''}
                     onChange={e => setEditBill(b => ({ ...b, issue_date: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Due Date</label>
+                  <label className="block text-xs font-semibold text-ink-muted mb-1">Due Date</label>
                   <input
                     type="date"
                     value={editBill.due_date ?? ''}
                     onChange={e => setEditBill(b => ({ ...b, due_date: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                   />
                 </div>
               </div>
 
               {/* Billing period */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Billing Period</label>
+                <label className="block text-xs font-semibold text-ink-muted mb-1">Billing Period</label>
                 <input
                   type="text"
                   placeholder="e.g. Jun 2026"
                   value={editBill.billing_period ?? ''}
                   onChange={e => setEditBill(b => ({ ...b, billing_period: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                 />
               </div>
 
               {/* Payment method */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Payment Method</label>
+                <label className="block text-xs font-semibold text-ink-muted mb-1">Payment Method</label>
                 <select
                   value={editBill.payment_method_id ?? ''}
                   onChange={e => setEditBill(b => ({ ...b, payment_method_id: e.target.value || null }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                 >
                   <option value="">— None —</option>
                   {methods
@@ -1143,47 +1143,47 @@ export default function UtilityPage() {
                   id="auto_pay"
                   checked={editBill.is_auto_pay ?? false}
                   onChange={e => setEditBill(b => ({ ...b, is_auto_pay: e.target.checked }))}
-                  className="w-4 h-4 accent-blue-600"
+                  className="w-4 h-4 accent-signal-pos"
                 />
-                <label htmlFor="auto_pay" className="text-sm text-gray-700">Auto-pay enabled</label>
+                <label htmlFor="auto_pay" className="text-sm text-ink-muted">Auto-pay enabled</label>
               </div>
 
               {/* OneDrive URL */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">OneDrive File Link</label>
+                <label className="block text-xs font-semibold text-ink-muted mb-1">OneDrive File Link</label>
                 <input
                   type="url"
                   placeholder="https://…sharepoint.com/…"
                   value={editBill.onedrive_file_url ?? ''}
                   onChange={e => setEditBill(b => ({ ...b, onedrive_file_url: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                 />
               </div>
 
               {/* Notes */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
+                <label className="block text-xs font-semibold text-ink-muted mb-1">Notes</label>
                 <textarea
                   rows={2}
                   placeholder="Any special notes…"
                   value={editBill.notes ?? ''}
                   onChange={e => setEditBill(b => ({ ...b, notes: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink resize-none"
                 />
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
+            <div className="px-6 py-4 border-t border-line-soft flex justify-end gap-2">
               <button
                 onClick={() => setShowModal(false)}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 text-sm text-ink-muted border border-line rounded-lg hover:bg-pill transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={saveBill}
                 disabled={saving || !editBill.utility_name?.trim()}
-                className="px-4 py-2 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors"
+                className="px-4 py-2 text-sm text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors"
               >
                 {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Bill'}
               </button>
@@ -1274,41 +1274,41 @@ function CreditRow({
   const sym = 'US$' // credits are entered in USD/CAD-agnostic dollars; matches fmtBalance's default symbol usage elsewhere
 
   return (
-    <tr className="bg-emerald-50/40 hover:bg-emerald-50 transition-colors">
+    <tr className="hover:bg-pill/60 transition-colors">
       <td className="px-4 py-3">
-        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[credit.company_id]}`}>
+        <span className={`inline-block text-xs font-bold ${CO_COLORS[credit.company_id]}`}>
           {credit.company_id.toUpperCase()}
         </span>
       </td>
       <td className="px-4 py-3">
-        <span className="font-medium text-gray-900">{credit.utility_name}</span>
+        <span className="font-medium text-ink">{credit.utility_name}</span>
       </td>
-      <td className="px-4 py-3 text-xs text-gray-400">—</td>
-      <td className="px-4 py-3 text-xs text-gray-400">—</td>
-      <td className="px-4 py-3 text-xs text-gray-500 font-mono">{credit.account_number ?? '—'}</td>
+      <td className="px-4 py-3 text-xs text-ink-faint">—</td>
+      <td className="px-4 py-3 text-xs text-ink-faint">—</td>
+      <td className="px-4 py-3 text-xs text-ink-muted font-mono">{credit.account_number ?? '—'}</td>
       <td className="px-4 py-3 text-right">
         <span className={`text-xs font-semibold ${balanceColor(balance)} cursor-help`} title={balanceTip}>{fmtBalance(balance, sym)}</span>
       </td>
       <td className="px-4 py-3">
-        <span className="font-medium text-emerald-600">-{sym}{credit.amount.toFixed(2)}</span>
+        <span className="font-medium text-signal-pos">-{sym}{credit.amount.toFixed(2)}</span>
       </td>
-      <td className="px-4 py-3 text-xs text-gray-500">{fmtShortDate(credit.credit_date)}</td>
-      <td className="px-4 py-3 text-xs text-gray-400">—</td>
-      <td className="px-4 py-3 text-xs text-gray-400">—</td>
-      <td className="px-4 py-3 max-w-[180px] text-xs text-gray-500 truncate" title={credit.note ?? ''}>{credit.note ?? '—'}</td>
+      <td className="px-4 py-3 text-xs text-ink-muted">{fmtShortDate(credit.credit_date)}</td>
+      <td className="px-4 py-3 text-xs text-ink-faint">—</td>
+      <td className="px-4 py-3 text-xs text-ink-faint">—</td>
+      <td className="px-4 py-3 max-w-[180px] text-xs text-ink-muted truncate" title={credit.note ?? ''}>{credit.note ?? '—'}</td>
       <td className="px-4 py-3">
-        <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">💰 Credit</span>
+        <span className="text-[10px] uppercase tracking-wide font-medium text-signal-pos">Credit</span>
       </td>
       {role === 'admin' && (
         <td className="px-4 py-3">
           <div className="flex items-center gap-1">
             {deleteConfirm ? (
               <span className="flex items-center gap-1 text-xs">
-                <button onClick={() => onDelete(credit.id)} className="text-red-600 font-semibold">Del</button>
-                <button onClick={() => setDeleteConfirm(false)} className="text-gray-400">✕</button>
+                <button onClick={() => onDelete(credit.id)} className="text-signal-neg font-semibold">Del</button>
+                <button onClick={() => setDeleteConfirm(false)} className="text-ink-faint">✕</button>
               </span>
             ) : (
-              <button onClick={() => setDeleteConfirm(true)} className="p-1 text-gray-300 hover:text-red-400 transition-colors" title="Delete">🗑</button>
+              <button onClick={() => setDeleteConfirm(true)} className="px-1.5 py-0.5 text-[11px] text-ink-faint hover:text-signal-neg transition-colors" title="Delete">Del</button>
             )}
           </div>
         </td>
@@ -1397,7 +1397,7 @@ function StatusDropdown({
       <button
         ref={btnRef}
         onClick={toggleOpen}
-        className={`px-2 py-0.5 rounded text-xs font-medium ${badge.className} hover:opacity-80 transition-opacity whitespace-nowrap`}
+        className={`px-2 py-0.5 rounded bg-pill text-xs ${badge.className} hover:opacity-70 transition-opacity whitespace-nowrap`}
       >
         {badge.label} ▾
       </button>
@@ -1405,25 +1405,25 @@ function StatusDropdown({
         <div
           ref={menuRef}
           style={{ position: 'fixed', top: pos.top, left: pos.left }}
-          className="z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[150px]"
+          className="z-50 bg-white border border-line rounded-lg shadow-lg min-w-[150px]"
         >
           {options.map(opt => (
             <button
               key={opt.status}
-              className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+              className="w-full text-left px-3 py-2 text-xs text-ink-muted hover:bg-pill transition-colors"
               onClick={() => { onUpdate(bill, opt.status); setOpen(false) }}
             >
               {opt.label}
             </button>
           ))}
           <button
-            className="w-full text-left px-3 py-2 text-xs text-amber-800 hover:bg-amber-50 transition-colors"
+            className="w-full text-left px-3 py-2 text-xs text-amber-600 hover:bg-pill transition-colors"
             onClick={() => { onPartialPayment(bill); setOpen(false) }}
           >
             Paid (Late) / Partial…
           </button>
           <button
-            className="w-full text-left px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 transition-colors border-t border-gray-100"
+            className="w-full text-left px-3 py-2 text-xs text-purple-600 hover:bg-pill transition-colors border-t border-line-soft"
             onClick={() => { onCarryForward(bill); setOpen(false) }}
           >
             Carried Forward →
@@ -1467,56 +1467,56 @@ function PartialPaymentModal({
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900">Record Payment</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        <div className="px-6 py-4 border-b border-line-soft flex items-center justify-between">
+          <h2 className="font-semibold text-ink">Record Payment</h2>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink-muted">✕</button>
         </div>
         <div className="p-6 space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-ink-muted">
             <span className="font-medium">{bill.utility_name}</span>
             {bill.provider && ` · ${bill.provider}`}
             {' — Total Due: '}
             <span className="font-medium">{currencySymbol}{baseTotal.toFixed(2)}</span>
           </p>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Amount Paid So Far</label>
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Amount Paid So Far</label>
             <input
               type="number" step="0.01" value={amountPaid}
               onChange={e => setAmountPaid(e.target.value)}
               placeholder="0.00"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Payment Date</label>
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Payment Date</label>
             <input
               type="date" value={paidAt}
               onChange={e => setPaidAt(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Late Fee / Interest (if any)</label>
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Late Fee / Interest (if any)</label>
             <input
               type="number" step="0.01" value={lateFee}
               onChange={e => setLateFee(e.target.value)}
               placeholder="0.00"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
             />
           </div>
           {remaining !== null && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-ink-muted">
               {lateFeeValue > 0 && (
-                <>Total incl. late fee: <span className="font-medium text-gray-700">{currencySymbol}{effectiveTotal.toFixed(2)}</span> · </>
+                <>Total incl. late fee: <span className="font-medium text-ink-muted">{currencySymbol}{effectiveTotal.toFixed(2)}</span> · </>
               )}
-              Remaining balance: <span className="font-medium text-gray-700">{currencySymbol}{remaining.toFixed(2)}</span>
+              Remaining balance: <span className="font-medium text-ink-muted">{currencySymbol}{remaining.toFixed(2)}</span>
             </p>
           )}
         </div>
         <div className="px-6 pb-6 flex gap-3">
-          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
+          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-ink-muted bg-pill rounded-lg hover:bg-line transition-colors">Cancel</button>
           <button onClick={handle} disabled={saving || amountPaid.trim() === ''}
-            className="flex-1 px-4 py-2 text-sm text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:bg-gray-300 transition-colors">
+            className="flex-1 px-4 py-2 text-sm text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors">
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
@@ -1559,29 +1559,29 @@ function CarryForwardModal({
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900">Carry Forward Balance</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        <div className="px-6 py-4 border-b border-line-soft flex items-center justify-between">
+          <h2 className="font-semibold text-ink">Carry Forward Balance</h2>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink-muted">✕</button>
         </div>
         <div className="p-6 space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-ink-muted">
             Moving balance from: <span className="font-medium">{bill.utility_name}</span>
             {bill.due_date ? ` (due ${bill.due_date})` : ''}
           </p>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Carryover Amount</label>
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Carryover Amount</label>
             <input
               type="number" step="0.01" value={amount}
               onChange={e => setAmount(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Target Bill (same account)</label>
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Target Bill (same account)</label>
             <select
               value={targetId}
               onChange={e => setTargetId(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
             >
               <option value="">— None —</option>
               {candidates.map(b => (
@@ -1592,17 +1592,17 @@ function CarryForwardModal({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Notes</label>
             <textarea
               rows={2} value={notes} onChange={e => setNotes(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink resize-none"
             />
           </div>
         </div>
         <div className="px-6 pb-6 flex gap-3">
-          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
+          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-ink-muted bg-pill rounded-lg hover:bg-line transition-colors">Cancel</button>
           <button onClick={handle} disabled={saving}
-            className="flex-1 px-4 py-2 text-sm text-white bg-purple-700 rounded-lg hover:bg-purple-800 disabled:bg-gray-300 transition-colors">
+            className="flex-1 px-4 py-2 text-sm text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors">
             {saving ? 'Saving…' : 'Carry Forward'}
           </button>
         </div>
@@ -1639,26 +1639,26 @@ function BillExpandPanel({
   onSaveNote: (id: string, notes: string) => void
 }) {
   return (
-    <div className="mt-2 pt-3 border-t border-gray-100 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-      <div><span className="text-gray-400">Bill #:</span> <span className="text-gray-700 font-mono">{bill.bill_number ?? '—'}</span></div>
-      <div><span className="text-gray-400">Account:</span> <span className="text-gray-700 font-mono">{bill.account_number ?? '—'}</span></div>
-      <div><span className="text-gray-400">Issued:</span> <span className="text-gray-700">{fmtShortDate(bill.issue_date)}</span></div>
-      <div><span className="text-gray-400">Due:</span> <span className="text-gray-700">{fmtShortDate(bill.due_date)}</span></div>
+    <div className="mt-2 pt-3 border-t border-line-soft grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+      <div><span className="text-ink-faint">Bill #:</span> <span className="text-ink-muted font-mono">{bill.bill_number ?? '—'}</span></div>
+      <div><span className="text-ink-faint">Account:</span> <span className="text-ink-muted font-mono">{bill.account_number ?? '—'}</span></div>
+      <div><span className="text-ink-faint">Issued:</span> <span className="text-ink-muted">{fmtShortDate(bill.issue_date)}</span></div>
+      <div><span className="text-ink-faint">Due:</span> <span className="text-ink-muted">{fmtShortDate(bill.due_date)}</span></div>
       <div className="col-span-2">
-        <span className="text-gray-400">Payment:</span>{' '}
+        <span className="text-ink-faint">Payment:</span>{' '}
         {bill.payment_methods ? (
-          <span className="text-gray-700">
-            {bill.is_auto_pay && <span className="text-blue-500 mr-1">⟳</span>}
+          <span className="text-ink-muted">
+            {bill.is_auto_pay && <span className="text-signal-pos mr-1">⟳</span>}
             {bill.payment_methods.label}
           </span>
         ) : bill.is_auto_pay ? (
-          <span className="text-blue-500">⟳ Auto</span>
+          <span className="text-signal-pos">⟳ Auto</span>
         ) : (
-          <span className="text-gray-400">—</span>
+          <span className="text-ink-faint">—</span>
         )}
       </div>
       <div className="col-span-2">
-        <span className="text-gray-400">Notes:</span>{' '}
+        <span className="text-ink-faint">Notes:</span>{' '}
         {noteEdit?.id === bill.id ? (
           <span className="inline-flex gap-1 items-center w-full mt-1">
             <input
@@ -1669,18 +1669,18 @@ function BillExpandPanel({
                 if (e.key === 'Enter') onSaveNote(bill.id, noteEdit.value)
                 if (e.key === 'Escape') setNoteEdit(null)
               }}
-              className="flex-1 min-w-0 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-900"
+              className="flex-1 min-w-0 text-sm border border-line rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ink"
             />
             <button onClick={() => onSaveNote(bill.id, noteEdit.value)} className="text-emerald-600 text-sm font-bold">✓</button>
-            <button onClick={() => setNoteEdit(null)} className="text-gray-400 text-sm">✕</button>
+            <button onClick={() => setNoteEdit(null)} className="text-ink-faint text-sm">✕</button>
           </span>
         ) : (
           <span
             onDoubleClick={() => setNoteEdit({ id: bill.id, value: bill.notes ?? '' })}
-            className="text-gray-700 cursor-pointer hover:text-gray-900"
+            className="text-ink-muted cursor-pointer hover:text-ink"
             title="Double-click to edit"
           >
-            {bill.notes || <span className="text-gray-300">+ double-click to add note</span>}
+            {bill.notes || <span className="text-ink-faint">+ double-click to add note</span>}
           </span>
         )}
       </div>
@@ -1690,16 +1690,16 @@ function BillExpandPanel({
           <div className="flex items-center gap-2">
             {bill.onedrive_file_url && (
               <a href={bill.onedrive_file_url} target="_blank" rel="noreferrer"
-                className="text-gray-400 hover:text-blue-500 transition-colors" title="Open file">📎</a>
+                className="text-xs text-ink-faint hover:text-signal-pos transition-colors" title="Open file">File</a>
             )}
-            <button onClick={() => onEdit(bill)} className="text-gray-400 hover:text-gray-700 transition-colors" title="Edit">✏️</button>
+            <button onClick={() => onEdit(bill)} className="text-xs text-ink-faint hover:text-ink transition-colors" title="Edit">Edit</button>
             {deleteConfirm === bill.id ? (
               <span className="flex items-center gap-1 text-sm">
-                <button onClick={() => onDelete(bill.id)} className="text-red-600 font-semibold">Del</button>
-                <button onClick={() => setDeleteConfirm(null)} className="text-gray-400">✕</button>
+                <button onClick={() => onDelete(bill.id)} className="text-signal-neg font-semibold">Del</button>
+                <button onClick={() => setDeleteConfirm(null)} className="text-ink-faint">✕</button>
               </span>
             ) : (
-              <button onClick={() => setDeleteConfirm(bill.id)} className="text-gray-300 hover:text-red-400 transition-colors" title="Delete">🗑</button>
+              <button onClick={() => setDeleteConfirm(bill.id)} className="text-xs text-ink-faint hover:text-signal-neg transition-colors" title="Delete">Del</button>
             )}
           </div>
         )}
@@ -1808,16 +1808,16 @@ function DashboardTab({
         >
           <div className="flex items-center gap-1.5 min-w-0">
             <span className={`text-xs transition-transform inline-block ${isOpen ? 'rotate-90' : ''}`}>▸</span>
-            <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
-            <span className="text-sm font-medium text-gray-800 truncate">{b.utility_name}</span>
-            {b.provider && <span className="text-sm text-gray-400 hidden sm:inline">· {b.provider}</span>}
+            <span className={`shrink-0 text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+            <span className="text-sm font-medium text-ink truncate">{b.utility_name}</span>
+            {b.provider && <span className="text-sm text-ink-faint hidden sm:inline">· {b.provider}</span>}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className={`text-sm font-medium ${amountClassName}`}>{fmtAmt(b)}</span>
             <span className={`text-sm ${dateClassName}`}>{dueDateLabel(b)}</span>
             {b.is_auto_pay ? (
               <span
-                className="text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-600 font-medium"
+                className="text-xs px-2 py-0.5 rounded bg-pill text-signal-pos font-medium"
                 title="Automatically paid — no manual action needed"
               >
                 ⟳ Auto Pay
@@ -1825,10 +1825,10 @@ function DashboardTab({
             ) : (
               <button
                 onClick={e => { e.stopPropagation(); onUpdateStatus(b, 'paid') }}
-                className="text-xs px-2 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                className="text-xs px-2 py-0.5 rounded bg-ink text-white hover:bg-ink/90 transition-colors"
                 title="Mark paid"
               >
-                ✓ Paid
+                Paid
               </button>
             )}
           </div>
@@ -1858,25 +1858,25 @@ function DashboardTab({
       {/* Current + Overdue bill lists */}
       <div className={`grid gap-3 mb-5 ${sortedCurrent.length > 0 && sortedOverdue.length > 0 ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
         {sortedOverdue.length > 0 && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <div className="text-red-600 font-semibold text-base mb-3">🚨 Overdue ({sortedOverdue.length})</div>
-            <div className="divide-y divide-red-100">
-              {sortedOverdue.map(b => renderBillRow(b, 'text-red-600', 'text-red-500'))}
+          <div className="bg-white border border-line rounded-xl p-4">
+            <div className="text-signal-neg font-semibold text-base mb-3">Overdue ({sortedOverdue.length})</div>
+            <div className="divide-y divide-line-soft">
+              {sortedOverdue.map(b => renderBillRow(b, 'text-signal-neg', 'text-signal-neg'))}
             </div>
           </div>
         )}
 
         {sortedCurrent.length > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-            <div className="text-amber-700 font-semibold text-base mb-3">⏰ Current ({sortedCurrent.length})</div>
-            <div className="divide-y divide-amber-100">
-              {sortedCurrent.map(b => renderBillRow(b, 'text-gray-800', dueDateColor(b)))}
+          <div className="bg-white border border-line rounded-xl p-4">
+            <div className="text-amber-600 font-semibold text-base mb-3">Current ({sortedCurrent.length})</div>
+            <div className="divide-y divide-line-soft">
+              {sortedCurrent.map(b => renderBillRow(b, 'text-ink', dueDateColor(b)))}
             </div>
           </div>
         )}
 
         {sortedOverdue.length === 0 && sortedCurrent.length === 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-sm text-gray-400">
+          <div className="bg-white rounded-xl border border-line p-6 text-center text-sm text-ink-faint">
             No current or overdue bills.
           </div>
         )}
@@ -1884,13 +1884,13 @@ function DashboardTab({
 
       {/* Company + search control row */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <div className="flex gap-1 bg-white border border-gray-200 rounded-lg p-1">
+        <div className="flex gap-1 bg-white border border-line rounded-lg p-1">
           {COMPANIES.map(c => (
             <button
               key={c.id}
               onClick={() => setCoFilter(c.id as Company | 'all')}
               className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-colors ${
-                coFilter === c.id ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-700'
+                coFilter === c.id ? 'bg-ink text-white' : 'text-ink-muted hover:text-ink'
               }`}
             >
               {c.label}
@@ -1902,31 +1902,31 @@ function DashboardTab({
           placeholder="Search utility / provider…"
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
-          className="ml-auto px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 w-60"
+          className="ml-auto px-3 py-1.5 text-sm border border-line rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ink w-60"
         />
       </div>
 
       {/* Vendor-grouped monthly history (accordion) */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100 text-base font-semibold text-gray-700">Bill History by Vendor</div>
+      <div className="bg-white rounded-xl border border-line overflow-hidden">
+        <div className="px-4 py-3 border-b border-line-soft text-base font-semibold text-ink-muted">Bill History by Vendor</div>
         {vendors.length === 0 ? (
-          <div className="py-10 text-center text-sm text-gray-400">No bills found.</div>
+          <div className="py-10 text-center text-sm text-ink-faint">No bills found.</div>
         ) : (
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-line-soft">
             {vendors.map(v => {
               const isOpen = expandedVendor === v.name
               return (
                 <div key={v.name}>
                   <button
                     onClick={() => setExpandedVendor(isOpen ? null : v.name)}
-                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-pill transition-colors text-left"
                   >
                     <div className="flex items-center gap-2">
                       <span className={`text-sm transition-transform inline-block ${isOpen ? 'rotate-90' : ''}`}>▸</span>
-                      <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[v.company_id]}`}>{v.company_id.toUpperCase()}</span>
-                      <span className="font-medium text-gray-900 text-base">{v.name}</span>
+                      <span className={`text-xs font-bold ${CO_COLORS[v.company_id]}`}>{v.company_id.toUpperCase()}</span>
+                      <span className="font-medium text-ink text-base">{v.name}</span>
                     </div>
-                    <span className="text-sm text-gray-400">{v.bills.length} bill{v.bills.length !== 1 ? 's' : ''}</span>
+                    <span className="text-sm text-ink-faint">{v.bills.length} bill{v.bills.length !== 1 ? 's' : ''}</span>
                   </button>
                   {isOpen && (() => {
                     const byYear = new Map<number, Bill[]>()
@@ -1946,28 +1946,28 @@ function DashboardTab({
                             <div key={year}>
                               <button
                                 onClick={() => toggleYear(yearKey)}
-                                className="w-full flex items-center gap-2 py-1.5 pl-6 text-left hover:bg-gray-50 transition-colors"
+                                className="w-full flex items-center gap-2 py-1.5 pl-6 text-left hover:bg-pill transition-colors"
                               >
                                 <span className={`text-xs transition-transform inline-block ${yearOpen ? 'rotate-90' : ''}`}>▸</span>
-                                <span className="text-sm font-semibold text-gray-600">{year || 'Unknown'}</span>
-                                <span className="text-xs text-gray-400">({yearBills.length})</span>
+                                <span className="text-sm font-semibold text-ink-muted">{year || 'Unknown'}</span>
+                                <span className="text-xs text-ink-faint">({yearBills.length})</span>
                               </button>
                               {yearOpen && yearBills.map(b => {
                                 const isBillOpen = expandedBillId === b.id
                                 return (
-                                  <div key={b.id} className="pl-10 py-1.5 border-t border-gray-50 first:border-t-0">
+                                  <div key={b.id} className="pl-10 py-1.5 border-t border-line-soft first:border-t-0">
                                     <div
                                       onClick={() => toggleBill(b.id)}
                                       className="flex items-center justify-between gap-2 cursor-pointer"
                                     >
                                       <span className="flex items-center gap-2 min-w-0">
                                         {v.hasMultipleAccounts && (
-                                          <span className="text-xs text-gray-400 font-mono truncate">{b.account_number ?? '—'}</span>
+                                          <span className="text-xs text-ink-faint font-mono truncate">{b.account_number ?? '—'}</span>
                                         )}
-                                        <span className="text-sm font-semibold text-gray-800">{monthYearLabel(b)}</span>
+                                        <span className="text-sm font-semibold text-ink">{monthYearLabel(b)}</span>
                                       </span>
                                       <div className="flex items-center gap-2">
-                                        <span className="text-sm font-medium text-gray-800">{fmtAmt(b)}</span>
+                                        <span className="text-sm font-medium text-ink">{fmtAmt(b)}</span>
                                         <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${STATUS_BADGE[computeBillStatus(b)].className}`}>
                                           {STATUS_BADGE[computeBillStatus(b)].label}
                                         </span>
@@ -2033,31 +2033,31 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
   }, [bills])
 
   if (bills.length === 0) {
-    return <div className="py-16 text-center text-sm text-gray-400">No bills data yet.</div>
+    return <div className="py-16 text-center text-sm text-ink-faint">No bills data yet.</div>
   }
 
   return (
     <div className="space-y-4">
       {utilities.map(({ key, company_id, utility_name, provider, account_number, bills: bs, overdueCount, maxAmt, minAmt, avgAmt }) => (
-        <div key={key} className="bg-white rounded-xl border border-gray-200 p-5">
+        <div key={key} className="bg-white rounded-xl border border-line p-5">
           {/* Utility header */}
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-2">
-              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${CO_COLORS[company_id]}`}>
+              <span className={`text-xs font-bold ${CO_COLORS[company_id]}`}>
                 {company_id.toUpperCase()}
               </span>
-              <span className="font-semibold text-gray-900">{utility_name}</span>
-              {provider && <span className="text-xs text-gray-400">· {provider}</span>}
-              {account_number && <span className="text-xs text-gray-400 font-mono">({account_number})</span>}
+              <span className="font-semibold text-ink">{utility_name}</span>
+              {provider && <span className="text-xs text-ink-faint">· {provider}</span>}
+              {account_number && <span className="text-xs text-ink-faint font-mono">({account_number})</span>}
             </div>
             <div className="flex items-center gap-2 text-xs">
               {overdueCount > 0 && (
-                <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-semibold">
-                  ⚠ {overdueCount}x overdue
+                <span className="text-signal-neg font-semibold">
+                  {overdueCount}x overdue
                 </span>
               )}
               {bs.some(b => b.is_auto_pay) && (
-                <span className="text-blue-500 font-medium">⟳ Auto-pay</span>
+                <span className="text-signal-pos font-medium">⟳ Auto-pay</span>
               )}
             </div>
           </div>
@@ -2069,9 +2069,9 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
               { label: 'Range', value: maxAmt > 0 ? `${bs[0].currency === 'USD' ? 'US$' : 'CA$'}${minAmt.toFixed(2)} – ${maxAmt.toFixed(2)}` : '—' },
               { label: 'Entries', value: bs.length },
             ].map(s => (
-              <div key={s.label} className="bg-gray-50 rounded-lg px-3 py-2">
-                <div className="text-xs text-gray-500 mb-0.5">{s.label}</div>
-                <div className="text-sm font-semibold text-gray-800">{s.value}</div>
+              <div key={s.label} className="bg-pill rounded-lg px-3 py-2">
+                <div className="text-xs text-ink-muted mb-0.5">{s.label}</div>
+                <div className="text-sm font-semibold text-ink">{s.value}</div>
               </div>
             ))}
           </div>
@@ -2080,7 +2080,7 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-gray-400 border-b border-gray-100">
+                <tr className="text-ink-faint border-b border-line-soft">
                   <th className="text-left pb-2 pr-3 font-medium">Period</th>
                   <th className="text-left pb-2 pr-3 font-medium">Bill #</th>
                   <th className="text-left pb-2 pr-3 font-medium">Issued</th>
@@ -2090,33 +2090,33 @@ function AnalyticsTab({ bills }: { bills: Bill[] }) {
                   <th className="text-center pb-2 font-medium">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-line-soft">
                 {bs.slice(-10).map(b => {
                   const pct = maxAmt > 0 && b.amount != null ? (b.amount / maxAmt) * 100 : 0
                   const wasLate = b.is_paid && b.paid_at && b.due_date && b.paid_at.slice(0, 10) > b.due_date
                   const isCurrentlyOverdue = computeBillStatus(b) === 'overdue' || computeBillStatus(b) === 'overdue_partial'
                   return (
                     <tr key={b.id}>
-                      <td className="py-2 pr-3 text-gray-600">{b.billing_period ?? '—'}</td>
-                      <td className="py-2 pr-3 font-mono text-gray-500">{b.bill_number ?? '—'}</td>
-                      <td className="py-2 pr-3 text-gray-500">{fmtShortDate(b.issue_date)}</td>
-                      <td className="py-2 pr-3 text-gray-500">{fmtShortDate(b.due_date)}</td>
-                      <td className="py-2 pr-4 text-right font-semibold text-gray-800">
+                      <td className="py-2 pr-3 text-ink-muted">{b.billing_period ?? '—'}</td>
+                      <td className="py-2 pr-3 font-mono text-ink-muted">{b.bill_number ?? '—'}</td>
+                      <td className="py-2 pr-3 text-ink-muted">{fmtShortDate(b.issue_date)}</td>
+                      <td className="py-2 pr-3 text-ink-muted">{fmtShortDate(b.due_date)}</td>
+                      <td className="py-2 pr-4 text-right font-semibold text-ink">
                         {b.amount != null ? fmtAmt(b) : '—'}
                       </td>
                       <td className="py-2 pr-2">
-                        <div className="bg-gray-100 rounded-full h-2 w-36">
+                        <div className="bg-pill rounded-full h-2 w-36">
                           <div
-                            className="h-2 rounded-full bg-blue-400 transition-all"
+                            className="h-2 rounded-full bg-ink/70 transition-all"
                             style={{ width: `${pct}%` }}
                           />
                         </div>
                       </td>
                       <td className="py-2 text-center">
-                        {b.is_paid && !wasLate  && <span className="text-emerald-600 font-bold" title="Paid on time">✓</span>}
+                        {b.is_paid && !wasLate  && <span className="text-signal-pos font-bold" title="Paid on time">✓</span>}
                         {wasLate                 && <span className="text-amber-500 font-bold"   title="Paid late">⚠</span>}
-                        {isCurrentlyOverdue      && <span className="text-red-600 font-bold"     title="Overdue">!</span>}
-                        {!b.is_paid && !isCurrentlyOverdue && <span className="text-gray-400" title="Pending">·</span>}
+                        {isCurrentlyOverdue      && <span className="text-signal-neg font-bold"     title="Overdue">!</span>}
+                        {!b.is_paid && !isCurrentlyOverdue && <span className="text-ink-faint" title="Pending">·</span>}
                       </td>
                     </tr>
                   )
@@ -2173,37 +2173,37 @@ function PaymentMethodsModal({
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900">💳 Payment Methods</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        <div className="px-6 py-4 border-b border-line-soft flex items-center justify-between">
+          <h2 className="font-semibold text-ink">Payment Methods</h2>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink-muted">✕</button>
         </div>
 
         <div className="px-6 py-3">
           {methods.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">No payment methods yet.</p>
+            <p className="text-sm text-ink-faint py-4 text-center">No payment methods yet.</p>
           ) : (
             <div className="space-y-2">
               {methods.map(m => (
-                <div key={m.id} className="flex items-start justify-between gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <div key={m.id} className="flex items-start justify-between gap-2 p-3 bg-pill rounded-lg border border-line">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${CO_COLORS[m.company_id]}`}>{m.company_id.toUpperCase()}</span>
-                      <span className="text-sm font-medium text-gray-900">{m.label}</span>
-                      {m.is_auto && <span className="text-xs text-blue-500">⟳ Auto</span>}
+                      <span className={`text-xs font-bold ${CO_COLORS[m.company_id]}`}>{m.company_id.toUpperCase()}</span>
+                      <span className="text-sm font-medium text-ink">{m.label}</span>
+                      {m.is_auto && <span className="text-xs text-signal-pos">⟳ Auto</span>}
                     </div>
-                    {m.holder_name && <div className="text-xs text-gray-500 mt-1">👤 {m.holder_name}</div>}
-                    {m.card_brand  && <div className="text-xs text-gray-500">💳 {m.card_brand}</div>}
-                    {m.bank_name   && <div className="text-xs text-gray-500">🏦 {m.bank_name}</div>}
-                    {m.notes       && <div className="text-xs text-gray-400 mt-1 italic">{m.notes}</div>}
+                    {m.holder_name && <div className="text-xs text-ink-muted mt-1">{m.holder_name}</div>}
+                    {m.card_brand  && <div className="text-xs text-ink-muted">{m.card_brand}</div>}
+                    {m.bank_name   && <div className="text-xs text-ink-muted">{m.bank_name}</div>}
+                    {m.notes       && <div className="text-xs text-ink-faint mt-1 italic">{m.notes}</div>}
                   </div>
                   {role === 'admin' && (
                     deleteId === m.id ? (
                       <span className="flex items-center gap-1 text-xs shrink-0">
-                        <button onClick={() => deleteMethod(m.id)} className="text-red-600 font-semibold">Del</button>
-                        <button onClick={() => setDeleteId(null)} className="text-gray-400">✕</button>
+                        <button onClick={() => deleteMethod(m.id)} className="text-signal-neg font-semibold">Del</button>
+                        <button onClick={() => setDeleteId(null)} className="text-ink-faint">✕</button>
                       </span>
                     ) : (
-                      <button onClick={() => setDeleteId(m.id)} className="text-gray-300 hover:text-red-400 text-sm shrink-0">🗑</button>
+                      <button onClick={() => setDeleteId(m.id)} className="text-ink-faint hover:text-signal-neg text-xs shrink-0">Del</button>
                     )
                   )}
                 </div>
@@ -2213,15 +2213,15 @@ function PaymentMethodsModal({
         </div>
 
         {role === 'admin' && (
-          <div className="px-6 pb-4 border-t border-gray-100 pt-4 space-y-3">
-            <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Add Payment Method</h3>
+          <div className="px-6 pb-4 border-t border-line-soft pt-4 space-y-3">
+            <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Add Payment Method</h3>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Company</label>
+                <label className="block text-xs font-semibold text-ink-muted mb-1">Company</label>
                 <select
                   value={form.company_id}
                   onChange={e => setForm(f => ({ ...f, company_id: e.target.value as Company }))}
-                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="w-full border border-line rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                 >
                   <option value="afs">AFS</option>
                   <option value="tnt">TNT</option>
@@ -2229,35 +2229,35 @@ function PaymentMethodsModal({
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Label *</label>
+                <label className="block text-xs font-semibold text-ink-muted mb-1">Label *</label>
                 <input
                   type="text"
                   placeholder="e.g. RBC Visa"
                   value={form.label}
                   onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="w-full border border-line rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Card Holder Name</label>
+                <label className="block text-xs font-semibold text-ink-muted mb-1">Card Holder Name</label>
                 <input
                   type="text"
                   placeholder="e.g. John Kim"
                   value={form.holder_name ?? ''}
                   onChange={e => setForm(f => ({ ...f, holder_name: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="w-full border border-line rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">Card Brand / Bank</label>
+                <label className="block text-xs font-semibold text-ink-muted mb-1">Card Brand / Bank</label>
                 <input
                   type="text"
                   placeholder="e.g. Visa, RBC, Chase"
                   value={form.card_brand ?? ''}
                   onChange={e => setForm(f => ({ ...f, card_brand: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="w-full border border-line rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                 />
               </div>
             </div>
@@ -2268,22 +2268,22 @@ function PaymentMethodsModal({
                   id="pm_auto"
                   checked={form.is_auto}
                   onChange={e => setForm(f => ({ ...f, is_auto: e.target.checked }))}
-                  className="w-4 h-4 accent-blue-600"
+                  className="w-4 h-4 accent-signal-pos"
                 />
-                <label htmlFor="pm_auto" className="text-sm text-gray-700">Auto-pay</label>
+                <label htmlFor="pm_auto" className="text-sm text-ink-muted">Auto-pay</label>
               </div>
               <input
                 type="text"
                 placeholder="Notes (optional)"
                 value={form.notes ?? ''}
                 onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                className="flex-1 border border-line rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
               />
             </div>
             <button
               onClick={addMethod}
               disabled={saving || !form.label.trim()}
-              className="w-full px-4 py-2 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors"
+              className="w-full px-4 py-2 text-sm text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors"
             >
               {saving ? 'Adding…' : '+ Add Method'}
             </button>
@@ -2341,40 +2341,40 @@ function CreditModal({
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900">💰 Account Credits</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        <div className="px-6 py-4 border-b border-line-soft flex items-center justify-between">
+          <h2 className="font-semibold text-ink">Account Credits</h2>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink-muted">✕</button>
         </div>
 
-        <div className="px-6 py-3 text-xs text-gray-500">
+        <div className="px-6 py-3 text-xs text-ink-muted">
           A credit is money already paid to a vendor that isn't tied to any specific bill —
           e.g. a duplicate payment. It reduces that account's running balance and can push it negative.
         </div>
 
         <div className="px-6 py-3">
           {credits.length === 0 ? (
-            <p className="text-sm text-gray-400 py-4 text-center">No credits recorded yet.</p>
+            <p className="text-sm text-ink-faint py-4 text-center">No credits recorded yet.</p>
           ) : (
             <div className="space-y-2">
               {credits.map(c => (
-                <div key={c.id} className="flex items-start justify-between gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <div key={c.id} className="flex items-start justify-between gap-2 p-3 bg-pill rounded-lg border border-line">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${CO_COLORS[c.company_id]}`}>{c.company_id.toUpperCase()}</span>
-                      <span className="text-sm font-medium text-gray-900">{c.utility_name}</span>
-                      {c.account_number && <span className="text-xs text-gray-400 font-mono">({c.account_number})</span>}
+                      <span className={`text-xs font-bold ${CO_COLORS[c.company_id]}`}>{c.company_id.toUpperCase()}</span>
+                      <span className="text-sm font-medium text-ink">{c.utility_name}</span>
+                      {c.account_number && <span className="text-xs text-ink-faint font-mono">({c.account_number})</span>}
                     </div>
-                    <div className="text-sm text-emerald-600 font-semibold mt-1">-${c.amount.toFixed(2)}</div>
-                    {c.credit_date && <div className="text-xs text-gray-400">{fmtShortDate(c.credit_date)}</div>}
-                    {c.note && <div className="text-xs text-gray-400 mt-1 italic">{c.note}</div>}
+                    <div className="text-sm text-signal-pos font-semibold mt-1">-${c.amount.toFixed(2)}</div>
+                    {c.credit_date && <div className="text-xs text-ink-faint">{fmtShortDate(c.credit_date)}</div>}
+                    {c.note && <div className="text-xs text-ink-faint mt-1 italic">{c.note}</div>}
                   </div>
                   {deleteId === c.id ? (
                     <span className="flex items-center gap-1 text-xs shrink-0">
-                      <button onClick={() => deleteCredit(c.id)} className="text-red-600 font-semibold">Del</button>
-                      <button onClick={() => setDeleteId(null)} className="text-gray-400">✕</button>
+                      <button onClick={() => deleteCredit(c.id)} className="text-signal-neg font-semibold">Del</button>
+                      <button onClick={() => setDeleteId(null)} className="text-ink-faint">✕</button>
                     </span>
                   ) : (
-                    <button onClick={() => setDeleteId(c.id)} className="text-gray-300 hover:text-red-400 text-sm shrink-0">🗑</button>
+                    <button onClick={() => setDeleteId(c.id)} className="text-ink-faint hover:text-signal-neg text-xs shrink-0">Del</button>
                   )}
                 </div>
               ))}
@@ -2382,15 +2382,15 @@ function CreditModal({
           )}
         </div>
 
-        <div className="px-6 pb-4 border-t border-gray-100 pt-4 space-y-3">
-          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Add Credit</h3>
+        <div className="px-6 pb-4 border-t border-line-soft pt-4 space-y-3">
+          <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Add Credit</h3>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Company</label>
+              <label className="block text-xs font-semibold text-ink-muted mb-1">Company</label>
               <select
                 value={form.company_id}
                 onChange={e => setForm(f => ({ ...f, company_id: e.target.value as Company }))}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                className="w-full border border-line rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
               >
                 <option value="afs">AFS</option>
                 <option value="tnt">TNT</option>
@@ -2398,64 +2398,64 @@ function CreditModal({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Utility Name *</label>
+              <label className="block text-xs font-semibold text-ink-muted mb-1">Utility Name *</label>
               <input
                 type="text"
                 placeholder="e.g. Water"
                 value={form.utility_name}
                 onChange={e => setForm(f => ({ ...f, utility_name: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                className="w-full border border-line rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
               />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Account Number</label>
+              <label className="block text-xs font-semibold text-ink-muted mb-1">Account Number</label>
               <input
                 type="text"
                 placeholder="e.g. 10149626-106307"
                 value={form.account_number}
                 onChange={e => setForm(f => ({ ...f, account_number: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-900"
+                className="w-full border border-line rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ink"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Amount *</label>
+              <label className="block text-xs font-semibold text-ink-muted mb-1">Amount *</label>
               <input
                 type="number"
                 step="0.01"
                 placeholder="0.00"
                 value={form.amount}
                 onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                className="w-full border border-line rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
               />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Date</label>
+              <label className="block text-xs font-semibold text-ink-muted mb-1">Date</label>
               <input
                 type="date"
                 value={form.credit_date}
                 onChange={e => setForm(f => ({ ...f, credit_date: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                className="w-full border border-line rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Note</label>
+              <label className="block text-xs font-semibold text-ink-muted mb-1">Note</label>
               <input
                 type="text"
                 placeholder="e.g. Duplicate EFT payment"
                 value={form.note}
                 onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                className="w-full border border-line rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
               />
             </div>
           </div>
           <button
             onClick={addCredit}
             disabled={saving || !form.utility_name.trim() || !form.amount}
-            className="w-full px-4 py-2 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors"
+            className="w-full px-4 py-2 text-sm text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors"
           >
             {saving ? 'Adding…' : '+ Add Credit'}
           </button>

@@ -228,7 +228,7 @@ function nextExpectedDate(bills: Bill[], provider: string, account: string | nul
 
 function DonutChart({ segments }: { segments: { value: number; color: string; label: string }[] }) {
   const total = segments.reduce((s, seg) => s + seg.value, 0)
-  if (total === 0) return <div className="w-36 h-36 rounded-full bg-gray-100 mx-auto" />
+  if (total === 0) return <div className="w-36 h-36 rounded-full bg-pill mx-auto" />
 
   const R = 52, CX = 66, CY = 66, strokeW = 18
   const circ = 2 * Math.PI * R
@@ -253,8 +253,8 @@ function DonutChart({ segments }: { segments: { value: number; color: string; la
         ))}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-bold text-gray-900">{total}</span>
-        <span className="text-[10px] text-gray-500">Bills</span>
+        <span className="text-2xl font-semibold text-ink">{total}</span>
+        <span className="text-[10px] text-ink-muted">Bills</span>
       </div>
     </div>
   )
@@ -275,12 +275,12 @@ function BarChart({ data, months }: { data: number[]; months: string[] }) {
           <div key={i} className="flex flex-col items-center gap-1 flex-1 min-w-0">
             <div className="relative w-full flex items-end" style={{ height: `${H}px` }}>
               <div
-                className={`w-full rounded-t transition-all ${isLast ? 'bg-blue-500' : 'bg-blue-200'}`}
+                className={`w-full rounded-t transition-all ${isLast ? 'bg-signal-pos' : 'bg-pill'}`}
                 style={{ height: `${Math.max(pct * H, v > 0 ? 3 : 0)}px` }}
                 title={`${months[i]}: ${fmtAmt(v)}`}
               />
             </div>
-            <span className="text-[9px] text-gray-400 truncate">{months[i]}</span>
+            <span className="text-[9px] text-ink-faint truncate">{months[i]}</span>
           </div>
         )
       })}
@@ -321,20 +321,15 @@ function SparkLine({ data }: { data: number[] }) {
 
 // ── StatCard ──────────────────────────────────────────────────────────────────
 
-function StatCard({ icon, label, value, sub, color = 'text-gray-900', bg = 'bg-white' }: {
-  icon: string; label: string; value: string; sub: string
-  color?: string; bg?: string
+function StatCard({ label, value, sub, color = 'text-ink', hero = false }: {
+  label: string; value: string; sub: string
+  color?: string; hero?: boolean
 }) {
   return (
-    <div className={`${bg} rounded-xl border border-gray-200 p-4`}>
-      <div className="flex items-start gap-3">
-        <div className="text-2xl shrink-0">{icon}</div>
-        <div className="min-w-0">
-          <p className="text-xs text-gray-500 font-medium mb-1">{label}</p>
-          <p className={`text-xl font-bold ${color} leading-tight truncate`}>{value}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
-        </div>
-      </div>
+    <div className={`bg-white rounded-xl border border-line p-4 ${hero ? 'flex flex-col justify-center' : ''}`}>
+      <p className="text-xs text-ink-muted font-medium mb-1.5">{label}</p>
+      <p className={`${hero ? 'text-3xl' : 'text-xl'} font-semibold ${color} leading-tight truncate`}>{value}</p>
+      <p className="text-xs text-ink-faint mt-1">{sub}</p>
     </div>
   )
 }
@@ -567,7 +562,7 @@ function OverviewContent() {
   if (loading) {
     return (
       <div className="p-6 space-y-4">
-        {[1,2,3,4].map(i => <div key={i} className="h-24 bg-white rounded-xl animate-pulse" />)}
+        {[1,2,3,4].map(i => <div key={i} className="h-24 bg-white rounded-xl border border-line-soft animate-pulse" />)}
       </div>
     )
   }
@@ -577,58 +572,49 @@ function OverviewContent() {
     <div className="p-6 space-y-5">
 
       {/* ── Stat cards ────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-6 gap-4">
+        <div className="col-span-2">
+          <StatCard
+            label="Overdue total due"
+            value={fmtAmt(stats.overdueAmt)}
+            sub={`${stats.overdueCount} unpaid past due date`}
+            color="text-signal-neg"
+            hero
+          />
+        </div>
         <StatCard
-          icon="💰"
-          label="Monthly Charges (Current)"
+          label="Monthly charges"
           value={fmtAmt(stats.thisMonthSpend)}
           sub={`${stats.thisMonthCount} bills · excl. prev. balance`}
-          color="text-gray-900"
         />
         <StatCard
-          icon="📊"
-          label="3-Month Avg (Charges)"
+          label="3-month avg"
           value={fmtAmt(stats.avgMonthly)}
           sub="Trailing 3 months"
-          color="text-blue-700"
-          bg="bg-blue-50"
         />
         <StatCard
-          icon="⚠️"
-          label="Overdue Total Due"
-          value={fmtAmt(stats.overdueAmt)}
-          sub={`${stats.overdueCount} unpaid past due date`}
-          color="text-red-600"
-          bg="bg-red-50"
-        />
-        <StatCard
-          icon="📅"
-          label="Due This Week"
+          label="Due this week"
           value={fmtAmt(stats.dueThisWeekAmt)}
           sub={`${stats.dueThisWeekCount} bills`}
-          color="text-amber-600"
-          bg="bg-amber-50"
         />
         <StatCard
-          icon="✅"
-          label="Paid This Month"
+          label="Paid this month"
           value={fmtAmt(stats.paidThisMonAmt)}
           sub={`${stats.paidThisMonCount} bills`}
-          color="text-emerald-600"
-          bg="bg-emerald-50"
+          color="text-signal-pos"
         />
       </div>
 
       {/* ── Trend chart + Bill Status ──────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2 bg-white rounded-xl border border-gray-200 p-5">
+        <div className="col-span-2 bg-white rounded-xl border border-line p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900">Monthly Charges Trend</h2>
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+            <h2 className="font-semibold text-ink">Monthly charges trend</h2>
+            <div className="flex gap-1 bg-pill rounded-lg p-0.5">
               {([6, 12] as const).map(w => (
                 <button key={w} onClick={() => setTrendWindow(w)}
                   className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                    trendWindow === w ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    trendWindow === w ? 'bg-white text-ink shadow-sm' : 'text-ink-muted hover:text-ink'
                   }`}>{w}M</button>
               ))}
             </div>
@@ -639,28 +625,28 @@ function OverviewContent() {
           />
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Bill Status</h2>
+        <div className="bg-white rounded-xl border border-line p-5">
+          <h2 className="font-semibold text-ink mb-4">Bill status</h2>
           <div className="flex items-center gap-4">
             <DonutChart segments={[
-              { value: billStatus.paid,           color: '#10b981', label: 'Paid' },
+              { value: billStatus.paid,           color: '#3182f6', label: 'Paid' },
               { value: billStatus.upcoming,        color: '#f59e0b', label: 'Upcoming' },
-              { value: billStatus.overdue,         color: '#ef4444', label: 'Overdue' },
+              { value: billStatus.overdue,         color: '#f04452', label: 'Overdue' },
               { value: billStatus.carriedForward,  color: '#a855f7', label: 'Carried Fwd' },
             ]} />
             <div className="space-y-2 text-sm">
               {[
-                { label: 'Paid',          count: billStatus.paid,           color: 'bg-emerald-500' },
+                { label: 'Paid',          count: billStatus.paid,           color: 'bg-signal-pos' },
                 { label: 'Upcoming',      count: billStatus.upcoming,        color: 'bg-amber-400' },
-                { label: 'Overdue',       count: billStatus.overdue,         color: 'bg-red-500' },
+                { label: 'Overdue',       count: billStatus.overdue,         color: 'bg-signal-neg' },
                 { label: 'Carried Fwd',   count: billStatus.carriedForward,  color: 'bg-purple-400' },
                 { label: 'Missing',       count: missingBills.length,        color: 'bg-orange-400' },
                 { label: 'Abnormal',      count: abnormalBills.length,       color: 'bg-yellow-400' },
               ].map(item => (
                 <div key={item.label} className="flex items-center gap-2">
                   <span className={`w-2.5 h-2.5 rounded-full ${item.color} shrink-0`} />
-                  <span className="text-gray-600 text-xs">{item.label}</span>
-                  <span className="ml-auto font-semibold text-gray-900 text-xs">{item.count}</span>
+                  <span className="text-ink-muted text-xs">{item.label}</span>
+                  <span className="ml-auto font-semibold text-ink text-xs">{item.count}</span>
                 </div>
               ))}
             </div>
@@ -670,20 +656,20 @@ function OverviewContent() {
 
       {/* ── Vendors + Locations spend ──────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Vendor Spend (All Time)</h2>
+        <div className="bg-white rounded-xl border border-line p-5">
+          <h2 className="font-semibold text-ink mb-4">Vendor spend (all time)</h2>
           {topVendors.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">No data</p>
+            <p className="text-sm text-ink-faint text-center py-4">No data</p>
           ) : (
             <div className="space-y-3">
               {topVendors.map(v => (
                 <div key={v.name}>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-700 truncate max-w-[60%]">{v.name}</span>
-                    <span className="font-medium text-gray-900">{fmtAmt(v.amount)}</span>
+                    <span className="text-ink-muted truncate max-w-[60%]">{v.name}</span>
+                    <span className="font-medium text-ink">{fmtAmt(v.amount)}</span>
                   </div>
-                  <div className="h-1.5 bg-gray-100 rounded-full">
-                    <div className="h-1.5 bg-blue-500 rounded-full" style={{ width: `${(v.amount / topMax) * 100}%` }} />
+                  <div className="h-1.5 bg-pill rounded-full">
+                    <div className="h-1.5 bg-ink/70 rounded-full" style={{ width: `${(v.amount / topMax) * 100}%` }} />
                   </div>
                 </div>
               ))}
@@ -691,20 +677,20 @@ function OverviewContent() {
           )}
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Location Spend (All Time)</h2>
+        <div className="bg-white rounded-xl border border-line p-5">
+          <h2 className="font-semibold text-ink mb-4">Location spend (all time)</h2>
           {locationSpend.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">No location data linked to bills yet</p>
+            <p className="text-sm text-ink-faint text-center py-4">No location data linked to bills yet</p>
           ) : (
             <div className="space-y-3">
               {locationSpend.map((l, i) => (
                 <div key={l.name}>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-700 truncate max-w-[60%]">{l.name}</span>
-                    <span className="font-medium text-gray-900">{fmtAmt(l.amount)}</span>
+                    <span className="text-ink-muted truncate max-w-[60%]">{l.name}</span>
+                    <span className="font-medium text-ink">{fmtAmt(l.amount)}</span>
                   </div>
-                  <div className="h-1.5 bg-gray-100 rounded-full">
-                    <div className="h-1.5 bg-emerald-500 rounded-full"
+                  <div className="h-1.5 bg-pill rounded-full">
+                    <div className="h-1.5 bg-ink/70 rounded-full"
                       style={{ width: `${(l.amount / (locationSpend[0]?.amount ?? 1)) * 100}%` }} />
                   </div>
                 </div>
@@ -717,13 +703,13 @@ function OverviewContent() {
       {/* ── Upcoming / Overdue / Abnormal ──────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-4">
         {/* Upcoming */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="bg-white rounded-xl border border-line p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900">Upcoming Bills</h2>
-            <span className="text-xs text-gray-400">Next 7 days</span>
+            <h2 className="font-semibold text-ink">Upcoming bills</h2>
+            <span className="text-xs text-ink-faint">Next 7 days</span>
           </div>
           {upcomingBills.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">No upcoming bills</p>
+            <p className="text-sm text-ink-faint text-center py-4">No upcoming bills</p>
           ) : (
             <div className="space-y-3">
               {upcomingBills.map(b => {
@@ -733,12 +719,12 @@ function OverviewContent() {
                 return (
                   <div key={b.id} className="flex items-center justify-between text-sm">
                     <div className="min-w-0">
-                      <p className="font-medium text-gray-800 truncate">{b.provider ?? b.utility_name}</p>
-                      <p className="text-xs text-gray-400">{b.company_id.toUpperCase()} · {fmtShort(b.due_date)}</p>
+                      <p className="font-medium text-ink truncate">{b.provider ?? b.utility_name}</p>
+                      <p className="text-xs text-ink-faint">{b.company_id.toUpperCase()} · {fmtShort(b.due_date)}</p>
                     </div>
                     <div className="text-right shrink-0 ml-2">
-                      <p className="font-medium text-gray-900">{fmtAmt(totalDueCAD(b))}</p>
-                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                      <p className="font-medium text-ink">{fmtAmt(totalDueCAD(b))}</p>
+                      <span className="text-xs text-ink-muted">
                         {days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : `${days}d`}
                       </span>
                     </div>
@@ -747,16 +733,16 @@ function OverviewContent() {
               })}
             </div>
           )}
-          <Link href="/utilities/bills" className="mt-4 block text-xs text-blue-600 hover:underline">View all →</Link>
+          <Link href="/utilities/bills" className="mt-4 block text-xs text-signal-pos hover:underline">View all →</Link>
         </div>
 
         {/* Overdue */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="bg-white rounded-xl border border-line p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-red-600">Overdue Bills</h2>
+            <h2 className="font-semibold text-signal-neg">Overdue bills</h2>
           </div>
           {overdueBills.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">No overdue bills 🎉</p>
+            <p className="text-sm text-ink-faint text-center py-4">No overdue bills</p>
           ) : (
             <div className="space-y-3">
               {overdueBills.map(b => {
@@ -766,27 +752,27 @@ function OverviewContent() {
                 return (
                   <div key={b.id} className="flex items-center justify-between text-sm">
                     <div className="min-w-0">
-                      <p className="font-medium text-gray-800 truncate">{b.provider ?? b.utility_name}</p>
-                      <p className="text-xs text-gray-400">{b.company_id.toUpperCase()} · {fmtShort(b.due_date)}</p>
+                      <p className="font-medium text-ink truncate">{b.provider ?? b.utility_name}</p>
+                      <p className="text-xs text-ink-faint">{b.company_id.toUpperCase()} · {fmtShort(b.due_date)}</p>
                     </div>
                     <div className="text-right shrink-0 ml-2">
-                      <p className="font-medium text-red-600">{fmtAmt(totalDueCAD(b))}</p>
-                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">{days}d overdue</span>
+                      <p className="font-medium text-signal-neg">{fmtAmt(totalDueCAD(b))}</p>
+                      <span className="text-xs text-signal-neg">{days}d overdue</span>
                     </div>
                   </div>
                 )
               })}
             </div>
           )}
-          <Link href="/utilities/bills?status=overdue" className="mt-4 block text-xs text-blue-600 hover:underline">View all →</Link>
+          <Link href="/utilities/bills?status=overdue" className="mt-4 block text-xs text-signal-pos hover:underline">View all →</Link>
         </div>
 
         {/* Abnormal + Missing */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Abnormal &amp; Missing</h2>
+        <div className="bg-white rounded-xl border border-line p-5">
+          <h2 className="font-semibold text-ink mb-4">Abnormal &amp; missing</h2>
 
           {abnormalBills.length === 0 && missingBills.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">All charges look normal 👍</p>
+            <p className="text-sm text-ink-faint text-center py-4">All charges look normal</p>
           ) : (
             <div className="space-y-3">
               {abnormalBills.map(b => {
@@ -795,12 +781,12 @@ function OverviewContent() {
                   <div key={b.id} className="flex items-start justify-between text-sm gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium shrink-0">Abnormal</span>
-                        <p className="font-medium text-gray-800 truncate">{b.provider ?? b.utility_name}</p>
+                        <span className="text-[10px] uppercase tracking-wide text-signal-neg font-medium shrink-0">Abnormal</span>
+                        <p className="font-medium text-ink truncate">{b.provider ?? b.utility_name}</p>
                       </div>
-                      <p className="text-xs text-gray-400 mt-0.5">{fmtShort(b.due_date)}</p>
+                      <p className="text-xs text-ink-faint mt-0.5">{fmtShort(b.due_date)}</p>
                     </div>
-                    <p className="font-medium text-gray-900 shrink-0">{fmtAmt(toCAD(charges, b.currency))}</p>
+                    <p className="font-medium text-ink shrink-0">{fmtAmt(toCAD(charges, b.currency))}</p>
                   </div>
                 )
               })}
@@ -808,12 +794,12 @@ function OverviewContent() {
                 <div key={`${m.provider}-${m.account_number}`} className="flex items-start justify-between text-sm gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium shrink-0">Missing</span>
-                      <p className="font-medium text-gray-800 truncate">{m.provider}</p>
+                      <span className="text-[10px] uppercase tracking-wide text-ink-muted font-medium shrink-0">Missing</span>
+                      <p className="font-medium text-ink truncate">{m.provider}</p>
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5">Expected: {m.expectedMonth}</p>
+                    <p className="text-xs text-ink-faint mt-0.5">Expected: {m.expectedMonth}</p>
                   </div>
-                  <span className="text-xs text-gray-400 shrink-0">{m.company_id.toUpperCase()}</span>
+                  <span className="text-xs text-ink-faint shrink-0">{m.company_id.toUpperCase()}</span>
                 </div>
               ))}
             </div>
@@ -829,7 +815,7 @@ export default function OverviewPage() {
   return (
     <Suspense fallback={
       <div className="p-6 space-y-4">
-        {[1,2,3,4].map(i => <div key={i} className="h-24 bg-white rounded-xl animate-pulse" />)}
+        {[1,2,3,4].map(i => <div key={i} className="h-24 bg-white rounded-xl border border-line-soft animate-pulse" />)}
       </div>
     }>
       <OverviewContent />

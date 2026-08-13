@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 export const dynamic = 'force-dynamic'
 
@@ -78,13 +78,9 @@ interface PaymentMethod {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const CO_BADGE: Record<Company, string> = {
-  afs: 'bg-blue-100 text-blue-700',
-  tnt: 'bg-amber-100 text-amber-700',
-  zfs: 'bg-emerald-100 text-emerald-700',
-}
-
-const DOC_ICONS: Record<string, string> = {
-  contract: '📄', rate_schedule: '📊', terms: '📋', other: '📎',
+  afs: 'text-blue-600',
+  tnt: 'text-amber-600',
+  zfs: 'text-emerald-600',
 }
 
 function toCAD(amount: number | null, currency: string) {
@@ -141,7 +137,7 @@ function CopyBtn({ text, id, copiedId, copy }: {
       onClick={e => { e.stopPropagation(); copy(text, id) }}
       title="Copy"
       className={`ml-1 px-1.5 py-0.5 rounded text-xs transition-colors ${
-        done ? 'text-emerald-600 bg-emerald-50' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+        done ? 'text-signal-pos bg-pill' : 'text-ink-faint hover:text-ink-muted hover:bg-pill'
       }`}
     >
       {done ? '✓' : '⎘'}
@@ -315,76 +311,76 @@ function VendorDetailPanel({
   const companyLocations = locations.filter(l => l.company_id === vendor.company_id)
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-white border-l border-gray-200">
+    <div className="flex flex-col h-full overflow-hidden bg-white border-l border-line">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
+      <div className="px-5 py-4 border-b border-line-soft flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${CO_BADGE[vendor.company_id]}`}>
+            <span className={`text-xs font-bold ${CO_BADGE[vendor.company_id]}`}>
               {vendor.company_id.toUpperCase()}
             </span>
             {vendor.service_type && (
-              <span className="px-2 py-0.5 rounded-full text-xs bg-sky-100 text-sky-700">
+              <span className="px-2 py-0.5 rounded-full text-xs bg-pill text-ink-muted">
                 {vendor.service_type}
               </span>
             )}
             {vendor.location_id && locationMap.get(vendor.location_id) && (
-              <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
-                📍 {locationMap.get(vendor.location_id)!.name}
+              <span className="px-2 py-0.5 rounded-full text-xs bg-pill text-ink-muted">
+                {locationMap.get(vendor.location_id)!.name}
               </span>
             )}
           </div>
-          <h2 className="text-lg font-bold text-gray-900 leading-tight">{vendor.name}</h2>
+          <h2 className="text-lg font-bold text-ink leading-tight">{vendor.name}</h2>
           {(avgAmt !== null) && (
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-xs text-ink-faint mt-0.5">
               Avg {fmtCAD(avgAmt)}/mo · {vendorBills.length} bills
               {nextBill?.due_date ? ` · Next: ${fmtDate(nextBill.due_date)}` : ''}
             </p>
           )}
           {(avgIssueDay !== null || avgDueDay !== null) && (
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-xs text-ink-faint mt-0.5">
               {avgIssueDay !== null && `Avg Invoice Date: ${ordinal(avgIssueDay)}`}
               {avgIssueDay !== null && avgDueDay !== null && ' · '}
               {avgDueDay !== null && `Avg Due Date: ${ordinal(avgDueDay)}`}
             </p>
           )}
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl shrink-0 leading-none mt-0.5">✕</button>
+        <button onClick={onClose} className="text-ink-faint hover:text-ink-muted text-xl shrink-0 leading-none mt-0.5">✕</button>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {/* Links row */}
         {(vendor.website_url || vendor.billing_portal_url) && (
-          <div className="px-5 py-3 border-b border-gray-100 flex gap-2 flex-wrap">
+          <div className="px-5 py-3 border-b border-line-soft flex gap-2 flex-wrap">
             {vendor.website_url && (
               <a href={vendor.website_url} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors">
-                🌐 Website
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-pill text-ink-muted hover:bg-line transition-colors">
+                Website
               </a>
             )}
             {vendor.billing_portal_url && (
               <a href={vendor.billing_portal_url} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors">
-                💳 Billing Portal
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-pill text-ink-muted hover:bg-line transition-colors">
+                Billing Portal
               </a>
             )}
           </div>
         )}
 
         {/* Contacts */}
-        <section className="px-5 py-4 border-b border-gray-100">
+        <section className="px-5 py-4 border-b border-line-soft">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Contacts</h3>
+            <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">Contacts</h3>
             {role === 'admin' && (
               <button onClick={() => setAddingContact(v => !v)}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                className="text-xs text-signal-pos hover:opacity-70 font-medium">
                 {addingContact ? 'Cancel' : '+ Add'}
               </button>
             )}
           </div>
 
           {contacts.length === 0 && !addingContact && (
-            <p className="text-xs text-gray-400">No contacts.</p>
+            <p className="text-xs text-ink-faint">No contacts.</p>
           )}
 
           <div className="space-y-3">
@@ -392,26 +388,26 @@ function VendorDetailPanel({
               <div key={c.id} className="group flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-sm font-medium text-gray-800">{c.name}</span>
-                    {c.is_primary && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Primary</span>}
-                    {c.title && <span className="text-xs text-gray-400">· {c.title}</span>}
+                    <span className="text-sm font-medium text-ink">{c.name}</span>
+                    {c.is_primary && <span className="text-[10px] uppercase tracking-wide text-amber-600 font-medium">Primary</span>}
+                    {c.title && <span className="text-xs text-ink-faint">· {c.title}</span>}
                   </div>
                   {c.email && (
                     <div className="flex items-center gap-1 mt-0.5">
-                      <a href={`mailto:${c.email}`} className="text-xs text-blue-600 hover:underline truncate max-w-[180px]">{c.email}</a>
+                      <a href={`mailto:${c.email}`} className="text-xs text-signal-pos hover:underline truncate max-w-[180px]">{c.email}</a>
                       <CopyBtn text={c.email} id={`email-${c.id}`} copiedId={copiedId} copy={copy} />
                     </div>
                   )}
                   {c.phone && (
                     <div className="flex items-center gap-1 mt-0.5">
-                      <a href={`tel:${c.phone}`} className="text-xs text-gray-600 hover:text-gray-900">{c.phone}</a>
+                      <a href={`tel:${c.phone}`} className="text-xs text-ink-muted hover:text-ink">{c.phone}</a>
                       <CopyBtn text={c.phone} id={`phone-${c.id}`} copiedId={copiedId} copy={copy} />
                     </div>
                   )}
                 </div>
                 {role === 'admin' && (
                   <button onClick={() => deleteContact(c.id)}
-                    className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs transition-opacity shrink-0 mt-0.5">
+                    className="opacity-0 group-hover:opacity-100 text-ink-faint hover:text-signal-neg text-xs transition-opacity shrink-0 mt-0.5">
                     ✕
                   </button>
                 )}
@@ -420,31 +416,31 @@ function VendorDetailPanel({
           </div>
 
           {addingContact && (
-            <div className="mt-3 p-3 bg-gray-50 rounded-lg space-y-2">
+            <div className="mt-3 p-3 bg-pill rounded-lg space-y-2">
               <div className="grid grid-cols-2 gap-2">
                 <input type="text" placeholder="Name *" value={ctForm.name}
                   onChange={e => setCtForm(f => ({ ...f, name: e.target.value }))}
-                  className="col-span-2 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  className="col-span-2 border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
                 <input type="text" placeholder="Title" value={ctForm.title}
                   onChange={e => setCtForm(f => ({ ...f, title: e.target.value }))}
-                  className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  className="border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
                 <input type="text" placeholder="Phone" value={ctForm.phone}
                   onChange={e => setCtForm(f => ({ ...f, phone: e.target.value }))}
-                  className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  className="border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
                 <input type="email" placeholder="Email" value={ctForm.email}
                   onChange={e => setCtForm(f => ({ ...f, email: e.target.value }))}
-                  className="col-span-2 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  className="col-span-2 border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
               </div>
               <div className="flex items-center gap-2">
-                <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                <label className="flex items-center gap-1.5 text-xs text-ink-muted cursor-pointer">
                   <input type="checkbox" checked={ctForm.is_primary}
                     onChange={e => setCtForm(f => ({ ...f, is_primary: e.target.checked }))}
-                    className="w-3.5 h-3.5 accent-blue-600" />
+                    className="w-3.5 h-3.5 accent-signal-pos" />
                   Primary contact
                 </label>
               </div>
               <button onClick={saveContact} disabled={savingCt || !ctForm.name.trim()}
-                className="w-full py-1.5 text-xs text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors">
+                className="w-full py-1.5 text-xs text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors">
                 {savingCt ? 'Saving…' : 'Add Contact'}
               </button>
             </div>
@@ -452,24 +448,24 @@ function VendorDetailPanel({
         </section>
 
         {/* Service Accounts */}
-        <section className="px-5 py-4 border-b border-gray-100">
+        <section className="px-5 py-4 border-b border-line-soft">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Service Accounts</h3>
+            <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">Service Accounts</h3>
             {role === 'admin' && (
               <button onClick={() => setAddingAccount(v => !v)}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                className="text-xs text-signal-pos hover:opacity-70 font-medium">
                 {addingAccount ? 'Cancel' : '+ Add'}
               </button>
             )}
           </div>
 
           {acctError && (
-            <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5 mb-2">
+            <p className="text-xs text-signal-neg bg-white border border-line rounded-lg px-2.5 py-1.5 mb-2">
               {acctError}
             </p>
           )}
           {accounts.length === 0 && !addingAccount && (
-            <p className="text-xs text-gray-400">No service accounts.</p>
+            <p className="text-xs text-ink-faint">No service accounts.</p>
           )}
 
           <div className="space-y-2">
@@ -479,35 +475,35 @@ function VendorDetailPanel({
                 <div key={a.id} className="group flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-mono text-sm font-semibold text-gray-800">{a.account_number}</span>
+                      <span className="font-mono text-sm font-semibold text-ink">{a.account_number}</span>
                       <CopyBtn text={a.account_number} id={`acct-${a.id}`} copiedId={copiedId} copy={copy} />
-                      {!a.is_active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">Inactive</span>}
+                      {!a.is_active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pill text-ink-muted">Inactive</span>}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      {loc && <span className="text-xs text-gray-500">📍 {loc.name}</span>}
-                      {a.service_label && <span className="text-xs text-gray-400">· {a.service_label}</span>}
+                      {loc && <span className="text-xs text-ink-muted">{loc.name}</span>}
+                      {a.service_label && <span className="text-xs text-ink-faint">· {a.service_label}</span>}
                     </div>
                     {a.billing_portal_url && (
                       <a href={a.billing_portal_url} target="_blank" rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:underline mt-0.5 block">💳 Account Portal</a>
+                        className="text-xs text-signal-pos hover:underline mt-0.5 block">Account Portal</a>
                     )}
-                    {a.notes && <p className="text-xs text-gray-400 mt-0.5 italic">{a.notes}</p>}
+                    {a.notes && <p className="text-xs text-ink-faint mt-0.5 italic">{a.notes}</p>}
                     {role === 'admin' ? (
                       <label className="flex items-center gap-1.5 mt-1 cursor-pointer w-fit">
                         <input type="checkbox" checked={a.is_auto_pay}
                           onChange={e => toggleAccountAutoPay(a.id, e.target.checked)}
-                          className="w-3.5 h-3.5 accent-blue-600" />
-                        <span className={`text-xs ${a.is_auto_pay ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+                          className="w-3.5 h-3.5 accent-signal-pos" />
+                        <span className={`text-xs ${a.is_auto_pay ? 'text-signal-pos font-medium' : 'text-ink-faint'}`}>
                           {a.is_auto_pay ? '⟳ Auto Pay' : 'Auto Pay'}
                         </span>
                       </label>
                     ) : a.is_auto_pay ? (
-                      <span className="text-xs text-blue-600 font-medium mt-1 block">⟳ Auto Pay</span>
+                      <span className="text-xs text-signal-pos font-medium mt-1 block">⟳ Auto Pay</span>
                     ) : null}
                   </div>
                   {role === 'admin' && (
                     <button onClick={() => deleteAccount(a.id)}
-                      className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs transition-opacity shrink-0 mt-0.5">
+                      className="opacity-0 group-hover:opacity-100 text-ink-faint hover:text-signal-neg text-xs transition-opacity shrink-0 mt-0.5">
                       ✕
                     </button>
                   )}
@@ -517,14 +513,14 @@ function VendorDetailPanel({
           </div>
 
           {addingAccount && (
-            <div className="mt-3 p-3 bg-gray-50 rounded-lg space-y-2">
+            <div className="mt-3 p-3 bg-pill rounded-lg space-y-2">
               <input type="text" placeholder="Account Number *" value={acctForm.account_number}
                 onChange={e => setAcctForm(f => ({ ...f, account_number: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                className="w-full border border-line rounded-lg px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ink" />
               <div className="grid grid-cols-2 gap-2">
                 <select value={acctForm.location_id}
                   onChange={e => setAcctForm(f => ({ ...f, location_id: e.target.value }))}
-                  className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                  className="border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink bg-white">
                   <option value="">— Location —</option>
                   {companyLocations.map(l => (
                     <option key={l.id} value={l.id}>{l.name}</option>
@@ -532,22 +528,22 @@ function VendorDetailPanel({
                 </select>
                 <input type="text" placeholder="Label (optional)" value={acctForm.service_label}
                   onChange={e => setAcctForm(f => ({ ...f, service_label: e.target.value }))}
-                  className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  className="border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
               </div>
               <input type="url" placeholder="Billing Portal URL (optional)" value={acctForm.billing_portal_url}
                 onChange={e => setAcctForm(f => ({ ...f, billing_portal_url: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                className="w-full border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
               <input type="text" placeholder="Notes (optional)" value={acctForm.notes}
                 onChange={e => setAcctForm(f => ({ ...f, notes: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-              <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                className="w-full border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
+              <label className="flex items-center gap-1.5 text-xs text-ink-muted cursor-pointer">
                 <input type="checkbox" checked={acctForm.is_auto_pay}
                   onChange={e => setAcctForm(f => ({ ...f, is_auto_pay: e.target.checked }))}
-                  className="w-3.5 h-3.5 accent-blue-600" />
+                  className="w-3.5 h-3.5 accent-signal-pos" />
                 Auto-pay
               </label>
               <button onClick={saveAccount} disabled={savingAcct || !acctForm.account_number.trim()}
-                className="w-full py-1.5 text-xs text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors">
+                className="w-full py-1.5 text-xs text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors">
                 {savingAcct ? 'Saving…' : 'Add Account'}
               </button>
             </div>
@@ -556,42 +552,40 @@ function VendorDetailPanel({
 
         {/* Contract Dates */}
         {(vendor.contract_start || vendor.contract_end) && (
-          <section className="px-5 py-3 border-b border-gray-100">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Contract Period</h3>
-            <p className="text-sm text-gray-700">
+          <section className="px-5 py-3 border-b border-line-soft">
+            <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">Contract Period</h3>
+            <p className="text-sm text-ink-muted">
               {fmtDate(vendor.contract_start)} → {vendor.contract_end ? fmtDate(vendor.contract_end) : 'Ongoing'}
             </p>
           </section>
         )}
 
         {/* Documents */}
-        <section className="px-5 py-4 border-b border-gray-100">
+        <section className="px-5 py-4 border-b border-line-soft">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Contract Documents</h3>
+            <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">Contract Documents</h3>
             {role === 'admin' && (
               <button onClick={() => setAddingDoc(v => !v)}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                className="text-xs text-signal-pos hover:opacity-70 font-medium">
                 {addingDoc ? 'Cancel' : '+ Add'}
               </button>
             )}
           </div>
 
           {documents.length === 0 && !addingDoc && (
-            <p className="text-xs text-gray-400">No documents.</p>
+            <p className="text-xs text-ink-faint">No documents.</p>
           )}
 
           <div className="space-y-2">
             {documents.map(d => (
               <div key={d.id} className="group flex items-center justify-between gap-2">
                 <a href={d.onedrive_url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-gray-700 hover:text-blue-600 transition-colors min-w-0">
-                  <span className="shrink-0">{DOC_ICONS[d.document_type] ?? '📎'}</span>
+                  className="flex items-center gap-2 text-sm text-ink-muted hover:text-signal-pos transition-colors min-w-0">
                   <span className="truncate">{d.name}</span>
-                  <span className="text-gray-300 shrink-0">👁</span>
                 </a>
                 {role === 'admin' && (
                   <button onClick={() => deleteDoc(d.id)}
-                    className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs transition-opacity shrink-0">
+                    className="opacity-0 group-hover:opacity-100 text-ink-faint hover:text-signal-neg text-xs transition-opacity shrink-0">
                     ✕
                   </button>
                 )}
@@ -600,14 +594,14 @@ function VendorDetailPanel({
           </div>
 
           {addingDoc && (
-            <div className="mt-3 p-3 bg-gray-50 rounded-lg space-y-2">
+            <div className="mt-3 p-3 bg-pill rounded-lg space-y-2">
               <input type="text" placeholder="Document name *" value={docForm.name}
                 onChange={e => setDocForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                className="w-full border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
               <div className="grid grid-cols-2 gap-2">
                 <select value={docForm.document_type}
                   onChange={e => setDocForm(f => ({ ...f, document_type: e.target.value }))}
-                  className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                  className="border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink bg-white">
                   <option value="contract">Contract</option>
                   <option value="rate_schedule">Rate Schedule</option>
                   <option value="terms">Terms & Conditions</option>
@@ -615,7 +609,7 @@ function VendorDetailPanel({
                 </select>
                 <select value={docForm.location_id}
                   onChange={e => setDocForm(f => ({ ...f, location_id: e.target.value }))}
-                  className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white">
+                  className="border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink bg-white">
                   <option value="">— Location —</option>
                   {companyLocations.map(l => (
                     <option key={l.id} value={l.id}>{l.name}</option>
@@ -624,9 +618,9 @@ function VendorDetailPanel({
               </div>
               <input type="url" placeholder="OneDrive URL *" value={docForm.onedrive_url}
                 onChange={e => setDocForm(f => ({ ...f, onedrive_url: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                className="w-full border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
               <button onClick={saveDoc} disabled={savingDoc || !docForm.name.trim() || !docForm.onedrive_url.trim()}
-                className="w-full py-1.5 text-xs text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors">
+                className="w-full py-1.5 text-xs text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors">
                 {savingDoc ? 'Saving…' : 'Add Document'}
               </button>
             </div>
@@ -636,8 +630,8 @@ function VendorDetailPanel({
         {/* Notes */}
         {vendor.notes && (
           <section className="px-5 py-4">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes</h3>
-            <p className="text-sm text-gray-600 italic">{vendor.notes}</p>
+            <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">Notes</h3>
+            <p className="text-sm text-ink-muted italic">{vendor.notes}</p>
           </section>
         )}
       </div>
@@ -847,28 +841,28 @@ function VendorModal({
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-line-soft flex items-center justify-between">
           <h3 className="text-lg font-semibold">{(initial as any).id ? 'Edit Vendor' : 'Add Vendor'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+          <button onClick={onClose} className="text-ink-faint hover:text-ink-muted text-xl">✕</button>
         </div>
 
         {/* Tabs */}
-        <div className="px-6 pt-3 flex gap-1 border-b border-gray-100">
+        <div className="px-6 pt-3 flex gap-1 border-b border-line-soft">
           <button onClick={() => setTab('details')}
             className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === 'details' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'
+              tab === 'details' ? 'border-ink text-ink' : 'border-transparent text-ink-faint hover:text-ink-muted'
             }`}>Details</button>
           <button onClick={() => setTab('accounts')}
             className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === 'accounts' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'
+              tab === 'accounts' ? 'border-ink text-ink' : 'border-transparent text-ink-faint hover:text-ink-muted'
             }`}>Accounts{accounts.length > 0 ? ` (${accounts.length})` : ''}</button>
           <button onClick={() => setTab('payments')}
             className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === 'payments' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'
+              tab === 'payments' ? 'border-ink text-ink' : 'border-transparent text-ink-faint hover:text-ink-muted'
             }`}>Payment Methods{linkedMethods.length > 0 ? ` (${linkedMethods.length})` : ''}</button>
           <button onClick={() => setTab('bills')}
             className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === 'bills' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'
+              tab === 'bills' ? 'border-ink text-ink' : 'border-transparent text-ink-faint hover:text-ink-muted'
             }`}>Bills{vendorBills.length > 0 ? ` (${vendorBills.length})` : ''}</button>
         </div>
 
@@ -876,78 +870,78 @@ function VendorModal({
         <div className="p-6 space-y-4">
           {/* Company */}
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Company *</label>
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Company *</label>
             <div className="flex gap-2">
               {(['afs', 'tnt', 'zfs'] as Company[]).map(c => (
                 <button key={c} onClick={() => selectCompany(c)}
                   className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                    form.company_id === c ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    form.company_id === c ? 'bg-ink text-white border-ink' : 'border-line text-ink-muted hover:bg-pill'
                   }`}>{c.toUpperCase()}</button>
               ))}
             </div>
           </div>
           {/* Location */}
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Location</label>
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Location</label>
             {companyLocations.length === 0 ? (
-              <p className="text-xs text-gray-400">No locations set up for this company yet.</p>
+              <p className="text-xs text-ink-faint">No locations set up for this company yet.</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => setForm(f => ({ ...f, location_id: null }))}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                    !form.location_id ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    !form.location_id ? 'bg-ink text-white border-ink' : 'border-line text-ink-muted hover:bg-pill'
                   }`}>None</button>
                 {companyLocations.map(l => (
                   <button key={l.id} onClick={() => setForm(f => ({ ...f, location_id: l.id }))}
                     className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                      form.location_id === l.id ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      form.location_id === l.id ? 'bg-ink text-white border-ink' : 'border-line text-ink-muted hover:bg-pill'
                     }`}>{l.name}</button>
                 ))}
               </div>
             )}
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Vendor Name *</label>
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Vendor Name *</label>
             <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               placeholder="e.g. BC Hydro"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Service Type</label>
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Service Type</label>
             <input type="text" value={form.service_type ?? ''} onChange={e => setForm(f => ({ ...f, service_type: e.target.value }))}
               placeholder="e.g. Electricity, Gas, Internet"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Website URL</label>
+              <label className="block text-xs font-semibold text-ink-muted mb-1">Website URL</label>
               <input type="url" value={form.website_url ?? ''} onChange={e => setForm(f => ({ ...f, website_url: e.target.value }))}
                 placeholder="https://"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Billing Portal URL</label>
+              <label className="block text-xs font-semibold text-ink-muted mb-1">Billing Portal URL</label>
               <input type="url" value={form.billing_portal_url ?? ''} onChange={e => setForm(f => ({ ...f, billing_portal_url: e.target.value }))}
                 placeholder="https://"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Contract Start</label>
+              <label className="block text-xs font-semibold text-ink-muted mb-1">Contract Start</label>
               <input type="date" value={form.contract_start ?? ''} onChange={e => setForm(f => ({ ...f, contract_start: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1">Contract End</label>
+              <label className="block text-xs font-semibold text-ink-muted mb-1">Contract End</label>
               <input type="date" value={form.contract_end ?? ''} onChange={e => setForm(f => ({ ...f, contract_end: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Notes</label>
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Notes</label>
             <textarea rows={2} value={form.notes ?? ''} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none" />
+              className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink resize-none" />
           </div>
         </div>
         )}
@@ -955,39 +949,39 @@ function VendorModal({
         {tab === 'accounts' && (
         <div className="p-6 space-y-3">
           {!vendorId ? (
-            <p className="text-xs text-gray-400">Save the vendor first, then add accounts here.</p>
+            <p className="text-xs text-ink-faint">Save the vendor first, then add accounts here.</p>
           ) : (
             <>
               {acctError && (
-                <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">
+                <p className="text-xs text-signal-neg bg-white border border-line rounded-lg px-2.5 py-1.5">
                   {acctError}
                 </p>
               )}
               {accounts.length === 0 && !addingAccount && (
-                <p className="text-xs text-gray-400">No accounts yet.</p>
+                <p className="text-xs text-ink-faint">No accounts yet.</p>
               )}
               <div className="space-y-2">
                 {accounts.map(a => {
                   const loc = a.location_id ? companyLocations.find(l => l.id === a.location_id) : null
                   return (
-                    <div key={a.id} className="group flex items-start justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2">
+                    <div key={a.id} className="group flex items-start justify-between gap-2 border border-line-soft rounded-lg px-3 py-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono text-sm font-semibold text-gray-800">{a.account_number}</span>
-                          {a.service_label && <span className="text-xs text-gray-400">· {a.service_label}</span>}
+                          <span className="font-mono text-sm font-semibold text-ink">{a.account_number}</span>
+                          {a.service_label && <span className="text-xs text-ink-faint">· {a.service_label}</span>}
                         </div>
-                        {loc && <span className="text-xs text-gray-500">📍 {loc.name}</span>}
+                        {loc && <span className="text-xs text-ink-muted">{loc.name}</span>}
                         <label className="flex items-center gap-1.5 mt-1 cursor-pointer w-fit">
                           <input type="checkbox" checked={a.is_auto_pay}
                             onChange={e => toggleAccountAutoPay(a.id, e.target.checked)}
-                            className="w-3.5 h-3.5 accent-blue-600" />
-                          <span className={`text-xs ${a.is_auto_pay ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+                            className="w-3.5 h-3.5 accent-signal-pos" />
+                          <span className={`text-xs ${a.is_auto_pay ? 'text-signal-pos font-medium' : 'text-ink-faint'}`}>
                             {a.is_auto_pay ? '⟳ Auto Pay' : 'Auto Pay'}
                           </span>
                         </label>
                       </div>
                       <button onClick={() => deleteAccount(a.id)}
-                        className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs transition-opacity shrink-0 mt-0.5">
+                        className="opacity-0 group-hover:opacity-100 text-ink-faint hover:text-signal-neg text-xs transition-opacity shrink-0 mt-0.5">
                         ✕
                       </button>
                     </div>
@@ -996,45 +990,45 @@ function VendorModal({
               </div>
 
               {addingAccount ? (
-                <div className="p-3 bg-gray-50 rounded-lg space-y-2">
+                <div className="p-3 bg-pill rounded-lg space-y-2">
                   <input type="text" placeholder="Account Number *" value={acctForm.account_number}
                     onChange={e => setAcctForm(f => ({ ...f, account_number: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                    className="w-full border border-line rounded-lg px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ink" />
                   <input type="text" placeholder="Label (optional)" value={acctForm.service_label}
                     onChange={e => setAcctForm(f => ({ ...f, service_label: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                    className="w-full border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
                   {companyLocations.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       <button onClick={() => setAcctForm(f => ({ ...f, location_id: '' }))}
                         className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
-                          !acctForm.location_id ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-600 hover:bg-white'
+                          !acctForm.location_id ? 'bg-ink text-white border-ink' : 'border-line text-ink-muted hover:bg-white'
                         }`}>None</button>
                       {companyLocations.map(l => (
                         <button key={l.id} onClick={() => setAcctForm(f => ({ ...f, location_id: l.id }))}
                           className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
-                            acctForm.location_id === l.id ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-200 text-gray-600 hover:bg-white'
+                            acctForm.location_id === l.id ? 'bg-ink text-white border-ink' : 'border-line text-ink-muted hover:bg-white'
                           }`}>{l.name}</button>
                       ))}
                     </div>
                   )}
-                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                  <label className="flex items-center gap-1.5 text-xs text-ink-muted cursor-pointer">
                     <input type="checkbox" checked={acctForm.is_auto_pay}
                       onChange={e => setAcctForm(f => ({ ...f, is_auto_pay: e.target.checked }))}
-                      className="w-3.5 h-3.5 accent-blue-600" />
+                      className="w-3.5 h-3.5 accent-signal-pos" />
                     Auto-pay
                   </label>
                   <div className="flex gap-2">
                     <button onClick={() => setAddingAccount(false)}
-                      className="flex-1 py-1.5 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+                      className="flex-1 py-1.5 text-xs text-ink-muted bg-white border border-line rounded-lg hover:bg-pill transition-colors">Cancel</button>
                     <button onClick={saveAccount} disabled={savingAcct || !acctForm.account_number.trim()}
-                      className="flex-1 py-1.5 text-xs text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors">
+                      className="flex-1 py-1.5 text-xs text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors">
                       {savingAcct ? 'Saving…' : 'Add Account'}
                     </button>
                   </div>
                 </div>
               ) : (
                 <button onClick={() => setAddingAccount(true)}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add Account</button>
+                  className="text-xs text-signal-pos hover:opacity-70 font-medium">+ Add Account</button>
               )}
             </>
           )}
@@ -1044,7 +1038,7 @@ function VendorModal({
         {tab === 'payments' && (
         <div className="p-6 space-y-3">
           {!vendorId ? (
-            <p className="text-xs text-gray-400">Save the vendor first, then add payment methods here.</p>
+            <p className="text-xs text-ink-faint">Save the vendor first, then add payment methods here.</p>
           ) : (
           <>
           {/* Auto Pay lives on the service account, not the payment method --
@@ -1054,23 +1048,23 @@ function VendorModal({
               accounts as the Accounts tab, same sync-to-bills behavior) avoids
               that mismatch being invisible. */}
           <div>
-            <p className="text-xs text-gray-400 mb-1.5">Auto Pay (drives the Dashboard badge)</p>
+            <p className="text-xs text-ink-faint mb-1.5">Auto Pay (drives the Dashboard badge)</p>
             {acctError && (
-              <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5 mb-1.5">
+              <p className="text-xs text-signal-neg bg-white border border-line rounded-lg px-2.5 py-1.5 mb-1.5">
                 {acctError}
               </p>
             )}
             {accounts.length === 0 ? (
-              <p className="text-xs text-gray-400">No accounts yet — add one in the Accounts tab.</p>
+              <p className="text-xs text-ink-faint">No accounts yet — add one in the Accounts tab.</p>
             ) : (
               <div className="space-y-1.5">
                 {accounts.map(a => (
                   <label key={a.id} className="flex items-center gap-1.5 cursor-pointer w-fit">
                     <input type="checkbox" checked={a.is_auto_pay}
                       onChange={e => toggleAccountAutoPay(a.id, e.target.checked)}
-                      className="w-3.5 h-3.5 accent-blue-600" />
-                    <span className="font-mono text-xs text-gray-600">{a.account_number}</span>
-                    <span className={`text-xs ${a.is_auto_pay ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+                      className="w-3.5 h-3.5 accent-signal-pos" />
+                    <span className="font-mono text-xs text-ink-muted">{a.account_number}</span>
+                    <span className={`text-xs ${a.is_auto_pay ? 'text-signal-pos font-medium' : 'text-ink-faint'}`}>
                       {a.is_auto_pay ? '⟳ Auto Pay' : 'Auto Pay'}
                     </span>
                   </label>
@@ -1079,35 +1073,35 @@ function VendorModal({
             )}
           </div>
 
-          <p className="text-xs text-gray-400 -mt-1 pt-2 border-t border-gray-100">Payment methods linked to this vendor</p>
+          <p className="text-xs text-ink-faint -mt-1 pt-2 border-t border-line-soft">Payment methods linked to this vendor</p>
           {methodsError && (
-            <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">
+            <p className="text-xs text-signal-neg bg-white border border-line rounded-lg px-2.5 py-1.5">
               {methodsError}
             </p>
           )}
           {loadingMethods ? (
-            <p className="text-xs text-gray-400">Loading…</p>
+            <p className="text-xs text-ink-faint">Loading…</p>
           ) : (
             <>
               {linkedMethods.length === 0 && (
-                <p className="text-xs text-gray-400">No payment methods linked yet.</p>
+                <p className="text-xs text-ink-faint">No payment methods linked yet.</p>
               )}
               <div className="space-y-2">
                 {linkedMethods.map(m => (
-                  <div key={m.id} className="group flex items-start justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2">
+                  <div key={m.id} className="group flex items-start justify-between gap-2 border border-line-soft rounded-lg px-3 py-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-medium text-gray-800">{m.label}</span>
-                        {m.is_auto && <span className="text-xs text-blue-500">⟳ Auto</span>}
+                        <span className="text-sm font-medium text-ink">{m.label}</span>
+                        {m.is_auto && <span className="text-xs text-signal-pos">⟳ Auto</span>}
                       </div>
-                      {m.holder_name && <div className="text-xs text-gray-500 mt-0.5">👤 {m.holder_name}</div>}
-                      {m.card_brand && <div className="text-xs text-gray-500">💳 {m.card_brand}</div>}
-                      {m.bank_name && <div className="text-xs text-gray-500">🏦 {m.bank_name}</div>}
-                      {m.notes && <div className="text-xs text-gray-400 mt-0.5 italic">{m.notes}</div>}
+                      {m.holder_name && <div className="text-xs text-ink-muted mt-0.5">{m.holder_name}</div>}
+                      {m.card_brand && <div className="text-xs text-ink-muted">{m.card_brand}</div>}
+                      {m.bank_name && <div className="text-xs text-ink-muted">{m.bank_name}</div>}
+                      {m.notes && <div className="text-xs text-ink-faint mt-0.5 italic">{m.notes}</div>}
                     </div>
                     <button onClick={() => unlinkMethod(m.id)}
                       title="Unlink from this vendor (the payment method itself isn't deleted)"
-                      className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs transition-opacity shrink-0 mt-0.5">
+                      className="opacity-0 group-hover:opacity-100 text-ink-faint hover:text-signal-neg text-xs transition-opacity shrink-0 mt-0.5">
                       ✕
                     </button>
                   </div>
@@ -1117,50 +1111,50 @@ function VendorModal({
               {unlinkedMethods.length > 0 && (
                 <div className="flex gap-2">
                   <select value={linkingMethodId} onChange={e => setLinkingMethodId(e.target.value)}
-                    className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
+                    className="flex-1 border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink">
                     <option value="">Select an existing payment method…</option>
                     {unlinkedMethods.map(m => (
                       <option key={m.id} value={m.id}>{m.label}{m.holder_name ? ` — ${m.holder_name}` : ''}</option>
                     ))}
                   </select>
                   <button onClick={() => linkMethod(linkingMethodId)} disabled={!linkingMethodId || linkingMethod}
-                    className="px-3 py-1.5 text-xs text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors">
+                    className="px-3 py-1.5 text-xs text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors">
                     {linkingMethod ? 'Linking…' : 'Link'}
                   </button>
                 </div>
               )}
 
               {addingMethod ? (
-                <div className="p-3 bg-gray-50 rounded-lg space-y-2">
+                <div className="p-3 bg-pill rounded-lg space-y-2">
                   <input type="text" placeholder="Label * (e.g. RBC Visa)" value={pmForm.label}
                     onChange={e => setPmForm(f => ({ ...f, label: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                    className="w-full border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
                   <div className="grid grid-cols-2 gap-2">
                     <input type="text" placeholder="Card Holder Name" value={pmForm.holder_name ?? ''}
                       onChange={e => setPmForm(f => ({ ...f, holder_name: e.target.value }))}
-                      className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                      className="border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
                     <input type="text" placeholder="Card Brand / Bank" value={pmForm.card_brand ?? ''}
                       onChange={e => setPmForm(f => ({ ...f, card_brand: e.target.value }))}
-                      className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                      className="border border-line rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
                   </div>
-                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                  <label className="flex items-center gap-1.5 text-xs text-ink-muted cursor-pointer">
                     <input type="checkbox" checked={pmForm.is_auto}
                       onChange={e => setPmForm(f => ({ ...f, is_auto: e.target.checked }))}
-                      className="w-3.5 h-3.5 accent-blue-600" />
+                      className="w-3.5 h-3.5 accent-signal-pos" />
                     Auto-pay
                   </label>
                   <div className="flex gap-2">
                     <button onClick={() => setAddingMethod(false)}
-                      className="flex-1 py-1.5 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
+                      className="flex-1 py-1.5 text-xs text-ink-muted bg-white border border-line rounded-lg hover:bg-pill transition-colors">Cancel</button>
                     <button onClick={saveMethod} disabled={savingMethod || !pmForm.label.trim()}
-                      className="flex-1 py-1.5 text-xs text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors">
+                      className="flex-1 py-1.5 text-xs text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors">
                       {savingMethod ? 'Saving…' : 'Add Method'}
                     </button>
                   </div>
                 </div>
               ) : (
                 <button onClick={() => { setPmForm({ ...emptyPM, company_id: form.company_id }); setAddingMethod(true) }}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ New payment method</button>
+                  className="text-xs text-signal-pos hover:opacity-70 font-medium">+ New payment method</button>
               )}
             </>
           )}
@@ -1172,24 +1166,24 @@ function VendorModal({
         {tab === 'bills' && (
         <div className="p-6">
           {vendorBills.length === 0 ? (
-            <p className="text-xs text-gray-400">No bills found for this vendor.</p>
+            <p className="text-xs text-ink-faint">No bills found for this vendor.</p>
           ) : (
             <div className="space-y-2">
               {vendorBills.map(b => {
                 const status = computeBillStatus(b)
                 const badge = STATUS_BADGE[status]
                 return (
-                  <div key={b.id} className="flex items-center justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2">
+                  <div key={b.id} className="flex items-center justify-between gap-2 border border-line-soft rounded-lg px-3 py-2">
                     <div className="min-w-0">
-                      <div className="text-sm font-medium text-gray-800 truncate">{b.utility_name}</div>
-                      <div className="text-xs text-gray-400">
+                      <div className="text-sm font-medium text-ink truncate">{b.utility_name}</div>
+                      <div className="text-xs text-ink-faint">
                         {b.account_number && <span className="font-mono">{b.account_number}</span>}
                         {b.account_number && b.due_date && ' · '}
                         {b.due_date && `Due ${fmtDate(b.due_date)}`}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-sm font-medium text-gray-800">
+                      <span className="text-sm font-medium text-ink">
                         {b.amount != null ? `${b.currency === 'USD' ? 'US$' : 'CA$'}${b.amount.toFixed(2)}` : '—'}
                       </span>
                       <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${badge.className}`}>{badge.label}</span>
@@ -1203,9 +1197,9 @@ function VendorModal({
         )}
 
         <div className="px-6 pb-6 flex gap-3">
-          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
+          <button onClick={onClose} className="flex-1 px-4 py-2 text-sm text-ink-muted bg-pill rounded-lg hover:bg-line transition-colors">Cancel</button>
           <button onClick={save} disabled={saving || !form.name.trim()}
-            className="flex-1 px-4 py-2 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors">
+            className="flex-1 px-4 py-2 text-sm text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors">
             {saving ? 'Saving…' : (initial as any).id ? 'Save Changes' : 'Add Vendor'}
           </button>
         </div>
@@ -1300,13 +1294,13 @@ function VendorsContent() {
       {/* ── Main list area ── */}
       <div className={`flex flex-col overflow-hidden transition-all duration-200 ${panelOpen ? 'w-[58%]' : 'flex-1'}`}>
         {/* Toolbar */}
-        <div className="p-4 border-b border-gray-200 bg-white flex items-center gap-2 flex-wrap">
+        <div className="p-4 border-b border-line bg-white flex items-center gap-2 flex-wrap">
           {/* Company filter */}
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          <div className="flex gap-1 bg-pill rounded-lg p-1">
             {(['all', 'afs', 'tnt', 'zfs'] as (Company | 'all')[]).map(c => (
               <button key={c} onClick={() => { setCoFilter(c); setLocFilter('all') }}
                 className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                  coFilter === c ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  coFilter === c ? 'bg-white text-ink shadow-sm' : 'text-ink-muted hover:text-ink'
                 }`}>
                 {c === 'all' ? 'All' : c.toUpperCase()}
               </button>
@@ -1315,7 +1309,7 @@ function VendorsContent() {
 
           {/* Location filter */}
           <select value={locFilter} onChange={e => setLocFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-900">
+            className="border border-line rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ink">
             <option value="all">All Locations</option>
             {filteredLocations.map(l => (
               <option key={l.id} value={l.id}>{l.name}</option>
@@ -1325,11 +1319,11 @@ function VendorsContent() {
           {/* Search */}
           <input type="text" placeholder="Search vendors, accounts…" value={search}
             onChange={e => setSearch(e.target.value)}
-            className="flex-1 min-w-[140px] border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+            className="flex-1 min-w-[140px] border border-line rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
 
           {role === 'admin' && (
             <button onClick={() => { setEditVendor(null); setShowModal(true) }}
-              className="px-4 py-1.5 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-700 transition-colors shrink-0">
+              className="px-4 py-1.5 text-sm text-white bg-ink rounded-lg hover:bg-ink/90 transition-colors shrink-0">
               + Add Vendor
             </button>
           )}
@@ -1342,22 +1336,22 @@ function VendorsContent() {
               {[1,2,3,4].map(i => <div key={i} className="h-14 bg-white rounded-xl animate-pulse" />)}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex items-center justify-center h-40 text-sm text-gray-400">No vendors found.</div>
+            <div className="flex items-center justify-center h-40 text-sm text-ink-faint">No vendors found.</div>
           ) : (
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10">
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Vendor</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Account #</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Contact</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Avg / mo</th>
+                <tr className="bg-pill border-b border-line">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Vendor</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Category</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Account #</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Contact</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Avg / mo</th>
                   {role === 'admin' && (
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wide">Actions</th>
                   )}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 bg-white">
+              <tbody className="divide-y divide-line-soft bg-white">
                 {filtered.map(v => {
                   const primaryContact = v.utility_vendor_contacts.find(c => c.is_primary)
                     ?? v.utility_vendor_contacts[0] ?? null
@@ -1372,60 +1366,60 @@ function VendorsContent() {
                   return (
                     <tr key={v.id}
                       onClick={() => setSelected(isSelected ? null : v)}
-                      className={`cursor-pointer transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                      className={`cursor-pointer transition-colors ${isSelected ? 'bg-pill' : 'hover:bg-pill'}`}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold ${CO_BADGE[v.company_id]}`}>
+                          <span className={`shrink-0 text-[10px] font-bold ${CO_BADGE[v.company_id]}`}>
                             {v.company_id.toUpperCase()}
                           </span>
-                          <span className="font-medium text-gray-900 truncate max-w-[140px]">{v.name}</span>
+                          <span className="font-medium text-ink truncate max-w-[140px]">{v.name}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{v.service_type ?? '—'}</td>
+                      <td className="px-4 py-3 text-ink-muted text-xs">{v.service_type ?? '—'}</td>
                       <td className="px-4 py-3">
                         {firstAccount ? (
                           <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                            <span className="font-mono text-xs text-gray-800">{firstAccount.account_number}</span>
+                            <span className="font-mono text-xs text-ink">{firstAccount.account_number}</span>
                             <CopyBtn text={firstAccount.account_number} id={`row-acct-${firstAccount.id}`} copiedId={copiedId} copy={copy} />
                             {v.utility_service_accounts.length > 1 && (
-                              <span className="text-[10px] text-gray-400">+{v.utility_service_accounts.length - 1}</span>
+                              <span className="text-[10px] text-ink-faint">+{v.utility_service_accounts.length - 1}</span>
                             )}
                           </div>
-                        ) : <span className="text-gray-400 text-xs">—</span>}
+                        ) : <span className="text-ink-faint text-xs">—</span>}
                       </td>
                       <td className="px-4 py-3">
                         {primaryContact ? (
                           <div onClick={e => e.stopPropagation()}>
-                            <p className="text-xs text-gray-700 truncate max-w-[130px]">{primaryContact.name}</p>
+                            <p className="text-xs text-ink-muted truncate max-w-[130px]">{primaryContact.name}</p>
                             {primaryContact.email && (
                               <a href={`mailto:${primaryContact.email}`}
-                                className="text-xs text-blue-600 hover:underline truncate max-w-[130px] block">
+                                className="text-xs text-signal-pos hover:underline truncate max-w-[130px] block">
                                 {primaryContact.email}
                               </a>
                             )}
                             {primaryContact.phone && (
-                              <a href={`tel:${primaryContact.phone}`} className="text-xs text-gray-500 hover:text-gray-700">
+                              <a href={`tel:${primaryContact.phone}`} className="text-xs text-ink-muted hover:text-ink">
                                 {primaryContact.phone}
                               </a>
                             )}
                           </div>
-                        ) : <span className="text-gray-400 text-xs">—</span>}
+                        ) : <span className="text-ink-faint text-xs">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-800">
+                      <td className="px-4 py-3 text-sm font-medium text-ink">
                         {avgAmt !== null ? fmtCAD(avgAmt) : '—'}
                       </td>
                       {role === 'admin' && (
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center gap-2">
                             <button onClick={() => { setEditVendor(v); setShowModal(true) }}
-                              className="text-xs text-gray-500 hover:text-gray-800 transition-colors">Edit</button>
+                              className="text-xs text-ink-muted hover:text-ink transition-colors">Edit</button>
                             {delConfirm === v.id ? (
                               <div className="flex gap-1">
-                                <button onClick={() => deleteVendor(v.id)} className="text-xs text-red-600 font-medium hover:text-red-800">Del</button>
-                                <button onClick={() => setDelConfirm(null)} className="text-xs text-gray-400">✕</button>
+                                <button onClick={() => deleteVendor(v.id)} className="text-xs text-signal-neg font-medium hover:opacity-70">Del</button>
+                                <button onClick={() => setDelConfirm(null)} className="text-xs text-ink-faint">✕</button>
                               </div>
                             ) : (
-                              <button onClick={() => setDelConfirm(v.id)} className="text-xs text-red-400 hover:text-red-600 transition-colors">Delete</button>
+                              <button onClick={() => setDelConfirm(v.id)} className="text-xs text-ink-faint hover:text-signal-neg transition-colors">Delete</button>
                             )}
                           </div>
                         </td>
@@ -1439,14 +1433,14 @@ function VendorsContent() {
         </div>
 
         {/* Footer count */}
-        <div className="px-4 py-2 border-t border-gray-100 bg-white text-xs text-gray-400">
+        <div className="px-4 py-2 border-t border-line-soft bg-white text-xs text-ink-faint">
           {filtered.length} of {vendors.length} vendors
         </div>
       </div>
 
       {/* ── Detail Panel ── */}
       {panelOpen && selected && (
-        <div className="flex-1 border-l border-gray-200 overflow-hidden">
+        <div className="flex-1 border-l border-line overflow-hidden">
           <VendorDetailPanel
             vendor={selected}
             locations={locations}
@@ -1476,7 +1470,7 @@ function VendorsContent() {
 
 export default function VendorsPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-gray-400 text-sm">Loading…</div>}>
+    <Suspense fallback={<div className="p-6 text-ink-faint text-sm">Loading…</div>}>
       <VendorsContent />
     </Suspense>
   )

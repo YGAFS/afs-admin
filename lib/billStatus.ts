@@ -46,14 +46,14 @@ export function isActiveOutstanding(bill: BillForStatus): boolean {
 }
 
 export const STATUS_BADGE: Record<BillStatusResult, { label: string; className: string }> = {
-  paid:            { label: 'Paid',              className: 'bg-emerald-100 text-emerald-700' },
-  paid_late:       { label: 'Paid (Late)',       className: 'bg-amber-100 text-amber-800' },
-  carried_forward: { label: 'Carried Forward',   className: 'bg-purple-100 text-purple-700' },
-  waived:          { label: 'Waived',            className: 'bg-gray-100 text-gray-500' },
-  void:            { label: 'Void',              className: 'bg-gray-100 text-gray-400' },
-  overdue:         { label: 'Overdue',           className: 'bg-red-100 text-red-700' },
-  overdue_partial: { label: 'Overdue (Partial)', className: 'bg-orange-100 text-orange-700' },
-  due_today:       { label: 'Due Today',         className: 'bg-yellow-100 text-yellow-700' },
-  upcoming:        { label: 'Upcoming',          className: 'bg-blue-100 text-blue-700' },
-  open:            { label: 'Open',              className: 'bg-slate-100 text-slate-600' },
+  paid:            { label: 'Paid',              className: 'text-signal-pos font-semibold' },
+  paid_late:       { label: 'Paid (Late)',       className: 'text-amber-600 font-semibold' },
+  carried_forward: { label: 'Carried Forward',   className: 'text-purple-600 font-semibold' },
+  waived:          { label: 'Waived',            className: 'text-ink-faint font-medium' },
+  void:            { label: 'Void',              className: 'text-ink-faint font-medium' },
+  overdue:         { label: 'Overdue',           className: 'text-signal-neg font-semibold' },
+  overdue_partial: { label: 'Overdue (Partial)', className: 'text-signal-neg font-semibold' },
+  due_today:       { label: 'Due Today',         className: 'text-amber-600 font-semibold' },
+  upcoming:        { label: 'Upcoming',          className: 'text-ink-muted font-medium' },
+  open:            { label: 'Open',              className: 'text-ink-muted font-medium' },
 }

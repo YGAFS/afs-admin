@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 export const dynamic = 'force-dynamic'
 
@@ -104,29 +104,29 @@ export default function ReportsPage() {
 
   const maxMonthly = Math.max(...(['afs','tnt','zfs'] as Company[]).flatMap(co => monthlyByCompany[co]))
 
-  if (loading) return <div className="p-6 text-sm text-gray-400">Loading...</div>
+  if (loading) return <div className="p-6 text-sm text-ink-faint">Loading...</div>
 
   return (
     <div className="h-full overflow-auto">
     <div className="p-6 space-y-6">
       {/* YTD Summary */}
       <div className="grid grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="text-xs text-gray-500 mb-1">YTD Total ({thisYear})</div>
-          <div className="text-2xl font-bold text-gray-900">CA${totalYTD.toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+        <div className="bg-white rounded-xl border border-line p-4">
+          <div className="text-xs text-ink-muted mb-1">YTD Total ({thisYear})</div>
+          <div className="text-2xl font-bold text-ink">CA${totalYTD.toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
         </div>
         {(['afs','tnt','zfs'] as Company[]).map(co => (
-          <div key={co} className="bg-white rounded-xl border border-gray-200 p-4">
-            <div className="text-xs text-gray-500 mb-1">{CO_LABEL[co]}</div>
-            <div className="text-2xl font-bold text-gray-900">CA${ytdByCompany[co].toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
-            <div className="text-xs text-gray-400 mt-1">{totalYTD > 0 ? ((ytdByCompany[co] / totalYTD) * 100).toFixed(1) : '0'}% of total</div>
+          <div key={co} className="bg-white rounded-xl border border-line p-4">
+            <div className="text-xs text-ink-muted mb-1">{CO_LABEL[co]}</div>
+            <div className="text-2xl font-bold text-ink">CA${ytdByCompany[co].toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
+            <div className="text-xs text-ink-faint mt-1">{totalYTD > 0 ? ((ytdByCompany[co] / totalYTD) * 100).toFixed(1) : '0'}% of total</div>
           </div>
         ))}
       </div>
 
       {/* Monthly trend chart */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Monthly Charges by Company ({thisYear})</h2>
+      <div className="bg-white rounded-xl border border-line p-5">
+        <h2 className="text-sm font-semibold text-ink-muted mb-4">Monthly Charges by Company ({thisYear})</h2>
         <div className="flex items-end gap-1 h-40">
           {MONTHS.map((mo, i) => {
             const total = (['afs','tnt','zfs'] as Company[]).reduce((s, co) => s + monthlyByCompany[co][i], 0)
@@ -141,14 +141,14 @@ export default function ReportsPage() {
                     ) : null
                   })}
                 </div>
-                <div className="text-[9px] text-gray-400">{mo}</div>
+                <div className="text-[9px] text-ink-faint">{mo}</div>
               </div>
             )
           })}
         </div>
         <div className="flex gap-4 mt-3">
           {(['afs','tnt','zfs'] as Company[]).map(co => (
-            <div key={co} className="flex items-center gap-1.5 text-xs text-gray-500">
+            <div key={co} className="flex items-center gap-1.5 text-xs text-ink-muted">
               <div className={`w-2.5 h-2.5 rounded-sm ${CO_COLOR[co]}`} />
               {CO_LABEL[co]}
             </div>
@@ -157,18 +157,18 @@ export default function ReportsPage() {
       </div>
 
       {/* Spend by utility type */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Spend by Utility Type (All Time)</h2>
+      <div className="bg-white rounded-xl border border-line p-5">
+        <h2 className="text-sm font-semibold text-ink-muted mb-4">Spend by Utility Type (All Time)</h2>
         <div className="space-y-3">
           {byUtility.map(([name, total]) => {
             const pct = byUtility[0][1] > 0 ? (total / byUtility[0][1]) * 100 : 0
             return (
               <div key={name} className="flex items-center gap-3">
-                <div className="w-28 text-sm text-gray-600 truncate">{name}</div>
-                <div className="flex-1 bg-gray-100 rounded-full h-2">
-                  <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
+                <div className="w-28 text-sm text-ink-muted truncate">{name}</div>
+                <div className="flex-1 bg-pill rounded-full h-2">
+                  <div className="bg-ink/70 h-2 rounded-full" style={{ width: `${pct}%` }} />
                 </div>
-                <div className="text-sm font-medium text-gray-700 w-24 text-right">
+                <div className="text-sm font-medium text-ink-muted w-24 text-right">
                   CA${total.toLocaleString('en-CA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </div>
               </div>
