@@ -1,0 +1,14 @@
+.venv/
+.token_cache*.json
+config.json
+config.*.json
+!config.example.json
+!config.*.example.json
+reports/
+__pycache__/
+*.pyc
+*.log
+*-dryrun.txt
+*-run.txt
+dryrun-*.txt
+sort-done-*.txt

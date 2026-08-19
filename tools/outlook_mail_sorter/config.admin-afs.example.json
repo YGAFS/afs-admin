@@ -1,0 +1,112 @@
+{
+  "azure": {
+    "client_id": "YOUR_AZURE_PUBLIC_CLIENT_ID",
+    "tenant_id": "YOUR_AZURE_TENANT_ID",
+    "scopes": [
+      "User.Read",
+      "Mail.ReadWrite",
+      "Mail.ReadWrite.Shared",
+      "offline_access"
+    ],
+    "shared_mailbox": "shared-mailbox@example.com"
+  },
+  "runtime": {
+    "page_size": 50,
+    "classify_inbox": true,
+    "classify_done": false,
+    "move_done": true,
+    "default_company": null,
+    "company_categories": [
+      "ZFS",
+      "TNT",
+      "AFS"
+    ],
+    "preserve_categories": [
+      "Urgent",
+      "From Accounting team",
+      "ZFS Vendor",
+      "Review Needed",
+      "Sales"
+    ],
+    "move_inbox": true,
+    "classify_inbox_only_when_missing_company": true,
+    "inbox_special_rule_names": [
+      "Fuel Surcharge"
+    ]
+  },
+  "folders": {
+    "inbox": "Inbox",
+    "done": "Archive/Done Inbox/Done",
+    "done_by_company": {
+      "AFS": "Archive/Done Inbox/Done - AFS",
+      "TNT": "Archive/Done Inbox/Done - TNT",
+      "ZFS": "Archive/Done Inbox/Done - ZFS"
+    },
+    "special_destinations": {
+      "accounting": "Archive/Accounting",
+      "operation": "Archive/Operation",
+      "sales": "Archive/Sales",
+      "inactive_etc": "Archive/Inactive/ETC",
+      "hr": "Archive/HR",
+      "admin": "Archive/Admin",
+      "contract": "Archive/Admin/Contracts",
+      "admin_it": "Archive/Admin/IT",
+      "bill_invoice": "Archive/Admin/Invoice"
+    }
+  },
+  "company_rules": [
+    {
+      "company": "ZFS",
+      "domains": [
+        "zenithfortio.com",
+        "deel.com"
+      ],
+      "senders": [],
+      "subject_contains": []
+    },
+    {
+      "company": "TNT",
+      "domains": [
+        "tnt-expresslines.com"
+      ],
+      "senders": [],
+      "subject_contains": []
+    },
+    {
+      "company": "AFS",
+      "domains": [
+        "afstransco.com"
+      ],
+      "senders": [],
+      "subject_contains": []
+    }
+  ],
+  "special_move_rules": [
+    {
+      "name": "Fuel Surcharge",
+      "destination_type": "special",
+      "destination_key": "inactive_etc",
+      "domains": [],
+      "senders": [],
+      "subject_contains": [
+        "fuel surcharge",
+        "fsc weekly surcharge"
+      ]
+    },
+    {
+      "name": "DocuSign",
+      "destination_type": "special",
+      "destination_key": "contract",
+      "domains": [
+        "docusign.com",
+        "docusign.net"
+      ],
+      "senders": [],
+      "subject_contains": [
+        "docusign",
+        "completed:",
+        "signed document"
+      ]
+    }
+  ]
+}

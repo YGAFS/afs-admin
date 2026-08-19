@@ -1,0 +1,111 @@
+{
+  "azure": {
+    "client_id": "YOUR_AZURE_PUBLIC_CLIENT_ID",
+    "tenant_id": "YOUR_AZURE_TENANT_ID",
+    "scopes": [
+      "User.Read",
+      "Mail.ReadWrite",
+      "offline_access"
+    ],
+    "shared_mailbox": null
+  },
+  "runtime": {
+    "page_size": 50,
+    "classify_inbox": true,
+    "classify_done": false,
+    "move_done": true,
+    "default_company": null,
+    "company_categories": [
+      "ZFS",
+      "TNT",
+      "AFS"
+    ],
+    "preserve_categories": [
+      "Urgent",
+      "From Accounting team",
+      "ZFS Vendor",
+      "Review Needed"
+    ],
+    "classify_inbox_only_when_missing_company": true,
+    "move_inbox": true,
+    "inbox_special_rule_names": [
+      "Fuel Surcharge"
+    ]
+  },
+  "folders": {
+    "inbox": "Inbox",
+    "done": "Archive/Done Inbox/Done",
+    "done_by_company": {
+      "AFS": "Archive/Done Inbox/Done - AFS",
+      "TNT": "Archive/Done Inbox/Done - TNT",
+      "ZFS": "Archive/Done Inbox/Done - ZFS"
+    },
+    "special_destinations": {
+      "contract": "Archive/Admin/Contract",
+      "inactive_etc": "Inactive/ETC",
+      "hr": "HR",
+      "admin": "Archive/Admin"
+    }
+  },
+  "company_rules": [
+    {
+      "company": "ZFS",
+      "domains": [
+        "zenithfortio.com",
+        "deel.com"
+      ],
+      "senders": [],
+      "subject_contains": []
+    },
+    {
+      "company": "TNT",
+      "domains": [
+        "tnt-expresslines.com"
+      ],
+      "senders": [],
+      "subject_contains": []
+    },
+    {
+      "company": "AFS",
+      "domains": [
+        "afstransco.com"
+      ],
+      "senders": [],
+      "subject_contains": []
+    }
+  ],
+  "special_move_rules": [
+    {
+      "name": "Fuel Surcharge",
+      "destination_type": "special",
+      "destination_key": "inactive_etc",
+      "domains": [],
+      "senders": [],
+      "subject_contains": [
+        "fuel surcharge"
+      ]
+    },
+    {
+      "name": "HR Keywords - Body Review",
+      "review_only": true,
+      "destination_type": "special",
+      "destination_key": "hr",
+      "domains": [],
+      "senders": [],
+      "subject_contains": [],
+      "body_contains": [
+        "vacation",
+        "sick leave",
+        "PTO",
+        "paid time off",
+        "payroll",
+        "overtime",
+        "Work from Home",
+        "WFH"
+      ],
+      "add_categories": [
+        "Review Needed"
+      ]
+    }
+  ]
+}
