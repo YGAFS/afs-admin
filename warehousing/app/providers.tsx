@@ -1,13 +1,13 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState } from 'react'
-import { getMsal } from '@/lib/msal'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { User } from '@supabase/supabase-js'
+import { getMsal } from '@/lib/msal'
+import { ADMIN_EMAILS, DEFAULT_UI_LANGUAGE, type UiLanguage } from '@/lib/i18n'
 
 export type Role = 'requester' | 'purchasing' | 'operations' | 'bookkeeping' | 'admin'
 
-// Lazy singleton — only instantiated client-side (never during SSR/prerender)
 let _supabase: SupabaseClient | null = null
 function getSupabase() {
   if (!_supabase) {
@@ -19,19 +19,33 @@ function getSupabase() {
   return _supabase
 }
 
-// role: null while loading, or once resolved: a Role if the user has an
-// app_access row for app='warehousing', otherwise `'none'` — unlike the HR
-// app's `allowedSections` (null = full access), a missing row here means NO
-// access, not full access, since this app handles approvals/financial data.
-type AuthCtx = { user: User | null; loading: boolean; role: Role | 'none' | null }
-const AuthContext = createContext<AuthCtx>({ user: null, loading: true, role: null })
+type AuthCtx = {
+  user: User | null
+  loading: boolean
+  role: Role | 'none' | null
+  locale: UiLanguage
+  canManageLocale: boolean
+  setLocale: (locale: UiLanguage) => Promise<boolean>
+}
+
+const AuthContext = createContext<AuthCtx>({
+  user: null,
+  loading: true,
+  role: null,
+  locale: DEFAULT_UI_LANGUAGE,
+  canManageLocale: false,
+  setLocale: async () => false,
+})
+
 export const useAuth = () => useContext(AuthContext)
 
 export default function Providers({ children }: { children: React.ReactNode }) {
-  const [user,    setUser]   = useState<User | null>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [roleLoading, setRoleLoading] = useState(true)
   const [role, setRole] = useState<Role | 'none' | null>(null)
+  const [locale, setLocaleState] = useState<UiLanguage>(DEFAULT_UI_LANGUAGE)
+  const [settingsLoading, setSettingsLoading] = useState(true)
 
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_AZURE_CLIENT_ID) {
@@ -51,17 +65,15 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Keyed on the stable email string, not the User object reference — Supabase
-  // re-emits onAuthStateChange (TOKEN_REFRESHED, tab refocus, etc.) with a new
-  // object for the same account, which would otherwise re-run this and flicker
-  // `loading` on every one of those events (same lesson learned in the HR app's
-  // providers.tsx).
   const userEmail = user?.email ?? null
+
   useEffect(() => {
     if (loading) return
     if (!userEmail) {
       setRole(null)
       setRoleLoading(false)
+      setLocaleState(DEFAULT_UI_LANGUAGE)
+      setSettingsLoading(false)
       return
     }
     setRoleLoading(true)
@@ -77,8 +89,35 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       })
   }, [userEmail, loading])
 
+  useEffect(() => {
+    if (loading) return
+    if (!userEmail) return
+    setSettingsLoading(true)
+    getSupabase()
+      .from('warehousing_settings')
+      .select('value')
+      .eq('key', 'ui_language')
+      .maybeSingle()
+      .then(({ data }) => {
+        setLocaleState(data?.value === 'ko' ? 'ko' : DEFAULT_UI_LANGUAGE)
+        setSettingsLoading(false)
+      })
+  }, [userEmail, loading])
+
+  async function setLocale(locale: UiLanguage) {
+    if (!userEmail || !ADMIN_EMAILS.includes(userEmail)) return false
+    const { error } = await getSupabase()
+      .from('warehousing_settings')
+      .upsert({ key: 'ui_language', value: locale }, { onConflict: 'key' })
+    if (error) return false
+    setLocaleState(locale)
+    return true
+  }
+
+  const canManageLocale = !!userEmail && ADMIN_EMAILS.includes(userEmail)
+
   return (
-    <AuthContext.Provider value={{ user, loading: loading || roleLoading, role }}>
+    <AuthContext.Provider value={{ user, loading: loading || roleLoading || settingsLoading, role, locale, canManageLocale, setLocale }}>
       {children}
     </AuthContext.Provider>
   )

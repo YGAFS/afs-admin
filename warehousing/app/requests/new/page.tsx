@@ -24,7 +24,7 @@ const COMPANIES: { id: CompanyId; label: string }[] = [
 
 export default function NewRequestPage() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, locale } = useAuth()
   const [companyId, setCompanyId] = useState<CompanyId>('afs')
   const [draft, setDraft] = useState<DraftRequest>({ is_customer_chargeback: false, po_required: 'unknown', currency: 'CAD' })
   const [showValidation, setShowValidation] = useState(false)
@@ -44,8 +44,11 @@ export default function NewRequestPage() {
       .select('id')
       .single()
     setSaving(false)
-    if (err || !data) { setError(err?.message ?? '저장에 실패했습니다.'); return }
-    await logActivity(data.id, user?.email ?? '', 'draft_created', '임시저장으로 요청서 생성')
+    if (err || !data) {
+      setError(err?.message ?? (locale === 'ko' ? '저장에 실패했습니다.' : 'Failed to save draft.'))
+      return
+    }
+    await logActivity(data.id, user?.email ?? '', 'draft_created', locale === 'ko' ? '임시저장으로 요청서 생성' : 'Created request as draft')
     router.push(`/requests/${data.id}`)
   }
 
@@ -69,7 +72,10 @@ export default function NewRequestPage() {
       },
       category
     )
-    if (errors.length) { setError(errors[0]); return }
+    if (errors.length) {
+      setError(errors[0])
+      return
+    }
 
     setSaving(true)
     setError(null)
@@ -85,19 +91,24 @@ export default function NewRequestPage() {
       .select('id')
       .single()
     setSaving(false)
-    if (err || !data) { setError(err?.message ?? '제출에 실패했습니다.'); return }
-    await logActivity(data.id, user?.email ?? '', 'submitted', `${user?.email}님이 요청서를 제출했습니다`)
+    if (err || !data) {
+      setError(err?.message ?? (locale === 'ko' ? '제출에 실패했습니다.' : 'Failed to submit request.'))
+      return
+    }
+    await logActivity(data.id, user?.email ?? '', 'submitted', locale === 'ko' ? `${user?.email}님이 요청서를 제출했습니다` : `${user?.email} submitted the request`)
     router.push(`/requests/${data.id}`)
   }
 
   return (
     <div className="p-6 max-w-3xl">
-      <h1 className="text-xl font-bold text-ink mb-1">새 구매 요청 작성</h1>
-      <p className="text-sm text-ink-faint mb-6">필요한 정보를 최대한 자세히 입력하면 처리 속도가 빨라집니다.</p>
+      <h1 className="text-xl font-bold text-ink mb-1">{locale === 'ko' ? '새 구매 요청 작성' : 'Create a New Purchase Request'}</h1>
+      <p className="text-sm text-ink-faint mb-6">
+        {locale === 'ko' ? '필요한 정보를 최대한 자세히 입력하면 처리 속도가 빨라집니다.' : 'Add as much detail as you can to help the team process this faster.'}
+      </p>
 
       <div className="bg-white rounded-2xl border border-line-soft p-6 space-y-6">
         <div>
-          <label className="block text-xs font-semibold text-ink-muted mb-1">회사</label>
+          <label className="block text-xs font-semibold text-ink-muted mb-1">{locale === 'ko' ? '회사' : 'Company'}</label>
           <select value={companyId} onChange={e => setCompanyId(e.target.value as CompanyId)} className="w-40 border border-line rounded-lg px-3 py-2 text-sm">
             {COMPANIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
@@ -115,14 +126,14 @@ export default function NewRequestPage() {
             disabled={saving}
             className="px-4 py-2 text-sm text-ink-muted border border-line bg-white rounded-lg hover:bg-pill transition-colors"
           >
-            임시저장
+            {locale === 'ko' ? '임시저장' : 'Save Draft'}
           </button>
           <button
             onClick={submit}
             disabled={saving}
             className="px-4 py-2 text-sm text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-ink-faint transition-colors"
           >
-            {saving ? '처리 중…' : '제출'}
+            {saving ? (locale === 'ko' ? '처리 중…' : 'Working...') : (locale === 'ko' ? '제출' : 'Submit')}
           </button>
         </div>
       </div>
