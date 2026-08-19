@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #191f28;
+  --color-ink-muted: #6b7280;
+  --color-ink-faint: #9ca3af;
+  --color-line: #d1d5db;
+  --color-line-soft: #e5e7eb;
+  --color-line-strong: #9ca3af;
+  --color-pill: #f2f4f6;
+  --color-signal-neg: #f04452;
+  --color-signal-pos: #3182f6;
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+}
