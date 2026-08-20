@@ -186,9 +186,9 @@ function AppSidebar({
 
   return (
     <aside className={`shrink-0 h-screen sticky top-0 flex flex-col border-r overflow-hidden transition-all duration-200 ${theme.shell} ${open ? 'w-56' : 'w-20'}`}>
-      <div className={`px-4 py-4 border-b ${theme.border}`}>
-        <div className="flex items-center justify-between gap-2">
-          <Link href={homeHref} className="flex items-center gap-3 min-w-0">
+      <div className={`relative px-4 py-4 border-b ${theme.border}`}>
+        <div className={`flex items-center gap-2 ${open ? 'justify-between' : 'justify-center'}`}>
+          <Link href={homeHref} className={`flex items-center min-w-0 ${open ? 'gap-3' : 'justify-center'}`}>
             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${theme.brand}`}>
               <span className="text-white text-xs font-bold">AFS</span>
             </div>
@@ -196,7 +196,7 @@ function AppSidebar({
           </Link>
           <button
             onClick={onToggle}
-            className={`w-8 h-8 shrink-0 flex items-center justify-center transition-colors ${theme.chevron}`}
+            className={`w-8 h-8 shrink-0 flex items-center justify-center transition-colors ${theme.chevron} ${open ? '' : 'absolute top-2 right-2'}`}
             title={open ? 'Collapse sidebar' : 'Expand sidebar'}
           >
             <span className={`transition-transform duration-200 ${open ? '' : 'rotate-180'}`}>
