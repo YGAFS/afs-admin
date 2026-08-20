@@ -18,22 +18,29 @@ type NavItem = {
   icon: () => React.ReactElement
 }
 
+type UtilityNavItem = {
+  href: string
+  label: string
+  icon: () => React.ReactElement
+  badge?: number
+}
+
 const NAV: NavItem[] = [
-  { href: '/hr',        key: 'nav.hr',       icon: CalendarIcon },
-  { href: '/utilities', key: 'nav.utility',  icon: BoltIcon },
-  { href: '/licenses',  key: 'nav.licenses', icon: FileIcon },
-  { href: '/assets',    key: 'nav.assets',   icon: FolderIcon },
-  { href: '/supplies',  key: 'nav.supplies', icon: CupIcon },
-  { href: '/admin',     key: 'nav.admin',    icon: GearIcon },
+  { href: '/hr', key: 'nav.hr', icon: CalendarIcon },
+  { href: '/utilities', key: 'nav.utility', icon: BoltIcon },
+  { href: '/licenses', key: 'nav.licenses', icon: FileIcon },
+  { href: '/assets', key: 'nav.assets', icon: FolderIcon },
+  { href: '/supplies', key: 'nav.supplies', icon: CupIcon },
+  { href: '/admin', key: 'nav.admin', icon: GearIcon },
 ]
 
-const UTILITY_NAV: { href: string; label: string; icon: () => React.ReactElement; badge?: number }[] = [
-  { href: '/utilities/overview',   label: 'Overview',      icon: HomeIcon },
-  { href: '/utilities/bills',      label: 'Utility Bills', icon: FileIcon },
-  { href: '/utilities/vendors',    label: 'Vendors',       icon: BuildingIcon },
-  { href: '/utilities/calendar',   label: 'Calendar',      icon: CalendarIcon },
-  { href: '/utilities/reports',    label: 'Reports',       icon: ChartIcon },
-  { href: '/utilities/settings',   label: 'Settings',      icon: GearIcon },
+const UTILITY_NAV: UtilityNavItem[] = [
+  { href: '/utilities/overview', label: 'Overview', icon: HomeIcon },
+  { href: '/utilities/bills', label: 'Utility Bills', icon: FileIcon },
+  { href: '/utilities/vendors', label: 'Vendors', icon: BuildingIcon },
+  { href: '/utilities/calendar', label: 'Calendar', icon: CalendarIcon },
+  { href: '/utilities/reports', label: 'Reports', icon: ChartIcon },
+  { href: '/utilities/settings', label: 'Settings', icon: GearIcon },
 ]
 
 function HomeIcon() {
@@ -108,66 +115,112 @@ function CupIcon() {
   )
 }
 
-function SidebarShell({
-  children,
-  canSeeHr = false,
-}: {
-  children: React.ReactNode
-  canSeeHr?: boolean
-}) {
+function ChevronLeftIcon() {
   return (
-    <aside className="w-56 shrink-0 h-screen flex flex-col bg-white border-r border-line overflow-hidden">
-      <div className="px-4 py-4 border-b border-line-soft">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-ink flex items-center justify-center shrink-0">
-              <span className="text-white text-xs font-bold">AFS</span>
-            </div>
-            <span className="font-semibold text-sm text-ink truncate">AFS Admin</span>
-          </div>
-          {canSeeHr && (
-            <Link
-              href="/hr"
-              title="Back to HR Dashboard"
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-faint hover:bg-pill hover:text-ink transition-colors"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15l-5-5 5-5M8 10h9" />
-              </svg>
-            </Link>
-          )}
-        </div>
-      </div>
-      {children}
-    </aside>
+    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15l-5-5 5-5" />
+    </svg>
   )
 }
 
-function UtilitySidebar() {
-  const path = usePathname()
-  const { allowedSections } = useAuth()
-  const canSeeHr = !allowedSections || allowedSections.includes('hr')
+type SidebarTheme = {
+  shell: string
+  border: string
+  brand: string
+  title: string
+  chevron: string
+  navActive: string
+  navIdle: string
+  navActiveIcon: string
+  navIdleIcon: string
+  footerBorder: string
+  footerText: string
+}
+
+function AppSidebar({
+  open,
+  onToggle,
+  title,
+  homeHref,
+  items,
+  activeMatcher,
+  dark = false,
+  footer,
+}: {
+  open: boolean
+  onToggle: () => void
+  title: string
+  homeHref: string
+  items: Array<{ href: string; label: string; icon: () => React.ReactElement; badge?: number }>
+  activeMatcher: (href: string) => boolean
+  dark?: boolean
+  footer?: React.ReactNode
+}) {
+  const theme: SidebarTheme = dark
+    ? {
+        shell: 'bg-[#111318] text-white border-white/6',
+        border: 'border-white/8',
+        brand: 'bg-white/10 ring-1 ring-white/8',
+        title: 'text-white',
+        chevron: 'text-white/52 hover:text-white',
+        navActive: 'bg-white text-[#111318]',
+        navIdle: 'text-white/64 hover:bg-white/6 hover:text-white',
+        navActiveIcon: 'text-[#111318]',
+        navIdleIcon: 'text-white/50',
+        footerBorder: 'border-white/8',
+        footerText: 'text-white/42',
+      }
+    : {
+        shell: 'bg-white text-ink border-line',
+        border: 'border-line-soft',
+        brand: 'bg-ink',
+        title: 'text-ink',
+        chevron: 'text-ink-faint hover:text-ink',
+        navActive: 'bg-pill text-ink',
+        navIdle: 'text-ink-muted hover:bg-pill hover:text-ink',
+        navActiveIcon: 'text-ink',
+        navIdleIcon: 'text-ink-faint',
+        footerBorder: 'border-line-soft',
+        footerText: 'text-ink-muted',
+      }
 
   return (
-    <SidebarShell canSeeHr={canSeeHr}>
-      <nav className="px-2 py-3 border-b border-line-soft space-y-1">
-        {UTILITY_NAV.map(({ href, label, icon: Icon, badge }) => {
-          const active = path.startsWith(href)
+    <aside className={`shrink-0 h-screen sticky top-0 flex flex-col border-r overflow-hidden transition-all duration-200 ${theme.shell} ${open ? 'w-56' : 'w-20'}`}>
+      <div className={`px-4 py-4 border-b ${theme.border}`}>
+        <div className="flex items-center justify-between gap-2">
+          <Link href={homeHref} className="flex items-center gap-3 min-w-0">
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${theme.brand}`}>
+              <span className="text-white text-xs font-bold">AFS</span>
+            </div>
+            {open && <span className={`font-semibold text-sm truncate ${theme.title}`}>{title}</span>}
+          </Link>
+          <button
+            onClick={onToggle}
+            className={`w-8 h-8 shrink-0 flex items-center justify-center transition-colors ${theme.chevron}`}
+            title={open ? 'Collapse sidebar' : 'Expand sidebar'}
+          >
+            <span className={`transition-transform duration-200 ${open ? '' : 'rotate-180'}`}>
+              <ChevronLeftIcon />
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <nav className={`px-2 py-3 space-y-1 flex-1 border-b ${theme.border}`}>
+        {items.map(({ href, label, icon: Icon, badge }) => {
+          const active = activeMatcher(href)
           return (
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                active
-                  ? 'bg-pill text-ink'
-                  : 'text-ink-muted hover:bg-pill hover:text-ink'
-              }`}
+              className={`flex items-center py-2.5 text-sm font-medium rounded-xl transition-colors ${open ? 'gap-3 px-3' : 'justify-center px-2'} ${active ? theme.navActive : theme.navIdle}`}
+              title={!open ? label : undefined}
             >
-              <span className={active ? 'text-ink' : 'text-ink-faint'}>
+              <span className={active ? theme.navActiveIcon : theme.navIdleIcon}>
                 <Icon />
               </span>
-              <span className="flex-1">{label}</span>
-              {badge != null && (
+              {open && <span className="flex-1 truncate">{label}</span>}
+              {open && badge != null && (
                 <span className="bg-signal-neg text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
                   {badge}
                 </span>
@@ -176,7 +229,27 @@ function UtilitySidebar() {
           )
         })}
       </nav>
-    </SidebarShell>
+
+      {footer && <div className={`px-3 py-3 space-y-2 border-t ${theme.footerBorder} ${theme.footerText}`}>{footer}</div>}
+    </aside>
+  )
+}
+
+function UtilitySidebar() {
+  const [open, setOpen] = useState(true)
+  const path = usePathname()
+  const { allowedSections } = useAuth()
+  const canSeeHr = !allowedSections || allowedSections.includes('hr')
+
+  return (
+    <AppSidebar
+      open={open}
+      onToggle={() => setOpen(value => !value)}
+      title="AFS Admin"
+      homeHref={canSeeHr ? '/hr' : '/utilities/overview'}
+      items={UTILITY_NAV}
+      activeMatcher={(href) => path.startsWith(href)}
+    />
   )
 }
 
@@ -188,9 +261,14 @@ export default function Sidebar() {
   const { locale } = useLocale()
 
   const isUtility = path.startsWith('/utilities')
-  const visibleNav = allowedSections
-    ? NAV.filter(n => allowedSections.includes(n.href.slice(1)))
+  const visibleNav = (allowedSections
+    ? NAV.filter(item => allowedSections.includes(item.href.slice(1)))
     : NAV
+  ).map(item => ({
+    href: item.href,
+    label: t(item.key, locale),
+    icon: item.icon,
+  }))
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -200,73 +278,35 @@ export default function Sidebar() {
   if (isUtility) return <UtilitySidebar />
 
   return (
-    <aside className={`flex flex-col bg-[#111318] text-white border-r border-white/6 transition-all duration-200 ${open ? 'w-56' : 'w-20'} shrink-0 h-screen sticky top-0`}>
-      <div className="px-4 py-4 border-b border-white/8">
-        <div className="flex items-center justify-between gap-2">
-          {open ? (
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center shrink-0 ring-1 ring-white/8">
-                <span className="text-white text-xs font-bold">AFS</span>
-              </div>
-              <span className="font-semibold text-sm text-white truncate">{t('sidebar.title', locale)}</span>
-            </div>
-          ) : (
-            <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center shrink-0 ring-1 ring-white/8">
-              <span className="text-white text-xs font-bold">AFS</span>
+    <AppSidebar
+      open={open}
+      onToggle={() => setOpen(value => !value)}
+      title={t('sidebar.title', locale)}
+      homeHref="/hr"
+      items={visibleNav}
+      activeMatcher={(href) => path === href || path.startsWith(href + '/')}
+      dark
+      footer={
+        <>
+          {open && user && (
+            <div className="px-1 text-xs truncate" title={user.email}>
+              {user.email}
             </div>
           )}
           <button
-            onClick={() => setOpen(o => !o)}
-            className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-white/6 hover:bg-white/12 text-white/60 hover:text-white transition-colors"
-            title={open ? t('sidebar.collapse', locale) : t('sidebar.expand', locale)}
+            onClick={handleLogout}
+            className={`w-full flex items-center py-2.5 rounded-xl text-sm transition-colors text-white/64 hover:bg-white/6 hover:text-white ${open ? 'gap-2 px-3' : 'justify-center px-2'}`}
+            title={t('auth.logout', locale)}
           >
-            {open ? '‹' : '›'}
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 6l-4 4 4 4" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 10h9" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4h2a2 2 0 012 2v8a2 2 0 01-2 2h-2" />
+            </svg>
+            {open && <span>{t('auth.logout', locale)}</span>}
           </button>
-        </div>
-      </div>
-
-      <nav className="flex flex-col gap-1 py-3 px-2 flex-1">
-        {visibleNav.map(({ href, key, icon: Icon }) => {
-          const active = path === href || path.startsWith(href + '/')
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-3 px-3 py-3 rounded-2xl text-sm font-medium transition-colors ${
-                active
-                  ? 'bg-white text-[#111318] shadow-[0_10px_30px_rgba(0,0,0,0.18)]'
-                  : 'text-white/64 hover:bg-white/6 hover:text-white'
-              }`}
-              title={!open ? t(key, locale) : undefined}
-            >
-              <span className={`shrink-0 ${active ? 'text-[#111318]' : 'text-white/50'}`}>
-                <Icon />
-              </span>
-              {open && <span className="truncate">{t(key, locale)}</span>}
-            </Link>
-          )
-        })}
-      </nav>
-
-      <div className="border-t border-white/8 px-3 py-3 space-y-2">
-        {open && user && (
-          <div className="px-1 text-xs text-white/42 truncate" title={user.email}>
-            {user.email}
-          </div>
-        )}
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-2xl text-sm text-white/64 hover:bg-white/6 hover:text-white transition-colors"
-          title={t('auth.logout', locale)}
-        >
-          <svg className="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8 6l-4 4 4 4" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 10h9" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4h2a2 2 0 012 2v8a2 2 0 01-2 2h-2" />
-          </svg>
-          {open && <span>{t('auth.logout', locale)}</span>}
-        </button>
-      </div>
-    </aside>
+        </>
+      }
+    />
   )
 }
