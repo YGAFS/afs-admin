@@ -35,6 +35,12 @@ interface PaymentMethod {
   notes: string | null
 }
 
+interface VendorRef {
+  id: string
+  company_id: Company
+  name: string
+}
+
 // A standalone account-balance adjustment (e.g. a duplicate/overpayment) not tied to any
 // specific bill. Reduces the account's running balance the same way a bill payment would.
 interface Credit {
@@ -287,6 +293,7 @@ export default function UtilityPage() {
   const [bills,   setBills]   = useState<Bill[]>([])
   const [methods, setMethods] = useState<PaymentMethod[]>([])
   const [credits, setCredits] = useState<Credit[]>([])
+  const [vendors, setVendors] = useState<VendorRef[]>([])
   const [loading, setLoading] = useState(true)
 
   const [mainTab,      setMainTab]      = useState<MainTab>('dashboard')
@@ -317,15 +324,19 @@ export default function UtilityPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('utility_bills')
-      .select('*, payment_methods(*), balance_status, invoice_status, total_due, amount_paid, remaining_balance, late_fee, tax, adjustments, needs_amount_review, carried_forward_to_bill_id, carried_forward_amount')
-      .order('due_date', { ascending: true, nullsFirst: false })
+    const [{ data }, { data: pm }, { data: cr }, { data: v }] = await Promise.all([
+      supabase
+        .from('utility_bills')
+        .select('*, payment_methods(*), balance_status, invoice_status, total_due, amount_paid, remaining_balance, late_fee, tax, adjustments, needs_amount_review, carried_forward_to_bill_id, carried_forward_amount')
+        .order('due_date', { ascending: true, nullsFirst: false }),
+      supabase.from('payment_methods').select('*').order('label'),
+      supabase.from('utility_credits').select('*').order('credit_date', { ascending: false }),
+      supabase.from('utility_vendors').select('id, company_id, name').order('name'),
+    ])
     setBills((data as Bill[]) ?? [])
-    const { data: pm } = await supabase.from('payment_methods').select('*').order('label')
     setMethods((pm as PaymentMethod[]) ?? [])
-    const { data: cr } = await supabase.from('utility_credits').select('*').order('credit_date', { ascending: false })
     setCredits((cr as Credit[]) ?? [])
+    setVendors((v as VendorRef[]) ?? [])
     setLoading(false)
   }, [])
 
@@ -333,8 +344,19 @@ export default function UtilityPage() {
 
   const { balances: accountBalances, breakdown: accountBalanceBreakdown } = useMemo(() => computeAccountBalanceDetail(bills, credits), [bills, credits])
 
+  const vendorCompanyByName = useMemo(() => {
+    const map = new Map<string, Company>()
+    for (const vendor of vendors) map.set(vendor.name.trim().toLowerCase(), vendor.company_id)
+    return map
+  }, [vendors])
+
+  function effectiveCompanyId(bill: Bill): Company {
+    const providerKey = (bill.provider ?? bill.utility_name).trim().toLowerCase()
+    return vendorCompanyByName.get(providerKey) ?? bill.company_id
+  }
+
   const filtered = bills.filter(b => {
-    if (coFilter !== 'all' && b.company_id !== coFilter) return false
+    if (coFilter !== 'all' && effectiveCompanyId(b) !== coFilter) return false
     if (statusFilter !== 'all' && computeBillStatus(b) !== statusFilter) return false
     if (searchTerm) {
       const q = searchTerm.toLowerCase()
@@ -382,10 +404,12 @@ export default function UtilityPage() {
   const inSevenDays = new Date(today.getTime() + 7 * 86400000)
 
   const overdueBills  = bills.filter(b => {
+    if (coFilter !== 'all' && effectiveCompanyId(b) !== coFilter) return false
     const s = computeBillStatus(b)
     return s === 'overdue' || s === 'overdue_partial'
   })
   const upcomingBills = bills.filter(b => {
+    if (coFilter !== 'all' && effectiveCompanyId(b) !== coFilter) return false
     if (!isActiveOutstanding(b) || !b.due_date) return false
     const due = new Date(b.due_date + 'T00:00:00')
     return due >= today && due <= inSevenDays
@@ -396,6 +420,7 @@ export default function UtilityPage() {
   const curYear   = today.getFullYear()
   const nextMonthDate = new Date(curYear, curMonth + 1, 1)
   const currentBills = bills.filter(b => {
+    if (coFilter !== 'all' && effectiveCompanyId(b) !== coFilter) return false
     const s = computeBillStatus(b)
     if (s === 'overdue' || s === 'overdue_partial' || !isActiveOutstanding(b) || !b.due_date) return false
     const d = new Date(b.due_date + 'T00:00:00')
@@ -635,6 +660,7 @@ export default function UtilityPage() {
           setCoFilter={setCoFilter}
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
+          effectiveCompanyId={effectiveCompanyId}
           expandedVendor={expandedVendor}
           setExpandedVendor={setExpandedVendor}
           role={role}
@@ -684,7 +710,7 @@ export default function UtilityPage() {
                     {overdueBills.map(b => (
                       <div key={b.id} className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className={`shrink-0 text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+                          <span className={`shrink-0 text-xs font-bold ${CO_COLORS[effectiveCompanyId(b)]}`}>{effectiveCompanyId(b).toUpperCase()}</span>
                           <span className="text-xs font-medium text-ink truncate">{b.utility_name}</span>
                           {b.provider && <span className="text-xs text-ink-faint hidden sm:inline">· {b.provider}</span>}
                         </div>
@@ -706,7 +732,7 @@ export default function UtilityPage() {
                     {upcomingBills.map(b => (
                       <div key={b.id} className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className={`shrink-0 text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+                          <span className={`shrink-0 text-xs font-bold ${CO_COLORS[effectiveCompanyId(b)]}`}>{effectiveCompanyId(b).toUpperCase()}</span>
                           <span className="text-xs font-medium text-ink truncate">{b.utility_name}</span>
                           {b.provider && <span className="text-xs text-ink-faint hidden sm:inline">· {b.provider}</span>}
                         </div>
@@ -799,8 +825,8 @@ export default function UtilityPage() {
                     ) : (() => { const bill = row.bill; return (
                       <tr key={bill.id} className={`hover:bg-pill transition-colors ${computeBillStatus(bill) === 'paid' || computeBillStatus(bill) === 'waived' || computeBillStatus(bill) === 'void' ? 'opacity-60' : ''}`}>
                         <td className="px-4 py-3">
-                          <span className={`inline-block text-xs font-bold ${CO_COLORS[bill.company_id]}`}>
-                            {bill.company_id.toUpperCase()}
+                          <span className={`inline-block text-xs font-bold ${CO_COLORS[effectiveCompanyId(bill)]}`}>
+                            {effectiveCompanyId(bill).toUpperCase()}
                           </span>
                         </td>
                         <td className="px-4 py-3">
@@ -1711,6 +1737,7 @@ function BillExpandPanel({
 function DashboardTab({
   bills, overdueBills, currentBills,
   coFilter, setCoFilter, searchTerm, setSearchTerm,
+  effectiveCompanyId,
   expandedVendor, setExpandedVendor,
   role, onUpdateStatus, onCarryForward, onPartialPayment, onEdit,
   deleteConfirm, setDeleteConfirm, onDelete,
@@ -1723,6 +1750,7 @@ function DashboardTab({
   setCoFilter: (c: Company | 'all') => void
   searchTerm: string
   setSearchTerm: (s: string) => void
+  effectiveCompanyId: (bill: Bill) => Company
   expandedVendor: string | null
   setExpandedVendor: (v: string | null) => void
   role: Role
@@ -1764,7 +1792,7 @@ function DashboardTab({
   }
   // Scope the vendor history to the selected company + search term
   const scoped = bills.filter(b => {
-    if (coFilter !== 'all' && b.company_id !== coFilter) return false
+    if (coFilter !== 'all' && effectiveCompanyId(b) !== coFilter) return false
     if (searchTerm) {
       const q = searchTerm.toLowerCase()
       if (!b.utility_name.toLowerCase().includes(q) &&
@@ -1786,7 +1814,7 @@ function DashboardTab({
         const distinctAccounts = new Set(bs.map(b => b.account_number).filter((a): a is string => !!a))
         return {
           name,
-          company_id: bs[0].company_id,
+          company_id: effectiveCompanyId(bs[0]),
           hasMultipleAccounts: distinctAccounts.size > 1,
           bills: [...bs].sort((a, b) => (b.issue_date ?? b.due_date ?? '').localeCompare(a.issue_date ?? a.due_date ?? '')),
         }
@@ -1808,7 +1836,7 @@ function DashboardTab({
         >
           <div className="flex items-center gap-1.5 min-w-0">
             <span className={`text-xs transition-transform inline-block ${isOpen ? 'rotate-90' : ''}`}>▸</span>
-            <span className={`shrink-0 text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
+            <span className={`shrink-0 text-xs font-bold ${CO_COLORS[effectiveCompanyId(b)]}`}>{effectiveCompanyId(b).toUpperCase()}</span>
             <span className="text-sm font-medium text-ink truncate">{b.utility_name}</span>
             {b.provider && <span className="text-sm text-ink-faint hidden sm:inline">· {b.provider}</span>}
           </div>
