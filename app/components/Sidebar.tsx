@@ -200,27 +200,27 @@ export default function Sidebar() {
   if (isUtility) return <UtilitySidebar />
 
   return (
-    <aside className={`flex flex-col bg-white border-r border-line transition-all duration-200 ${open ? 'w-56' : 'w-16'} shrink-0 h-screen sticky top-0`}>
-      <div className="px-4 py-4 border-b border-line-soft">
+    <aside className={`flex flex-col bg-[#111318] text-white border-r border-white/6 transition-all duration-200 ${open ? 'w-56' : 'w-20'} shrink-0 h-screen sticky top-0`}>
+      <div className="px-4 py-4 border-b border-white/8">
         <div className="flex items-center justify-between gap-2">
           {open ? (
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-ink flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center shrink-0 ring-1 ring-white/8">
                 <span className="text-white text-xs font-bold">AFS</span>
               </div>
-              <span className="font-semibold text-sm text-ink truncate">{t('sidebar.title', locale)}</span>
+              <span className="font-semibold text-sm text-white truncate">{t('sidebar.title', locale)}</span>
             </div>
           ) : (
-            <div className="w-8 h-8 rounded-lg bg-ink flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center shrink-0 ring-1 ring-white/8">
               <span className="text-white text-xs font-bold">AFS</span>
             </div>
           )}
           <button
             onClick={() => setOpen(o => !o)}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-pill text-ink-faint hover:text-ink ml-auto transition-colors"
+            className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center bg-white/6 hover:bg-white/12 text-white/60 hover:text-white transition-colors"
             title={open ? t('sidebar.collapse', locale) : t('sidebar.expand', locale)}
           >
-            {open ? '←' : '→'}
+            {open ? '‹' : '›'}
           </button>
         </div>
       </div>
@@ -232,14 +232,14 @@ export default function Sidebar() {
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+              className={`flex items-center gap-3 px-3 py-3 rounded-2xl text-sm font-medium transition-colors ${
                 active
-                  ? 'bg-pill text-ink'
-                  : 'text-ink-muted hover:bg-pill hover:text-ink'
+                  ? 'bg-white text-[#111318] shadow-[0_10px_30px_rgba(0,0,0,0.18)]'
+                  : 'text-white/64 hover:bg-white/6 hover:text-white'
               }`}
               title={!open ? t(key, locale) : undefined}
             >
-              <span className={`shrink-0 ${active ? 'text-ink' : 'text-ink-faint'}`}>
+              <span className={`shrink-0 ${active ? 'text-[#111318]' : 'text-white/50'}`}>
                 <Icon />
               </span>
               {open && <span className="truncate">{t(key, locale)}</span>}
@@ -248,18 +248,22 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t border-line-soft px-3 py-3 space-y-2">
+      <div className="border-t border-white/8 px-3 py-3 space-y-2">
         {open && user && (
-          <div className="px-1 text-xs text-ink-faint truncate" title={user.email}>
+          <div className="px-1 text-xs text-white/42 truncate" title={user.email}>
             {user.email}
           </div>
         )}
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-ink-muted hover:bg-pill hover:text-signal-neg transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-2xl text-sm text-white/64 hover:bg-white/6 hover:text-white transition-colors"
           title={t('auth.logout', locale)}
         >
-          <span className="shrink-0">↩</span>
+          <svg className="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 6l-4 4 4 4" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 10h9" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4h2a2 2 0 012 2v8a2 2 0 01-2 2h-2" />
+          </svg>
           {open && <span>{t('auth.logout', locale)}</span>}
         </button>
       </div>
