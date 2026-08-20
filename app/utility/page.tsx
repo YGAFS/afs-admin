@@ -35,13 +35,6 @@ interface PaymentMethod {
   notes: string | null
 }
 
-interface Location {
-  id: string
-  company_id: Company
-  name: string
-  city: string
-}
-
 // A standalone account-balance adjustment (e.g. a duplicate/overpayment) not tied to any
 // specific bill. Reduces the account's running balance the same way a bill payment would.
 interface Credit {
@@ -71,7 +64,6 @@ interface Bill {
   billing_year: number | null
   bill_number: string | null
   account_number: string | null
-  location_id: string | null
   is_auto_pay: boolean
   payment_method_id: string | null
   onedrive_file_url: string | null
@@ -93,12 +85,6 @@ interface Bill {
   needs_amount_review: boolean
   carried_forward_to_bill_id: string | null
   carried_forward_amount: number | null
-}
-
-function companyScopeLabel(company: Company) {
-  if (company === 'afs') return 'AFS'
-  if (company === 'tnt') return 'TNT'
-  return 'ZFS'
 }
 
 const COMPANIES: { id: Company | 'all'; label: string }[] = [
@@ -273,7 +259,6 @@ const emptyBill: Omit<Bill, 'id' | 'created_at' | 'payment_methods'> = {
   billing_year: null,
   bill_number: '',
   account_number: '',
-  location_id: null,
   is_auto_pay: false,
   payment_method_id: null,
   onedrive_file_url: '',
@@ -302,12 +287,10 @@ export default function UtilityPage() {
   const [bills,   setBills]   = useState<Bill[]>([])
   const [methods, setMethods] = useState<PaymentMethod[]>([])
   const [credits, setCredits] = useState<Credit[]>([])
-  const [locations, setLocations] = useState<Location[]>([])
   const [loading, setLoading] = useState(true)
 
   const [mainTab,      setMainTab]      = useState<MainTab>('dashboard')
   const [coFilter,     setCoFilter]     = useState<Company | 'all'>('afs')
-  const [locationFilter, setLocationFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [searchTerm,   setSearchTerm]   = useState('')
   const [expandedVendor, setExpandedVendor] = useState<string | null>(null)
@@ -332,10 +315,6 @@ export default function UtilityPage() {
       .then(({ data }) => setRole((data?.role as Role) ?? 'admin'))
   }, [user])
 
-  useEffect(() => {
-    if (coFilter !== 'afs') setLocationFilter('all')
-  }, [coFilter])
-
   const load = useCallback(async () => {
     setLoading(true)
     const { data } = await supabase
@@ -347,8 +326,6 @@ export default function UtilityPage() {
     setMethods((pm as PaymentMethod[]) ?? [])
     const { data: cr } = await supabase.from('utility_credits').select('*').order('credit_date', { ascending: false })
     setCredits((cr as Credit[]) ?? [])
-    const { data: loc } = await supabase.from('utility_locations').select('id,company_id,name,city').order('company_id').order('name')
-    setLocations((loc as Location[]) ?? [])
     setLoading(false)
   }, [])
 
@@ -356,37 +333,14 @@ export default function UtilityPage() {
 
   const { balances: accountBalances, breakdown: accountBalanceBreakdown } = useMemo(() => computeAccountBalanceDetail(bills, credits), [bills, credits])
 
-  const locationMap = useMemo(() => {
-    const map = new Map<string, Location>()
-    for (const loc of locations) map.set(loc.id, loc)
-    return map
-  }, [locations])
-
-  const afsLocations = useMemo(
-    () => locations.filter(loc => loc.company_id === 'afs').sort((a, b) => a.name.localeCompare(b.name)),
-    [locations]
-  )
-
-  function matchesLocationFilter(locationId: string | null) {
-    if (coFilter !== 'afs' || locationFilter === 'all') return true
-    return locationId === locationFilter
-  }
-
-  function locationLabel(locationId: string | null) {
-    if (!locationId) return null
-    return locationMap.get(locationId)?.name ?? null
-  }
-
   const filtered = bills.filter(b => {
     if (coFilter !== 'all' && b.company_id !== coFilter) return false
-    if (!matchesLocationFilter(b.location_id)) return false
     if (statusFilter !== 'all' && computeBillStatus(b) !== statusFilter) return false
     if (searchTerm) {
       const q = searchTerm.toLowerCase()
       if (!b.utility_name.toLowerCase().includes(q) &&
           !(b.provider ?? '').toLowerCase().includes(q) &&
           !(b.bill_number ?? '').toLowerCase().includes(q) &&
-          !(locationLabel(b.location_id) ?? '').toLowerCase().includes(q) &&
           !(b.account_number ?? '').toLowerCase().includes(q)) return false
     }
     return true
@@ -428,14 +382,10 @@ export default function UtilityPage() {
   const inSevenDays = new Date(today.getTime() + 7 * 86400000)
 
   const overdueBills  = bills.filter(b => {
-    if (coFilter !== 'all' && b.company_id !== coFilter) return false
-    if (!matchesLocationFilter(b.location_id)) return false
     const s = computeBillStatus(b)
     return s === 'overdue' || s === 'overdue_partial'
   })
   const upcomingBills = bills.filter(b => {
-    if (coFilter !== 'all' && b.company_id !== coFilter) return false
-    if (!matchesLocationFilter(b.location_id)) return false
     if (!isActiveOutstanding(b) || !b.due_date) return false
     const due = new Date(b.due_date + 'T00:00:00')
     return due >= today && due <= inSevenDays
@@ -446,8 +396,6 @@ export default function UtilityPage() {
   const curYear   = today.getFullYear()
   const nextMonthDate = new Date(curYear, curMonth + 1, 1)
   const currentBills = bills.filter(b => {
-    if (coFilter !== 'all' && b.company_id !== coFilter) return false
-    if (!matchesLocationFilter(b.location_id)) return false
     const s = computeBillStatus(b)
     if (s === 'overdue' || s === 'overdue_partial' || !isActiveOutstanding(b) || !b.due_date) return false
     const d = new Date(b.due_date + 'T00:00:00')
@@ -545,7 +493,6 @@ export default function UtilityPage() {
       billing_year:      editBill.billing_year ?? (billingDate ? billingDate.getFullYear() : null),
       bill_number:       editBill.bill_number || null,
       account_number:    editBill.account_number || null,
-      location_id:       editBill.location_id || null,
       is_auto_pay:       editBill.is_auto_pay ?? false,
       payment_method_id: editBill.payment_method_id || null,
       onedrive_file_url: editBill.onedrive_file_url || null,
@@ -626,13 +573,6 @@ export default function UtilityPage() {
     setShowModal(true)
   }
 
-  const companyLocations = useMemo(() => {
-    if (!editBill.company_id) return []
-    return locations
-      .filter(loc => loc.company_id === editBill.company_id)
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [editBill.company_id, locations])
-
   return (
     <div className="h-full overflow-auto bg-pill">
     <div className="p-6">
@@ -693,10 +633,6 @@ export default function UtilityPage() {
           currentBills={currentBills}
           coFilter={coFilter}
           setCoFilter={setCoFilter}
-          locationFilter={locationFilter}
-          setLocationFilter={setLocationFilter}
-          afsLocations={afsLocations}
-          locationMap={locationMap}
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
           expandedVendor={expandedVendor}
@@ -1026,11 +962,11 @@ export default function UtilityPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-ink-muted mb-1">Company</label>
-                <select
-                  value={editBill.company_id}
-                  onChange={e => setEditBill(b => ({ ...b, company_id: e.target.value as Company, location_id: null }))}
-                  className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
-                >
+                  <select
+                    value={editBill.company_id}
+                    onChange={e => setEditBill(b => ({ ...b, company_id: e.target.value as Company }))}
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
+                  >
                     <option value="afs">AFS</option>
                     <option value="tnt">TNT</option>
                     <option value="zfs">ZFS</option>
@@ -1083,22 +1019,6 @@ export default function UtilityPage() {
                     className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-ink-muted mb-1">Location</label>
-                <select
-                  value={editBill.location_id ?? ''}
-                  onChange={e => setEditBill(b => ({ ...b, location_id: e.target.value || null }))}
-                  className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
-                >
-                  <option value="">— None —</option>
-                  {companyLocations.map(loc => (
-                    <option key={loc.id} value={loc.id}>
-                      {loc.name}{loc.city ? ` (${loc.city})` : ''}
-                    </option>
-                  ))}
-                </select>
               </div>
 
               {/* Bill Number */}
@@ -1791,7 +1711,6 @@ function BillExpandPanel({
 function DashboardTab({
   bills, overdueBills, currentBills,
   coFilter, setCoFilter, searchTerm, setSearchTerm,
-  locationFilter, setLocationFilter, afsLocations, locationMap,
   expandedVendor, setExpandedVendor,
   role, onUpdateStatus, onCarryForward, onPartialPayment, onEdit,
   deleteConfirm, setDeleteConfirm, onDelete,
@@ -1802,10 +1721,6 @@ function DashboardTab({
   currentBills: Bill[]
   coFilter: Company | 'all'
   setCoFilter: (c: Company | 'all') => void
-  locationFilter: string
-  setLocationFilter: (id: string) => void
-  afsLocations: Location[]
-  locationMap: Map<string, Location>
   searchTerm: string
   setSearchTerm: (s: string) => void
   expandedVendor: string | null
@@ -1847,19 +1762,13 @@ function DashboardTab({
     const dateStr = b.issue_date ?? b.due_date
     return dateStr ? new Date(dateStr + 'T00:00:00').getFullYear() : 0
   }
-  function locationName(locationId: string | null) {
-    if (!locationId) return null
-    return locationMap.get(locationId)?.name ?? null
-  }
   // Scope the vendor history to the selected company + search term
   const scoped = bills.filter(b => {
     if (coFilter !== 'all' && b.company_id !== coFilter) return false
-    if (coFilter === 'afs' && locationFilter !== 'all' && b.location_id !== locationFilter) return false
     if (searchTerm) {
       const q = searchTerm.toLowerCase()
       if (!b.utility_name.toLowerCase().includes(q) &&
-          !(b.provider ?? '').toLowerCase().includes(q) &&
-          !(locationName(b.location_id) ?? '').toLowerCase().includes(q)) return false
+          !(b.provider ?? '').toLowerCase().includes(q)) return false
     }
     return true
   })
@@ -1875,11 +1784,9 @@ function DashboardTab({
     return Array.from(map.entries())
       .map(([name, bs]) => {
         const distinctAccounts = new Set(bs.map(b => b.account_number).filter((a): a is string => !!a))
-        const distinctLocations = new Set(bs.map(b => b.location_id).filter((id): id is string => !!id))
         return {
           name,
           company_id: bs[0].company_id,
-          locationName: distinctLocations.size === 1 ? locationName(bs[0].location_id) : null,
           hasMultipleAccounts: distinctAccounts.size > 1,
           bills: [...bs].sort((a, b) => (b.issue_date ?? b.due_date ?? '').localeCompare(a.issue_date ?? a.due_date ?? '')),
         }
@@ -1893,7 +1800,6 @@ function DashboardTab({
 
   function renderBillRow(b: Bill, amountClassName: string, dateClassName: string) {
     const isOpen = expandedBillId === b.id
-    const locName = locationName(b.location_id)
     return (
       <div key={b.id} className="py-2 first:pt-0 last:pb-0">
         <div
@@ -1903,7 +1809,6 @@ function DashboardTab({
           <div className="flex items-center gap-1.5 min-w-0">
             <span className={`text-xs transition-transform inline-block ${isOpen ? 'rotate-90' : ''}`}>▸</span>
             <span className={`shrink-0 text-xs font-bold ${CO_COLORS[b.company_id]}`}>{b.company_id.toUpperCase()}</span>
-            {locName && <span className="shrink-0 text-xs text-ink-faint">{locName}</span>}
             <span className="text-sm font-medium text-ink truncate">{b.utility_name}</span>
             {b.provider && <span className="text-sm text-ink-faint hidden sm:inline">· {b.provider}</span>}
           </div>
@@ -1992,18 +1897,6 @@ function DashboardTab({
             </button>
           ))}
         </div>
-        {coFilter === 'afs' && afsLocations.length > 0 && (
-          <select
-            value={locationFilter}
-            onChange={e => setLocationFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-line rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ink"
-          >
-            <option value="all">All AFS Locations</option>
-            {afsLocations.map(loc => (
-              <option key={loc.id} value={loc.id}>{loc.name}</option>
-            ))}
-          </select>
-        )}
         <input
           type="text"
           placeholder="Search utility / provider…"
@@ -2031,7 +1924,6 @@ function DashboardTab({
                     <div className="flex items-center gap-2">
                       <span className={`text-sm transition-transform inline-block ${isOpen ? 'rotate-90' : ''}`}>▸</span>
                       <span className={`text-xs font-bold ${CO_COLORS[v.company_id]}`}>{v.company_id.toUpperCase()}</span>
-                      {v.locationName && <span className="text-xs text-ink-faint">{v.locationName}</span>}
                       <span className="font-medium text-ink text-base">{v.name}</span>
                     </div>
                     <span className="text-sm text-ink-faint">{v.bills.length} bill{v.bills.length !== 1 ? 's' : ''}</span>
