@@ -26,8 +26,17 @@ function fmtDate(iso?: string) {
 }
 
 type EmailContact = { id: string; name: string; email: string }
+type EmailEntry = {
+  date: string
+  employee_id: string
+  leave_code: string
+  hours: number | null
+  reported_at?: string | null
+}
 const SENDER_KEY    = 'afs_email_senders'
 const RECIPIENT_KEY = 'afs_email_recipients'
+const PENDING_REPORT_KEY = 'afs_pending_report_marks'
+const REPORTABLE_CODES = new Set(['L','L1','L2','L3','S','S1','S2','S3','T','T1','T2','T3','C'])
 function loadEmailContacts(key: string): EmailContact[] {
   try { return JSON.parse(localStorage.getItem(key) ?? '[]') } catch { return [] }
 }
@@ -158,7 +167,7 @@ export default function CompanyAttendancePage() {
   const [emailDates,     setEmailDates]     = useState<Set<string>>(new Set())
   const [calYear,        setCalYear]        = useState(0)
   const [calMonth,       setCalMonth]       = useState(0)
-  const [emailEntries,   setEmailEntries]   = useState<Array<{ date: string; employee_id: string; leave_code: string; hours: number | null }>>([])
+  const [emailEntries,   setEmailEntries]   = useState<EmailEntry[]>([])
   const [emailEmps,      setEmailEmps]      = useState<Array<{ id: string; name: string }>>([])
   const [emailLoading,   setEmailLoading]   = useState(false)
   const [emailSenders,   setEmailSenders]   = useState<EmailContact[]>([])
@@ -192,9 +201,17 @@ export default function CompanyAttendancePage() {
   useEffect(() => {
     sendPendingMailAfterRedirect().then(({ sent, error }) => {
       if (sent) {
-        setSendResult('ok')
         setShowEmailModal(true)
-        getMsal().then(m => setMsalUser(m.getAllAccounts()[0]?.username ?? null)).catch(() => {})
+        getMsal().then(async m => {
+          const account = m.getAllAccounts()[0]?.username ?? null
+          setMsalUser(account)
+          await markPendingReportedEntries(account)
+          setSendResult('ok')
+          setGridKey(k => k + 1)
+        }).catch(e => {
+          setSendResult('error')
+          setSendError(e instanceof Error ? e.message : 'Unknown error')
+        })
       }
       if (error) {
         setSendResult('error')
@@ -267,11 +284,7 @@ export default function CompanyAttendancePage() {
       .or(`start_date.is.null,start_date.lte.${last}`)
       .order('name')
     const ids = (emps ?? []).map(e => e.id)
-    const { data: entries } = ids.length
-      ? await supabase.from('leave_entries')
-          .select('employee_id,date,leave_code,hours')
-          .in('employee_id', ids).gte('date', first).lte('date', last)
-      : { data: [] as { employee_id: string; date: string; leave_code: string; hours: number | null }[] }
+    const entries = ids.length ? await loadEmailEntries(ids, first, last) : []
     setEmailEmps(prev => {
       const merged = [...prev]
       for (const e of (emps ?? [])) {
@@ -280,11 +293,29 @@ export default function CompanyAttendancePage() {
       return merged
     })
     setEmailEntries(prev => {
-      const incoming = entries ?? []
+      const incoming = entries
       const filtered = prev.filter(p => p.date < first || p.date > last)
       return [...filtered, ...incoming]
     })
     setEmailLoading(false)
+  }
+
+  async function loadEmailEntries(ids: string[], first: string, last: string): Promise<EmailEntry[]> {
+    const withReport = await supabase.from('leave_entries')
+      .select('employee_id,date,leave_code,hours,reported_at')
+      .in('employee_id', ids).gte('date', first).lte('date', last)
+
+    if (!withReport.error) return (withReport.data ?? []) as EmailEntry[]
+
+    const fallback = await supabase.from('leave_entries')
+      .select('employee_id,date,leave_code,hours')
+      .in('employee_id', ids).gte('date', first).lte('date', last)
+    return (fallback.data ?? []) as EmailEntry[]
+  }
+
+  function getReportableEmailEntries() {
+    const selected = new Set(Array.from(emailDates))
+    return emailEntries.filter(e => selected.has(e.date) && REPORTABLE_CODES.has(e.leave_code))
   }
 
   function buildEmailBody() {
@@ -304,9 +335,8 @@ export default function CompanyAttendancePage() {
     }
 
     // W / B / O are not reported; L→Paid Leave, S→Sick Leave, T→Unpaid Leave, C→Special Leave
-    const SKIP = new Set(['W','W1','W2','W3','B','O'])
     const codeLabel = (code: string, hours: number | null): string | null => {
-      if (SKIP.has(code)) return null
+      if (!REPORTABLE_CODES.has(code)) return null
       const map: Record<string, string> = {
         L:'Paid Leave',   L1:'Paid Leave (AM Half)',   L2:'Paid Leave (PM Half)',   L3:'Paid Leave (Hourly)',
         S:'Sick Leave',   S1:'Sick Leave (AM Half)',   S2:'Sick Leave (PM Half)',   S3:'Sick Leave (Hourly)',
@@ -366,21 +396,95 @@ export default function CompanyAttendancePage() {
     const toEmail   = recipient?.email ?? ''
     const ccEmails  = [...ccIds].map(id => emailRecips.find(r => r.id === id)?.email ?? '').filter(Boolean)
     const sender    = emailSenders.find(s => s.id === fromId)
+    const reportEntries = getReportableEmailEntries()
 
     setSending(true)
     setSendResult(null)
     setSendError('')
     try {
+      savePendingReportMarks({ entries: reportEntries, toEmail, ccEmails, subject, reportedBy: sender?.email ?? null })
       await sendGraphMail({ to: toEmail, cc: ccEmails, subject, body, fromName: sender?.name })
       const msal = await getMsal()
-      setMsalUser(msal.getAllAccounts()[0]?.username ?? null)
+      const account = msal.getAllAccounts()[0]?.username ?? null
+      setMsalUser(account)
+      await markReportedEntries({
+        entries: reportEntries,
+        toEmail,
+        ccEmails,
+        subject,
+        reportedBy: account ?? sender?.email ?? null,
+      })
+      clearPendingReportMarks()
       setSendResult('ok')
+      setGridKey(k => k + 1)
     } catch (e: unknown) {
+      clearPendingReportMarks()
       setSendResult('error')
       setSendError(e instanceof Error ? e.message : 'Unknown error')
     } finally {
       setSending(false)
     }
+  }
+
+  async function markReportedEntries({ entries, toEmail, ccEmails, subject, reportedBy }: {
+    entries: EmailEntry[]
+    toEmail: string
+    ccEmails: string[]
+    subject: string
+    reportedBy: string | null
+  }) {
+    if (!entries.length) return
+    const reportedAt = new Date().toISOString()
+    const patch = {
+      reported_at: reportedAt,
+      reported_to: toEmail || null,
+      reported_cc: ccEmails.length ? ccEmails : null,
+      reported_subject: subject || null,
+      reported_by: reportedBy,
+    }
+
+    const results = await Promise.all(entries.map(e => supabase.from('leave_entries')
+      .update(patch)
+      .eq('employee_id', e.employee_id)
+      .eq('date', e.date)
+      .eq('leave_code', e.leave_code)))
+    const error = results.find(r => r.error)?.error
+    if (error) throw error
+
+    const reportedKeys = new Set(entries.map(e => `${e.employee_id}_${e.date}_${e.leave_code}`))
+    setEmailEntries(prev => prev.map(e =>
+      reportedKeys.has(`${e.employee_id}_${e.date}_${e.leave_code}`)
+        ? { ...e, reported_at: reportedAt }
+        : e
+    ))
+  }
+
+  function savePendingReportMarks(payload: {
+    entries: EmailEntry[]
+    toEmail: string
+    ccEmails: string[]
+    subject: string
+    reportedBy: string | null
+  }) {
+    sessionStorage.setItem(PENDING_REPORT_KEY, JSON.stringify(payload))
+  }
+
+  function clearPendingReportMarks() {
+    sessionStorage.removeItem(PENDING_REPORT_KEY)
+  }
+
+  async function markPendingReportedEntries(account: string | null) {
+    const raw = sessionStorage.getItem(PENDING_REPORT_KEY)
+    if (!raw) return
+    const payload = JSON.parse(raw) as {
+      entries: EmailEntry[]
+      toEmail: string
+      ccEmails: string[]
+      subject: string
+      reportedBy: string | null
+    }
+    await markReportedEntries({ ...payload, reportedBy: account ?? payload.reportedBy })
+    clearPendingReportMarks()
   }
 
   function shiftMonth(delta: number) {

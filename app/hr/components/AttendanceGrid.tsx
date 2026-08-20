@@ -18,7 +18,7 @@ type Employee  = {
   start_date?: string; end_date?: string
   probation_start?: string; probation_end?: string
 }
-type LeaveCell = { code: LeaveCode; hours?: number }
+type LeaveCell = { code: LeaveCode; hours?: number; reportedAt?: string | null }
 type YS        = { vacTaken: number; sick: number; wfh: number; ot: number }
 const DAY_HOURS = 8
 
@@ -216,9 +216,10 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     if (!emps?.length) return
 
     const ids = emps.map(e => e.id)
-    const [{ data: me }, { data: ye }, { data: prevYe }, { data: prevPrevYe }, { data: notesRaw }, { data: flagsRaw }] = await Promise.all([
-      supabase.from('leave_entries').select('employee_id,date,leave_code,hours')
-        .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
+    const monthEntriesPromise = supabase.from('leave_entries').select('employee_id,date,leave_code,hours,reported_at')
+      .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr)
+    const [{ data: me, error: meError }, { data: ye }, { data: prevYe }, { data: prevPrevYe }, { data: notesRaw }, { data: flagsRaw }] = await Promise.all([
+      monthEntriesPromise,
       supabase.from('leave_entries').select('employee_id,date,leave_code,hours')
         .in('employee_id', ids).gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
       supabase.from('leave_entries').select('employee_id,date,leave_code')
@@ -230,11 +231,16 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       supabase.from('attendance_flags').select('employee_id,date,flag_type,time,reason')
         .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
     ])
+    const monthEntries = meError
+      ? (await supabase.from('leave_entries').select('employee_id,date,leave_code,hours')
+          .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr)).data
+      : me
 
     const lm: Record<string, LeaveCell[]> = {}
-    for (const e of (me ?? [])) {
+    for (const e of (monthEntries ?? [])) {
       const key = `${e.employee_id}_${parseInt(e.date.split('-')[2], 10)}`
-      ;(lm[key] ??= []).push({ code: e.leave_code as LeaveCode, hours: e.hours ?? undefined })
+      const reportedAt = 'reported_at' in e ? (e.reported_at as string | null) : null
+      ;(lm[key] ??= []).push({ code: e.leave_code as LeaveCode, hours: e.hours ?? undefined, reportedAt })
     }
     setLeaveMap(lm)
 
@@ -286,9 +292,12 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     const { error } = await supabase.from('leave_entries')
       .upsert({ employee_id: empId, date: dateStr, leave_code: code, hours: hours ?? null }, { onConflict: 'employee_id,date,leave_code' })
     if (error) { alert(`저장 실패: ${error.message}`); setSaving(false); return }
+    await supabase.from('leave_entries')
+      .update({ reported_at: null, reported_to: null, reported_cc: null, reported_subject: null, reported_by: null })
+      .eq('employee_id', empId).eq('date', dateStr).eq('leave_code', code)
     setLeaveMap(p => {
       const existing = (p[key] ?? []).filter(e => e.code !== code)
-      return { ...p, [key]: [...existing, { code, hours }] }
+      return { ...p, [key]: [...existing, { code, hours, reportedAt: null }] }
     })
     setSaving(false); setPendingCode(null); setPendingHours('')
     load()
@@ -617,7 +626,15 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
                             ) : entries.length ? (
                               <div className="flex flex-col items-center gap-0.5 py-0.5">
                                 {entries.map(en => (
-                                  <div key={en.code} className={`inline-flex flex-col items-center px-0.5 rounded font-medium ${CODE_COLOR[en.code]}`}>
+                                  <div key={en.code}
+                                    title={en.reportedAt ? `Reported ${new Date(en.reportedAt).toLocaleString()}` : undefined}
+                                    className={`relative inline-flex flex-col items-center px-0.5 rounded font-medium ${CODE_COLOR[en.code]}`}>
+                                    {en.reportedAt && (
+                                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-signal-pos text-white leading-none flex items-center justify-center border border-white"
+                                        style={{ fontSize: 7 }}>
+                                        ✓
+                                      </span>
+                                    )}
                                     <span className="leading-4" style={entries.length > 1 ? { fontSize: 9 } : undefined}>{en.code}</span>
                                     {en.hours && <span style={{ fontSize: 8 }}>{en.hours}h</span>}
                                   </div>
