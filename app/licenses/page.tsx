@@ -916,28 +916,29 @@ export default function LicensesPage() {
   ]
 
   return (
-    <div className="p-6">
-      <div className="mb-4">
-        <h1 className="text-xl font-bold text-gray-800">{t('licenses.title', locale)}</h1>
-        <p className="text-sm text-gray-500 mt-0.5">{t('licenses.subtitle', locale)}</p>
+    <div className="min-h-screen bg-pill">
+      <div className="max-w-screen-xl mx-auto px-6 py-8">
+      <div className="mb-6">
+        <h1 className="text-3xl font-semibold text-ink">{t('licenses.title', locale)}</h1>
+        <p className="text-sm text-ink-muted mt-1">{t('licenses.subtitle', locale)}</p>
       </div>
 
-      <div className="flex gap-1.5 mb-4 flex-wrap">
+      <div className="flex gap-1 bg-white border border-line rounded-xl p-1 mb-4 w-fit flex-wrap">
         {companyTabs.map(tab => (
           <button key={tab.value} onClick={() => setCompany(tab.value)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              company === tab.value ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              company === tab.value ? 'bg-ink text-white' : 'text-ink-muted hover:bg-pill hover:text-ink'
             }`}>
             {tab.label}
           </button>
         ))}
       </div>
 
-      <div className="flex border-b border-gray-200 mb-5">
+      <div className="flex gap-1 bg-white border border-line rounded-xl p-1 mb-5 w-fit">
         {viewTabs.map(tab => (
           <button key={tab.value} onClick={() => setView(tab.value)}
-            className={`px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              view === tab.value ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              view === tab.value ? 'bg-pill text-ink' : 'text-ink-muted hover:bg-pill hover:text-ink'
             }`}>
             {t(tab.labelKey, locale)}
           </button>
@@ -1172,6 +1173,7 @@ export default function LicensesPage() {
       {deleteTarget && (
         <DeleteDialog onCancel={() => setDeleteTarget(null)} onConfirm={handleDelete} />
       )}
+      </div>
     </div>
   )
 }

@@ -12,16 +12,20 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
 )
 
-const NAV = [
-  { href: '/hr',        key: 'nav.hr',       icon: '📅' },
-  { href: '/utilities', key: 'nav.utility',  icon: '💡' },
-  { href: '/licenses',  key: 'nav.licenses', icon: '📋' },
-  { href: '/assets',    key: 'nav.assets',   icon: '💻' },
-  { href: '/supplies',  key: 'nav.supplies', icon: '☕' },
-  { href: '/admin',     key: 'nav.admin',    icon: '⚙️' },
-]
+type NavItem = {
+  href: string
+  key: string
+  icon: () => React.ReactElement
+}
 
-// ── Utility sidebar ───────────────────────────────────────────────────────────
+const NAV: NavItem[] = [
+  { href: '/hr',        key: 'nav.hr',       icon: CalendarIcon },
+  { href: '/utilities', key: 'nav.utility',  icon: BoltIcon },
+  { href: '/licenses',  key: 'nav.licenses', icon: FileIcon },
+  { href: '/assets',    key: 'nav.assets',   icon: FolderIcon },
+  { href: '/supplies',  key: 'nav.supplies', icon: CupIcon },
+  { href: '/admin',     key: 'nav.admin',    icon: GearIcon },
+]
 
 const UTILITY_NAV: { href: string; label: string; icon: () => React.ReactElement; badge?: number }[] = [
   { href: '/utilities/overview',   label: 'Overview',      icon: HomeIcon },
@@ -39,6 +43,7 @@ function HomeIcon() {
     </svg>
   )
 }
+
 function FileIcon() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
@@ -46,6 +51,7 @@ function FileIcon() {
     </svg>
   )
 }
+
 function BuildingIcon() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
@@ -53,6 +59,7 @@ function BuildingIcon() {
     </svg>
   )
 }
+
 function CalendarIcon() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
@@ -60,6 +67,7 @@ function CalendarIcon() {
     </svg>
   )
 }
+
 function ChartIcon() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
@@ -67,6 +75,7 @@ function ChartIcon() {
     </svg>
   )
 }
+
 function FolderIcon() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
@@ -74,13 +83,7 @@ function FolderIcon() {
     </svg>
   )
 }
-function BellIcon() {
-  return (
-    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-      <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
-    </svg>
-  )
-}
+
 function GearIcon() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
@@ -88,27 +91,46 @@ function GearIcon() {
     </svg>
   )
 }
-function UtilitySidebar() {
-  const path = usePathname()
-  const { allowedSections } = useAuth()
-  // UtilitySidebar fully replaces the main Sidebar (with its /hr, /admin, etc.
-  // nav) while inside /utilities/* -- without this there's no way back to the
-  // HR dashboard from here. Only show it to users who can actually see /hr.
-  const canSeeHr = !allowedSections || allowedSections.includes('hr')
 
+function BoltIcon() {
   return (
-    <aside className="w-56 shrink-0 h-screen flex flex-col bg-white border-r border-gray-200 overflow-hidden">
+    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+      <path d="M11 0L3 11h5l-1 9 8-11h-5l1-9z" />
+    </svg>
+  )
+}
 
-      {/* Logo */}
-      <div className="px-4 py-4 border-b border-gray-100">
+function CupIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+      <path d="M3 4a1 1 0 011-1h9a1 1 0 011 1v2h2a2 2 0 010 4h-1.126A5.002 5.002 0 0110 15H7a5 5 0 01-4.874-4H2a2 2 0 010-4h1V4zm11 3v1a3 3 0 002-3h-2v2zM5 17a1 1 0 100 2h7a1 1 0 100-2H5z" />
+    </svg>
+  )
+}
+
+function SidebarShell({
+  children,
+  canSeeHr = false,
+}: {
+  children: React.ReactNode
+  canSeeHr?: boolean
+}) {
+  return (
+    <aside className="w-56 shrink-0 h-screen flex flex-col bg-white border-r border-line overflow-hidden">
+      <div className="px-4 py-4 border-b border-line-soft">
         <div className="flex items-center justify-between gap-2">
-          <div className="w-7 h-7 bg-blue-600 rounded-md flex items-center justify-center">
-            <span className="text-white text-xs font-bold">AFS</span>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-ink flex items-center justify-center shrink-0">
+              <span className="text-white text-xs font-bold">AFS</span>
+            </div>
+            <span className="font-semibold text-sm text-ink truncate">AFS Admin</span>
           </div>
           {canSeeHr && (
-            <Link href="/hr"
+            <Link
+              href="/hr"
               title="Back to HR Dashboard"
-              className="w-7 h-7 rounded-md flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-faint hover:bg-pill hover:text-ink transition-colors"
+            >
               <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 15l-5-5 5-5M8 10h9" />
               </svg>
@@ -116,27 +138,37 @@ function UtilitySidebar() {
           )}
         </div>
       </div>
+      {children}
+    </aside>
+  )
+}
 
-      {/* Nav */}
-      <nav className="px-2 py-3 border-b border-gray-100 space-y-0.5">
+function UtilitySidebar() {
+  const path = usePathname()
+  const { allowedSections } = useAuth()
+  const canSeeHr = !allowedSections || allowedSections.includes('hr')
+
+  return (
+    <SidebarShell canSeeHr={canSeeHr}>
+      <nav className="px-2 py-3 border-b border-line-soft space-y-1">
         {UTILITY_NAV.map(({ href, label, icon: Icon, badge }) => {
           const active = path.startsWith(href)
           return (
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-base font-medium transition-colors ${
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
                 active
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'bg-pill text-ink'
+                  : 'text-ink-muted hover:bg-pill hover:text-ink'
               }`}
             >
-              <span className={active ? 'text-blue-600' : 'text-gray-400'}>
+              <span className={active ? 'text-ink' : 'text-ink-faint'}>
                 <Icon />
               </span>
               <span className="flex-1">{label}</span>
               {badge != null && (
-                <span className="bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                <span className="bg-signal-neg text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
                   {badge}
                 </span>
               )}
@@ -144,19 +176,16 @@ function UtilitySidebar() {
           )
         })}
       </nav>
-
-    </aside>
+    </SidebarShell>
   )
 }
 
-// ── Main Sidebar ──────────────────────────────────────────────────────────────
-
 export default function Sidebar() {
   const [open, setOpen] = useState(true)
-  const path            = usePathname()
-  const router          = useRouter()
+  const path = usePathname()
+  const router = useRouter()
   const { user, allowedSections } = useAuth()
-  const { locale }      = useLocale()
+  const { locale } = useLocale()
 
   const isUtility = path.startsWith('/utilities')
   const visibleNav = allowedSections
@@ -168,59 +197,68 @@ export default function Sidebar() {
     router.replace('/login')
   }
 
-  // ── Utility: white light sidebar ──────────────────────────────────────────
-  if (isUtility) {
-    return <UtilitySidebar />
-  }
+  if (isUtility) return <UtilitySidebar />
 
-  // ── Default: dark sidebar ─────────────────────────────────────────────────
   return (
-    <aside className={`flex flex-col bg-gray-900 text-white transition-all duration-200 ${open ? 'w-52' : 'w-14'} shrink-0 h-screen sticky top-0`}>
-
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-4 border-b border-gray-700">
-        {open && (
-          <span className="font-bold text-sm tracking-wide text-gray-100">
-            {t('sidebar.title', locale)}
-          </span>
-        )}
-        <button
-          onClick={() => setOpen(o => !o)}
-          className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white ml-auto"
-          title={open ? t('sidebar.collapse', locale) : t('sidebar.expand', locale)}
-        >
-          {open ? '◀' : '☰'}
-        </button>
+    <aside className={`flex flex-col bg-white border-r border-line transition-all duration-200 ${open ? 'w-56' : 'w-16'} shrink-0 h-screen sticky top-0`}>
+      <div className="px-4 py-4 border-b border-line-soft">
+        <div className="flex items-center justify-between gap-2">
+          {open ? (
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-ink flex items-center justify-center shrink-0">
+                <span className="text-white text-xs font-bold">AFS</span>
+              </div>
+              <span className="font-semibold text-sm text-ink truncate">{t('sidebar.title', locale)}</span>
+            </div>
+          ) : (
+            <div className="w-8 h-8 rounded-lg bg-ink flex items-center justify-center shrink-0">
+              <span className="text-white text-xs font-bold">AFS</span>
+            </div>
+          )}
+          <button
+            onClick={() => setOpen(o => !o)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-pill text-ink-faint hover:text-ink ml-auto transition-colors"
+            title={open ? t('sidebar.collapse', locale) : t('sidebar.expand', locale)}
+          >
+            {open ? '←' : '→'}
+          </button>
+        </div>
       </div>
 
       <nav className="flex flex-col gap-1 py-3 px-2 flex-1">
-        {visibleNav.map(({ href, key, icon }) => {
+        {visibleNav.map(({ href, key, icon: Icon }) => {
           const active = path === href || path.startsWith(href + '/')
           return (
-            <Link key={href} href={href}
-              className={`flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-colors ${
+            <Link
+              key={href}
+              href={href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
                 active
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                  ? 'bg-pill text-ink'
+                  : 'text-ink-muted hover:bg-pill hover:text-ink'
               }`}
-              title={!open ? t(key, locale) : undefined}>
-              <span className="text-base shrink-0">{icon}</span>
+              title={!open ? t(key, locale) : undefined}
+            >
+              <span className={`shrink-0 ${active ? 'text-ink' : 'text-ink-faint'}`}>
+                <Icon />
+              </span>
               {open && <span className="truncate">{t(key, locale)}</span>}
             </Link>
           )
         })}
       </nav>
 
-      {/* Bottom: user + logout */}
-      <div className="border-t border-gray-700 px-2 py-3 space-y-2">
+      <div className="border-t border-line-soft px-3 py-3 space-y-2">
         {open && user && (
-          <div className="px-1 text-xs text-gray-500 truncate" title={user.email}>
+          <div className="px-1 text-xs text-ink-faint truncate" title={user.email}>
             {user.email}
           </div>
         )}
-        <button onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-gray-400 hover:bg-gray-700 hover:text-red-400 transition-colors"
-          title={t('auth.logout', locale)}>
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-ink-muted hover:bg-pill hover:text-signal-neg transition-colors"
+          title={t('auth.logout', locale)}
+        >
           <span className="shrink-0">↩</span>
           {open && <span>{t('auth.logout', locale)}</span>}
         </button>
