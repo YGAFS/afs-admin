@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
@@ -212,6 +212,35 @@ export default function EmployeeSearch() {
     manager_name: '',
   })
 
+  const employeeModalDirty = useMemo(() => {
+    if (!addModal) return false
+    if (!editingEmployeeId && employeeTab === 'non_payroll') {
+      return JSON.stringify(nonPayrollForm) !== JSON.stringify({
+        company_id: nonPayrollForm.company_id,
+        name: '',
+        team: NON_PAYROLL_TEAM,
+        position: 'Non-payroll',
+        manager_name: '',
+      })
+    }
+    return JSON.stringify(newEmp) !== JSON.stringify({ ...BLANK_FORM, company_id: newEmp.company_id })
+  }, [addModal, editingEmployeeId, employeeTab, newEmp, nonPayrollForm])
+
+  function closeEmployeeModal() {
+    setAddModal(false)
+    setEditingEmployeeId(null)
+    setAddError('')
+    setNewEmp(p => ({ ...BLANK_FORM, company_id: p.company_id || companies[0]?.id || '' }))
+  }
+
+  function requestCloseEmployeeModal() {
+    if (saving) return
+    if (employeeModalDirty && !window.confirm('Your changes have not been saved. Close without saving?')) {
+      return
+    }
+    closeEmployeeModal()
+  }
+
   useEffect(() => {
     supabase.from('companies').select('id,name').order('name')
       .then(({ data }) => {
@@ -243,6 +272,18 @@ export default function EmployeeSearch() {
       setEmps(sortEmployees(emps, sortMode)); setSel(null)
     })
   }, [query, compFilter, employeeTab, sortMode])
+
+  useEffect(() => {
+    if (!addModal) return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        requestCloseEmployeeModal()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [addModal, employeeModalDirty, saving, editingEmployeeId, employeeTab, newEmp, nonPayrollForm, companies])
 
   async function loadStats(emp: Employee, year: number) {
     const today      = new Date()
@@ -1277,7 +1318,7 @@ export default function EmployeeSearch() {
       {/* Add employee modal */}
       {addModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
-          onClick={() => { setAddModal(false); setAddError('') }}>
+          onClick={requestCloseEmployeeModal}>
           <div className="bg-white rounded-2xl p-6 w-96 shadow-2xl" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-ink mb-4">
               {editingEmployeeId
@@ -1477,12 +1518,7 @@ export default function EmployeeSearch() {
                 className="flex-1 bg-ink disabled:bg-line text-white rounded-xl py-2.5 text-sm font-bold transition-colors">
                 {editingEmployeeId ? t('common.save', locale) : t('common.add', locale)}
               </button>
-              <button onClick={() => {
-                setAddModal(false)
-                setEditingEmployeeId(null)
-                setAddError('')
-                setNewEmp(p => ({ ...BLANK_FORM, company_id: p.company_id || companies[0]?.id || '' }))
-              }}
+              <button onClick={requestCloseEmployeeModal}
                 className="flex-1 border-2 border-line rounded-xl py-2.5 text-sm font-semibold text-ink-muted hover:bg-pill transition-colors">
                 {t('common.cancel', locale)}
               </button>

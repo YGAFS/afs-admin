@@ -116,9 +116,20 @@ function accountTypeColor(tp: string) {
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0 bg-white">
           <h2 className="font-semibold text-gray-800">{title}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
@@ -344,6 +355,20 @@ function LicenseModal({ initial, clone, employees, emailPlans, nextAccountId, on
   } : { ...emptyLicenseForm, account_id: nextAccountId })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const initialSnapshot = JSON.stringify(src ? {
+    account_id: initial ? (src.account_id ?? '') : '',
+    display_name: src.display_name ?? '',
+    email_address: initial ? (src.email_address ?? '') : '',
+    alias: src.alias ?? '',
+    account_type: src.account_type ?? 'Individual',
+    license_plan: src.license_plan ?? '',
+    monthly_cost_cad: String(src.monthly_cost_cad ?? 0),
+    status: src.status ?? 'Active',
+    company: src.company ?? '',
+    employee_id: src.employee_id ?? '',
+    notes: src.notes ?? '',
+  } : { ...emptyLicenseForm, account_id: nextAccountId })
+  const isDirty = JSON.stringify(form) !== initialSnapshot
 
   const set = (k: keyof LicenseForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -383,6 +408,12 @@ function LicenseModal({ initial, clone, employees, emailPlans, nextAccountId, on
     onSave()
   }
 
+  function handleCloseRequest() {
+    if (saving) return
+    if (isDirty && !window.confirm('Your changes have not been saved. Close without saving?')) return
+    onClose()
+  }
+
   const title = initial
     ? t('licenses.modal.edit_account', locale)
     : clone
@@ -390,7 +421,7 @@ function LicenseModal({ initial, clone, employees, emailPlans, nextAccountId, on
       : t('licenses.modal.add_account', locale)
 
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} onClose={handleCloseRequest}>
       {error && <p className="text-red-500 text-xs mb-3 bg-red-50 p-2 rounded">{error}</p>}
       <div className="grid grid-cols-2 gap-x-3">
         <Field label="Account ID *">
@@ -455,7 +486,7 @@ function LicenseModal({ initial, clone, employees, emailPlans, nextAccountId, on
       </div>
       <Field label="Notes"><textarea className={inputCls} rows={2} value={form.notes} onChange={set('notes')} /></Field>
       <div className="flex justify-end gap-2 mt-4">
-        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">{t('common.cancel', locale)}</button>
+        <button onClick={handleCloseRequest} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">{t('common.cancel', locale)}</button>
         <button onClick={handleSubmit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
           {saving ? t('common.saving', locale) : t('common.save', locale)}
         </button>
@@ -501,6 +532,22 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [empSearch, setEmpSearch] = useState('')
+  const initialSnapshot = JSON.stringify(src ? {
+    sub_id: '',
+    company: src.company ?? '',
+    vendor: src.vendor ?? '',
+    product: src.product ?? '',
+    plan_name: src.plan_name ?? '',
+    billing_cycle: src.billing_cycle ?? 'Annual',
+    cost_cad: String(src.cost_cad ?? 0),
+    billing_day: src.billing_day ? String(src.billing_day) : '',
+    renewal_date: src.renewal_date ?? '',
+    employee_ids: (src.subscription_employees ?? []).map(se => se.employee_id),
+    owner: src.owner ?? '',
+    status: src.status ?? 'Active',
+    notes: src.notes ?? '',
+  } : emptySubForm)
+  const isDirty = JSON.stringify(form) !== initialSnapshot || !!empSearch.trim()
 
   const set = (k: keyof Omit<SubForm, 'employee_ids'>) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -577,6 +624,12 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
     onSave()
   }
 
+  function handleCloseRequest() {
+    if (saving) return
+    if (isDirty && !window.confirm('Your changes have not been saved. Close without saving?')) return
+    onClose()
+  }
+
   const title = initial
     ? t('licenses.modal.edit_sub', locale)
     : clone
@@ -584,7 +637,7 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
       : t('licenses.modal.add_sub', locale)
 
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} onClose={handleCloseRequest}>
       {error && <p className="text-red-500 text-xs mb-3 bg-red-50 p-2 rounded">{error}</p>}
       <div className="grid grid-cols-2 gap-x-3">
         <Field label="Vendor *"><input className={inputCls} value={form.vendor} onChange={set('vendor')} placeholder="Adobe, Loadlink…" /></Field>
@@ -677,7 +730,7 @@ function SubModal({ initial, clone, employees, onClose, onSave }: {
 
       <Field label="Notes"><textarea className={inputCls} rows={2} value={form.notes} onChange={set('notes')} /></Field>
       <div className="flex justify-end gap-2 mt-4">
-        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">{t('common.cancel', locale)}</button>
+        <button onClick={handleCloseRequest} className="px-4 py-2 text-sm rounded-lg border hover:bg-gray-50">{t('common.cancel', locale)}</button>
         <button onClick={handleSubmit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">
           {saving ? t('common.saving', locale) : t('common.save', locale)}
         </button>
@@ -1139,13 +1192,14 @@ export default function LicensesPage() {
                           <td className="px-4 py-2 text-xs text-gray-600">
                             {count === 0
                               ? <span className="text-gray-300">{t('common.none', locale)}</span>
-                              : count === 1
-                                ? linked[0].employees?.[0]?.name ?? '—'
-                                : (
-                                  <span title={linked.map(se => se.employees?.[0]?.name ?? '?').join(', ')}>
-                                    {linked[0].employees?.[0]?.name} +{count - 1}
-                                  </span>
-                                )
+                              : (
+                                <div className="max-w-56 whitespace-normal leading-5">
+                                  {linked
+                                    .map(se => se.employees?.[0]?.name)
+                                    .filter((name): name is string => !!name)
+                                    .join(', ')}
+                                </div>
+                              )
                             }
                           </td>
                           <td className="px-4 py-2"><Badge label={r.status} color={statusColor(r.status)} /></td>
@@ -1221,3 +1275,4 @@ export default function LicensesPage() {
     </div>
   )
 }
+
