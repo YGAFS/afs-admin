@@ -164,6 +164,7 @@ export default function EmployeeSearch() {
   const [termDate,     setTermDate]     = useState('')
   const [addModal,     setAddModal]     = useState(false)
   const [addError,     setAddError]     = useState('')
+  const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null)
   const [deleteConfirm,setDeleteConfirm]= useState(false)
   const [newEmp,       setNewEmp]       = useState<NewEmpForm>(BLANK_FORM)
   const [posEdit,      setPosEdit]      = useState(false)
@@ -454,6 +455,44 @@ export default function EmployeeSearch() {
       if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && e.employment_type !== 'non_payroll')
       if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date)
       setEmps(sortEmployees(emps, sortMode))
+    })
+  }
+
+  async function handleSaveEmployeeEdit() {
+    if (!editingEmployeeId || !newEmp.company_id || !newEmp.name.trim()) return
+    setSaving(true); setAddError('')
+    const payload = {
+      company_id: newEmp.company_id,
+      name: newEmp.name.trim(),
+      team: newEmp.team || null,
+      position: newEmp.position || null,
+      start_date: newEmp.start_date || null,
+      end_date: !newEmp.is_active && newEmp.end_date ? newEmp.end_date : null,
+      is_active: newEmp.is_active,
+      vacation_allowance: newEmp.vacation_allowance,
+      uses_accrual: newEmp.uses_accrual,
+      is_exempt: newEmp.is_exempt,
+      employment_type: newEmp.employment_type,
+    }
+    const { error } = await supabase.from('employees').update(payload).eq('id', editingEmployeeId)
+    if (error) { setAddError(error.message); setSaving(false); return }
+    setAddModal(false)
+    setEditingEmployeeId(null)
+    setSaving(false)
+    let q = supabase.from('employees')
+      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
+      .order('name')
+    if (employeeTab === 'active') q = q.eq('is_active', true)
+    else if (employeeTab === 'non_payroll') q = q.eq('is_active', true).eq('employment_type', 'non_payroll')
+    else q = q.or('is_active.eq.false,end_date.not.is.null')
+    if (compFilter !== 'all') q = q.eq('company_id', compFilter)
+    q.then(({ data }) => {
+      let emps = (data as Employee[]) ?? []
+      if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && e.employment_type !== 'non_payroll')
+      if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date)
+      setEmps(sortEmployees(emps, sortMode))
+      const updated = emps.find(e => e.id === editingEmployeeId)
+      if (updated) setSel(updated)
     })
   }
 
@@ -821,9 +860,34 @@ export default function EmployeeSearch() {
                 </div>
 
                 <div className="flex-shrink-0 ml-4 flex flex-col items-end gap-2">
+                  <button
+                    onClick={() => {
+                      setEditingEmployeeId(selected.id)
+                      setNewEmp({
+                        company_id: Array.isArray(selected.companies) ? selected.companies[0]?.id ?? '' : selected.companies?.id ?? '',
+                        name: selected.name ?? '',
+                        team: selected.team ?? '',
+                        position: selected.position ?? '',
+                        start_date: selected.start_date ?? '',
+                        is_active: selected.is_active,
+                        end_date: selected.end_date ?? '',
+                        vacation_allowance: selected.vacation_allowance ?? 10,
+                        uses_accrual: selected.uses_accrual,
+                        is_exempt: selected.is_exempt,
+                        employment_type: selected.employment_type ?? 'office',
+                      })
+                      setAddError('')
+                      setAddModal(true)
+                    }}
+                    className="px-4 py-2 text-sm font-semibold text-ink border-2 border-line rounded-lg hover:bg-pill transition-colors">
+                    {t('common.edit', locale)}
+                  </button>
                   {selected.is_active ? (
                     <button onClick={() => { setTermDate(todayIso()); setTermModal(true) }}
-                      className="px-4 py-2 text-sm font-semibold text-signal-neg border-2 border-line rounded-lg hover:bg-pill transition-colors">
+                      className="px-4 py-2 text-sm font-semibold text-signal-neg border-2 border-line rounded-lg hover:bg-pill transition-colors inline-flex items-center gap-2">
+                      <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 5h8M8 5V4a2 2 0 114 0v1M5 5l.6 10.2A2 2 0 007.6 17h4.8a2 2 0 001.99-1.8L15 5M8.5 8.5v5M11.5 8.5v5" />
+                      </svg>
                       {t('emp.terminate', locale)}
                     </button>
                   ) : (
@@ -1202,7 +1266,7 @@ export default function EmployeeSearch() {
                 <div>
                   <label className="text-xs font-semibold text-ink-muted mb-1 block">Company</label>
                   <select value={nonPayrollForm.company_id}
-                    onChange={e => setNonPayrollForm(p => ({ ...p, company_id: e.target.value, account_id: '', name: '' }))}
+                    onChange={e => setNonPayrollForm(p => ({ ...p, company_id: e.target.value, name: '' }))}
                     className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink bg-white">
                   {companies.map(c => <option key={c.id} value={c.id}>{companyLabel(c.name)}</option>)}
                 </select>
@@ -1329,14 +1393,20 @@ export default function EmployeeSearch() {
             </div>
             )}
             <div className="flex gap-2 mt-5">
-              <button onClick={employeeTab === 'non_payroll' ? handleAddNonPayroll : handleAddEmployee}
+              <button onClick={
+                employeeTab === 'non_payroll'
+                  ? handleAddNonPayroll
+                  : editingEmployeeId
+                    ? handleSaveEmployeeEdit
+                    : handleAddEmployee
+              }
                 disabled={employeeTab === 'non_payroll'
                   ? (!nonPayrollForm.company_id || !nonPayrollForm.name.trim() || saving)
                   : (!newEmp.name.trim() || !newEmp.company_id || saving)}
                 className="flex-1 bg-ink disabled:bg-line text-white rounded-xl py-2.5 text-sm font-bold transition-colors">
-                {t('common.add', locale)}
+                {editingEmployeeId ? t('common.save', locale) : t('common.add', locale)}
               </button>
-              <button onClick={() => setAddModal(false)}
+              <button onClick={() => { setAddModal(false); setEditingEmployeeId(null) }}
                 className="flex-1 border-2 border-line rounded-xl py-2.5 text-sm font-semibold text-ink-muted hover:bg-pill transition-colors">
                 {t('common.cancel', locale)}
               </button>

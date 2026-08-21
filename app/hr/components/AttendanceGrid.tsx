@@ -52,8 +52,6 @@ const CODE_OPTIONS: { code: LeaveCode; needsHours?: boolean }[] = [
 ]
 
 const TEAM_ORDER = ['Team Sales','Team Accounting','Team Operations','Department 1','Department 2','Department 3']
-const OUTSIDE_PAYROLL_TEAM = 'Outside Payroll'
-
 type EmpVacStat = { accrued: number; carryIn: number; periodUsed: number }
 
 function isoToLocal(iso: string): Date {
@@ -209,7 +207,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       .order('sort_order').order('name')
 
     let { data: emps, error: empErr } = await baseQ()
-      .or('employment_type.eq.office,employment_type.eq.non_payroll,employment_type.is.null')
+      .or('employment_type.eq.office,employment_type.is.null')
     if (empErr) {
       ;({ data: emps } = await baseQ())
     }
@@ -450,14 +448,11 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
 
   const fallbackTeam = locale === 'ko' ? '기타' : 'Other'
   const teams = employees.reduce<Record<string, Employee[]>>((acc, e) => {
-    const isOutsidePayroll = !!e.employment_type && e.employment_type !== 'office'
-    const k = isOutsidePayroll ? OUTSIDE_PAYROLL_TEAM : (e.team || fallbackTeam)
+    const k = e.team || fallbackTeam
     acc[k] = [...(acc[k] ?? []), e]
     return acc
   }, {})
   const sortedTeams = Object.entries(teams).sort(([a], [b]) => {
-    if (a === OUTSIDE_PAYROLL_TEAM && b !== OUTSIDE_PAYROLL_TEAM) return 1
-    if (b === OUTSIDE_PAYROLL_TEAM && a !== OUTSIDE_PAYROLL_TEAM) return -1
     const ai = TEAM_ORDER.indexOf(a) >= 0 ? TEAM_ORDER.indexOf(a) : 99
     const bi = TEAM_ORDER.indexOf(b) >= 0 ? TEAM_ORDER.indexOf(b) : 99
     return ai - bi || a.localeCompare(b)

@@ -232,7 +232,7 @@ export default function CompanyAttendancePage() {
   useEffect(() => {
     if (!showTerminated || !companyId) return
     loadTerminated()
-  }, [showTerminated, companyId])
+  }, [showTerminated, companyId, year])
 
   // Regenerate the subject/body draft whenever the selected dates or recipient
   // change — any manual edits the user made are for the previous selection.
@@ -246,9 +246,11 @@ export default function CompanyAttendancePage() {
   async function loadTerminated() {
     const { data } = await supabase.from('employees')
       .select('id,name,team,position,start_date,end_date')
-      .eq('company_id', companyId!).eq('is_active', false)
+      .eq('company_id', companyId!)
+      .not('end_date', 'is', null)
       .order('end_date', { ascending: false })
-    setTerminated(data ?? [])
+    const yearTerminated = (data ?? []).filter(emp => emp.end_date?.startsWith(`${year}-`))
+    setTerminated(yearTerminated)
   }
 
   async function reactivate(empId: string) {
@@ -598,7 +600,11 @@ export default function CompanyAttendancePage() {
       <div className="mt-8">
         <button onClick={() => setShowTerminated(!showTerminated)}
           className="flex items-center gap-2 text-sm text-ink-muted hover:text-ink-muted py-2">
-          <span className={`transition-transform inline-block ${showTerminated ? 'rotate-90' : ''}`}>▶</span>
+          <span className={`transition-transform inline-flex items-center justify-center ${showTerminated ? 'rotate-90' : ''}`}>
+            <svg className="w-3.5 h-3.5 text-ink-faint" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 5l6 5-6 5" />
+            </svg>
+          </span>
           {t('hr.terminated.title', locale)}
           {showTerminated && terminated.length > 0 && (
             <span className="bg-line text-ink-muted text-xs px-1.5 py-0.5 rounded-full">{terminated.length}</span>
