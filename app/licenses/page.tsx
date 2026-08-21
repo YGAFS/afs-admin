@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
@@ -818,6 +818,21 @@ export default function LicensesPage() {
   const [subModal, setSubModal] = useState<{ open: boolean; item?: Subscription; clone?: Subscription }>({ open: false })
   const [planManagerOpen, setPlanManagerOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'license' | 'subscription'; id: string } | null>(null)
+  const [rowMenu, setRowMenu] = useState<{
+    type: 'license' | 'subscription'
+    item: License | Subscription
+    x: number
+    y: number
+  } | null>(null)
+  const rowMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (rowMenuRef.current && !rowMenuRef.current.contains(e.target as Node)) setRowMenu(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1024,12 +1039,17 @@ export default function LicensesPage() {
                           </span>
                         </span>
                       </th>
-                      <th className="px-4 py-3 text-left">{t('licenses.col.actions', locale)}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {sortedLic.map(r => (
-                      <tr key={r.id} className="hover:bg-gray-50">
+                      <tr
+                        key={r.id}
+                        className="hover:bg-gray-50 cursor-context-menu"
+                        onContextMenu={e => {
+                          e.preventDefault()
+                          setRowMenu({ type: 'license', item: r, x: e.clientX, y: e.clientY })
+                        }}>
                         <td className="px-4 py-2 font-mono text-xs text-gray-500">{r.account_id}</td>
                         <td className="px-4 py-2 font-medium text-gray-800">{r.display_name ?? '—'}</td>
                         <td className="px-4 py-2 text-gray-600 text-xs">{r.email_address ?? '—'}</td>
@@ -1046,13 +1066,6 @@ export default function LicensesPage() {
                           {r.account_type === 'Individual' ? `$${r.monthly_cost_cad.toFixed(2)}` : '—'}
                         </td>
                         <td className="px-4 py-2"><Badge label={r.status} color={statusColor(r.status)} /></td>
-                        <td className="px-4 py-2">
-                          <div className="flex gap-2">
-                            <button onClick={() => setLicModal({ open: true, item: r })} className="text-xs text-blue-500 hover:underline">{t('common.edit', locale)}</button>
-                            <button onClick={() => setLicModal({ open: true, clone: r })} className="text-xs text-gray-400 hover:underline">{t('common.clone', locale)}</button>
-                            <button onClick={() => setDeleteTarget({ type: 'license', id: r.id })} className="text-xs text-red-400 hover:underline">{t('common.delete', locale)}</button>
-                          </div>
-                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1086,7 +1099,6 @@ export default function LicensesPage() {
                       <th className="px-4 py-3 text-left">Owner</th>
                       <th className="px-4 py-3 text-left">{t('licenses.col.users', locale)}</th>
                       <th className="px-4 py-3 text-left">Status</th>
-                      <th className="px-4 py-3 text-left">{t('licenses.col.actions', locale)}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -1099,7 +1111,13 @@ export default function LicensesPage() {
                         : (r.renewal_date ?? '—')
                       const nextDate = r.billing_day ? nextBillingDate(r.billing_day) : null
                       return (
-                        <tr key={r.id} className={`hover:bg-gray-50 ${soon ? 'bg-amber-50' : ''}`}>
+                        <tr
+                          key={r.id}
+                          className={`hover:bg-gray-50 cursor-context-menu ${soon ? 'bg-amber-50' : ''}`}
+                          onContextMenu={e => {
+                            e.preventDefault()
+                            setRowMenu({ type: 'subscription', item: r, x: e.clientX, y: e.clientY })
+                          }}>
                           <td className="px-4 py-2 font-medium text-gray-800">{r.vendor ?? '—'}</td>
                           <td className="px-4 py-2 text-gray-700">{r.product ?? '—'}</td>
                           <td className="px-4 py-2 text-gray-500 text-xs">{r.plan_name ?? '—'}</td>
@@ -1131,13 +1149,6 @@ export default function LicensesPage() {
                             }
                           </td>
                           <td className="px-4 py-2"><Badge label={r.status} color={statusColor(r.status)} /></td>
-                          <td className="px-4 py-2">
-                            <div className="flex gap-2">
-                              <button onClick={() => setSubModal({ open: true, item: r })} className="text-xs text-blue-500 hover:underline">{t('common.edit', locale)}</button>
-                              <button onClick={() => setSubModal({ open: true, clone: r })} className="text-xs text-gray-400 hover:underline">{t('common.clone', locale)}</button>
-                              <button onClick={() => setDeleteTarget({ type: 'subscription', id: r.id })} className="text-xs text-red-400 hover:underline">{t('common.delete', locale)}</button>
-                            </div>
-                          </td>
                         </tr>
                       )
                     })}
@@ -1172,6 +1183,39 @@ export default function LicensesPage() {
       )}
       {deleteTarget && (
         <DeleteDialog onCancel={() => setDeleteTarget(null)} onConfirm={handleDelete} />
+      )}
+      {rowMenu && (
+        <div
+          ref={rowMenuRef}
+          style={{ position: 'fixed', top: rowMenu.y, left: rowMenu.x, zIndex: 60 }}
+          className="bg-white border border-line rounded-xl shadow-xl py-1 min-w-32">
+          <button
+            onClick={() => {
+              if (rowMenu.type === 'license') setLicModal({ open: true, item: rowMenu.item as License })
+              else setSubModal({ open: true, item: rowMenu.item as Subscription })
+              setRowMenu(null)
+            }}
+            className="w-full px-3 py-2 text-left text-sm text-ink hover:bg-pill">
+            {t('common.edit', locale)}
+          </button>
+          <button
+            onClick={() => {
+              if (rowMenu.type === 'license') setLicModal({ open: true, clone: rowMenu.item as License })
+              else setSubModal({ open: true, clone: rowMenu.item as Subscription })
+              setRowMenu(null)
+            }}
+            className="w-full px-3 py-2 text-left text-sm text-ink hover:bg-pill">
+            {t('common.clone', locale)}
+          </button>
+          <button
+            onClick={() => {
+              setDeleteTarget({ type: rowMenu.type, id: rowMenu.item.id })
+              setRowMenu(null)
+            }}
+            className="w-full px-3 py-2 text-left text-sm text-signal-neg hover:bg-pill">
+            {t('common.delete', locale)}
+          </button>
+        </div>
       )}
       </div>
     </div>
