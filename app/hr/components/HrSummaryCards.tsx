@@ -11,6 +11,13 @@ const supabase = createClient(
 )
 
 type Stats = { total: number; absent: number; wfh: number; highVac: number }
+type EmployeeRow = {
+  id: string
+  vacation_allowance: number
+  uses_accrual: boolean
+  is_exempt: boolean
+  employment_type?: string | null
+}
 
 export default function HrSummaryCards() {
   const [stats, setStats] = useState<Stats>({ total: 0, absent: 0, wfh: 0, highVac: 0 })
@@ -21,20 +28,21 @@ export default function HrSummaryCards() {
       const today = new Date().toISOString().split('T')[0]
 
       const [{ data: emps }, { data: todayEntries }] = await Promise.all([
-        supabase.from('employees').select('id,vacation_allowance,uses_accrual,is_exempt')
+        supabase.from('employees').select('id,vacation_allowance,uses_accrual,is_exempt,employment_type')
           .eq('is_active', true),
         supabase.from('leave_entries').select('employee_id,leave_code')
           .eq('date', today),
       ])
 
       if (!emps) return
+      const payrollEmps = (emps as EmployeeRow[]).filter(e => !e.employment_type || e.employment_type === 'office')
 
       const entryMap: Record<string, string[]> = {}
       for (const e of (todayEntries ?? [])) (entryMap[e.employee_id] ??= []).push(e.leave_code)
 
       let absent = 0, wfh = 0
 
-      for (const emp of emps) {
+      for (const emp of payrollEmps) {
         const codes = entryMap[emp.id]
         if (!codes) continue
         if (codes.some(c => ['L','L1','L2','L3','S','S1','S2','S3','T'].includes(c))) absent++
@@ -45,7 +53,7 @@ export default function HrSummaryCards() {
       const year = new Date().getFullYear()
       const { data: yearEntries } = await supabase.from('leave_entries')
         .select('employee_id,leave_code')
-        .in('employee_id', emps.map(e => e.id))
+        .in('employee_id', payrollEmps.map(e => e.id))
         .gte('date', `${year}-01-01`).lte('date', `${year}-12-31`)
 
       const vacUsed: Record<string, number> = {}
@@ -56,7 +64,7 @@ export default function HrSummaryCards() {
       }
       const highVac = Object.values(vacUsed).filter(v => v >= 18).length
 
-      setStats({ total: emps.length, absent, wfh, highVac })
+      setStats({ total: payrollEmps.length, absent, wfh, highVac })
     }
     load()
   }, [])

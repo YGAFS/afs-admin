@@ -474,7 +474,8 @@ export default function EmployeeSearch() {
       is_exempt: newEmp.is_exempt,
       employment_type: newEmp.employment_type,
     }
-    const { error } = await supabase.from('employees').update(payload).eq('id', editingEmployeeId)
+    const editingId = editingEmployeeId
+    const { error } = await supabase.from('employees').update(payload).eq('id', editingId)
     if (error) { setAddError(error.message); setSaving(false); return }
     setAddModal(false)
     setEditingEmployeeId(null)
@@ -491,7 +492,7 @@ export default function EmployeeSearch() {
       if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && e.employment_type !== 'non_payroll')
       if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date)
       setEmps(sortEmployees(emps, sortMode))
-      const updated = emps.find(e => e.id === editingEmployeeId)
+      const updated = emps.find(e => e.id === editingId)
       if (updated) setSel(updated)
     })
   }
@@ -1394,19 +1395,25 @@ export default function EmployeeSearch() {
             )}
             <div className="flex gap-2 mt-5">
               <button onClick={
-                employeeTab === 'non_payroll'
-                  ? handleAddNonPayroll
-                  : editingEmployeeId
-                    ? handleSaveEmployeeEdit
+                editingEmployeeId
+                  ? handleSaveEmployeeEdit
+                  : employeeTab === 'non_payroll'
+                    ? handleAddNonPayroll
                     : handleAddEmployee
               }
                 disabled={employeeTab === 'non_payroll'
-                  ? (!nonPayrollForm.company_id || !nonPayrollForm.name.trim() || saving)
+                  ? (editingEmployeeId
+                      ? (!newEmp.name.trim() || !newEmp.company_id || saving)
+                      : (!nonPayrollForm.company_id || !nonPayrollForm.name.trim() || saving))
                   : (!newEmp.name.trim() || !newEmp.company_id || saving)}
                 className="flex-1 bg-ink disabled:bg-line text-white rounded-xl py-2.5 text-sm font-bold transition-colors">
                 {editingEmployeeId ? t('common.save', locale) : t('common.add', locale)}
               </button>
-              <button onClick={() => { setAddModal(false); setEditingEmployeeId(null) }}
+              <button onClick={() => {
+                setAddModal(false)
+                setEditingEmployeeId(null)
+                setAddError('')
+              }}
                 className="flex-1 border-2 border-line rounded-xl py-2.5 text-sm font-semibold text-ink-muted hover:bg-pill transition-colors">
                 {t('common.cancel', locale)}
               </button>

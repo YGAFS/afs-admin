@@ -21,8 +21,8 @@ type DateEdit = { emp: TermEmp; field: 'start_date' | 'end_date' }
 
 function fmtDate(iso?: string) {
   if (!iso) return '—'
-  const [, m, d] = iso.split('-')
-  return `${+m}. ${+d}.`
+  const [y, m, d] = iso.split('-')
+  return `${+m}. ${+d}. ${y}`
 }
 
 type EmailContact = { id: string; name: string; email: string }
