@@ -834,7 +834,7 @@ export default function LicensesPage() {
       supabase.from('subscriptions')
         .select('*,employees!employee_id(name)')
         .order('vendor'),
-      supabase.from('employees').select('id,name').eq('is_active', true).order('name'),
+      supabase.from('employees').select('id,name').eq('is_active', true).is('end_date', null).order('name'),
       supabase.from('email_plans').select('*').order('name'),
     ])
 

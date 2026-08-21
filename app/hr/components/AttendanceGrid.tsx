@@ -17,6 +17,7 @@ type Employee  = {
   is_exempt: boolean; uses_accrual: boolean
   start_date?: string; end_date?: string
   probation_start?: string; probation_end?: string
+  employment_type?: string | null
 }
 type LeaveCell = { code: LeaveCode; hours?: number; reportedAt?: string | null }
 type YS        = { vacTaken: number; sick: number; wfh: number; ot: number }
@@ -51,6 +52,7 @@ const CODE_OPTIONS: { code: LeaveCode; needsHours?: boolean }[] = [
 ]
 
 const TEAM_ORDER = ['Team Sales','Team Accounting','Team Operations','Department 1','Department 2','Department 3']
+const OUTSIDE_PAYROLL_TEAM = 'Outside Payroll'
 
 type EmpVacStat = { accrued: number; carryIn: number; periodUsed: number }
 
@@ -200,17 +202,13 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
 
   async function load() {
     const baseQ = () => supabase.from('employees')
-      .select('id,name,team,manager_name,vacation_allowance,position,sort_order,is_exempt,uses_accrual,start_date,end_date,probation_start,probation_end')
+      .select('id,name,team,manager_name,vacation_allowance,position,sort_order,is_exempt,uses_accrual,start_date,end_date,probation_start,probation_end,employment_type')
       .eq('company_id', companyId)
       .or(`end_date.is.null,end_date.gte.${firstDayStr}`)
       .or(`start_date.is.null,start_date.lte.${lastDayStr}`)
       .order('sort_order').order('name')
 
-    let { data: emps, error: empErr } = await baseQ()
-      .or('employment_type.eq.office,employment_type.is.null')
-    if (empErr) {
-      ;({ data: emps } = await baseQ())
-    }
+    const { data: emps } = await baseQ()
 
     setEmployees(emps ?? [])
     if (!emps?.length) return
@@ -448,9 +446,14 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
 
   const fallbackTeam = locale === 'ko' ? '기타' : 'Other'
   const teams = employees.reduce<Record<string, Employee[]>>((acc, e) => {
-    const k = e.team || fallbackTeam; acc[k] = [...(acc[k] ?? []), e]; return acc
+    const isOutsidePayroll = !!e.employment_type && e.employment_type !== 'office'
+    const k = isOutsidePayroll ? OUTSIDE_PAYROLL_TEAM : (e.team || fallbackTeam)
+    acc[k] = [...(acc[k] ?? []), e]
+    return acc
   }, {})
   const sortedTeams = Object.entries(teams).sort(([a], [b]) => {
+    if (a === OUTSIDE_PAYROLL_TEAM && b !== OUTSIDE_PAYROLL_TEAM) return 1
+    if (b === OUTSIDE_PAYROLL_TEAM && a !== OUTSIDE_PAYROLL_TEAM) return -1
     const ai = TEAM_ORDER.indexOf(a) >= 0 ? TEAM_ORDER.indexOf(a) : 99
     const bi = TEAM_ORDER.indexOf(b) >= 0 ? TEAM_ORDER.indexOf(b) : 99
     return ai - bi || a.localeCompare(b)
