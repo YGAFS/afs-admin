@@ -134,13 +134,14 @@ type DateField = 'start_date' | 'end_date'
 
 type NewEmpForm = {
   company_id: string; name: string; team: string; position: string
+  manager_name: string
   start_date: string; is_active: boolean; end_date: string
   vacation_allowance: number; uses_accrual: boolean; is_exempt: boolean
   employment_type: string
 }
 
 const BLANK_FORM: NewEmpForm = {
-  company_id: '', name: '', team: '', position: '',
+  company_id: '', name: '', team: '', position: '', manager_name: '',
   start_date: '', is_active: true, end_date: '',
   vacation_allowance: 10, uses_accrual: true, is_exempt: false,
   employment_type: 'office',
@@ -190,7 +191,9 @@ export default function EmployeeSearch() {
   const [nonPayrollForm, setNonPayrollForm] = useState({
     company_id: '',
     name: '',
+    team: NON_PAYROLL_TEAM,
     position: 'Non-payroll',
+    manager_name: '',
   })
 
   useEffect(() => {
@@ -426,6 +429,7 @@ export default function EmployeeSearch() {
       name:               newEmp.name.trim(),
       team:               newEmp.team || null,
       position:           newEmp.position || null,
+      manager_name:       newEmp.manager_name || null,
       start_date:         newEmp.start_date || null,
       end_date:           !newEmp.is_active && newEmp.end_date ? newEmp.end_date : null,
       is_active:          newEmp.is_active,
@@ -466,6 +470,7 @@ export default function EmployeeSearch() {
       name: newEmp.name.trim(),
       team: newEmp.team || null,
       position: newEmp.position || null,
+      manager_name: newEmp.manager_name || null,
       start_date: newEmp.start_date || null,
       end_date: !newEmp.is_active && newEmp.end_date ? newEmp.end_date : null,
       is_active: newEmp.is_active,
@@ -507,8 +512,9 @@ export default function EmployeeSearch() {
       .insert({
         company_id: nonPayrollForm.company_id,
         name: nonPayrollForm.name.trim(),
-        team: NON_PAYROLL_TEAM,
+        team: nonPayrollForm.team.trim() || NON_PAYROLL_TEAM,
         position: nonPayrollForm.position.trim() || 'Non-payroll',
+        manager_name: nonPayrollForm.manager_name.trim() || null,
         start_date: null,
         end_date: null,
         is_active: true,
@@ -526,7 +532,7 @@ export default function EmployeeSearch() {
     }
 
     setAddModal(false)
-    setNonPayrollForm(p => ({ ...p, name: '', position: 'Non-payroll' }))
+    setNonPayrollForm(p => ({ ...p, name: '', team: NON_PAYROLL_TEAM, position: 'Non-payroll', manager_name: '' }))
     setSaving(false)
 
     let q = supabase.from('employees')
@@ -869,6 +875,7 @@ export default function EmployeeSearch() {
                         name: selected.name ?? '',
                         team: selected.team ?? '',
                         position: selected.position ?? '',
+                        manager_name: selected.manager_name ?? '',
                         start_date: selected.start_date ?? '',
                         is_active: selected.is_active,
                         end_date: selected.end_date ?? '',
@@ -1257,12 +1264,16 @@ export default function EmployeeSearch() {
           onClick={() => { setAddModal(false); setAddError('') }}>
           <div className="bg-white rounded-2xl p-6 w-96 shadow-2xl" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-ink mb-4">
-              {employeeTab === 'non_payroll' ? 'Add Non-payroll Person' : t('emp.add_modal.title', locale)}
+              {editingEmployeeId
+                ? t('common.edit', locale)
+                : employeeTab === 'non_payroll'
+                  ? 'Add Non-payroll Person'
+                  : t('emp.add_modal.title', locale)}
             </h3>
             {addError && (
               <div className="mb-3 text-xs text-signal-neg bg-white border border-line rounded-lg px-3 py-2">{addError}</div>
             )}
-            {employeeTab === 'non_payroll' ? (
+            {!editingEmployeeId && employeeTab === 'non_payroll' ? (
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-semibold text-ink-muted mb-1 block">Company</label>
@@ -1271,13 +1282,21 @@ export default function EmployeeSearch() {
                     className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink bg-white">
                   {companies.map(c => <option key={c.id} value={c.id}>{companyLabel(c.name)}</option>)}
                 </select>
-              </div>
+                </div>
                 <div>
                   <label className="text-xs font-semibold text-ink-muted mb-1 block">Name</label>
                   <input
                     value={nonPayrollForm.name}
                     onChange={e => setNonPayrollForm(p => ({ ...p, name: e.target.value }))}
                     placeholder="Auto-filled from email account"
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-ink-muted mb-1 block">Department</label>
+                  <input
+                    value={nonPayrollForm.team}
+                    onChange={e => setNonPayrollForm(p => ({ ...p, team: e.target.value }))}
+                    placeholder="Outside Payroll"
                     className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
                 </div>
                 <div>
@@ -1288,8 +1307,16 @@ export default function EmployeeSearch() {
                     placeholder="Non-payroll"
                     className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
                 </div>
+                <div>
+                  <label className="text-xs font-semibold text-ink-muted mb-1 block">Manager</label>
+                  <input
+                    value={nonPayrollForm.manager_name}
+                    onChange={e => setNonPayrollForm(p => ({ ...p, manager_name: e.target.value }))}
+                    placeholder="Manager name"
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
+                </div>
                 <div className="rounded-xl border border-line bg-pill px-3 py-2 text-xs text-ink-muted">
-                  Team will be saved as <span className="font-semibold text-ink">Outside Payroll</span>. After saving, link email accounts from the M365 Accounts tab.
+                  After saving, link email accounts from the M365 Accounts tab.
                 </div>
               </div>
             ) : (
@@ -1321,6 +1348,12 @@ export default function EmployeeSearch() {
                     onChange={e => setNewEmp(p => ({ ...p, position: e.target.value }))}
                     className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-ink-muted mb-1 block">Manager</label>
+                <input placeholder="Manager name" value={newEmp.manager_name}
+                  onChange={e => setNewEmp(p => ({ ...p, manager_name: e.target.value }))}
+                  className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-ink-muted mb-1 block">{t('emp.add_modal.start_date', locale)}</label>
@@ -1413,6 +1446,7 @@ export default function EmployeeSearch() {
                 setAddModal(false)
                 setEditingEmployeeId(null)
                 setAddError('')
+                setNewEmp(p => ({ ...BLANK_FORM, company_id: p.company_id || companies[0]?.id || '' }))
               }}
                 className="flex-1 border-2 border-line rounded-xl py-2.5 text-sm font-semibold text-ink-muted hover:bg-pill transition-colors">
                 {t('common.cancel', locale)}
