@@ -101,6 +101,17 @@ function costPerPerson(sub: Subscription): number {
   return (sub.cost_cad ?? 0) / linkedCount(sub)
 }
 
+function getSubEmployeeName(
+  rel: { name: string }[] | { name: string } | null | undefined,
+  employeeId?: string | null,
+  employees?: Employee[]
+): string | null {
+  if (Array.isArray(rel)) return rel[0]?.name ?? null
+  if (rel && typeof rel === 'object' && 'name' in rel) return rel.name ?? null
+  if (employeeId && employees) return employees.find(e => e.id === employeeId)?.name ?? null
+  return null
+}
+
 // ── Shared UI ─────────────────────────────────────────────────────────────────
 
 function Badge({ label, color }: { label: string; color: string }) {
@@ -1195,7 +1206,7 @@ export default function LicensesPage() {
                               : (
                                 <div className="max-w-56 whitespace-normal leading-5">
                                   {linked
-                                    .map(se => se.employees?.[0]?.name)
+                                    .map(se => getSubEmployeeName(se.employees as any, se.employee_id, employees))
                                     .filter((name): name is string => !!name)
                                     .join(', ')}
                                 </div>

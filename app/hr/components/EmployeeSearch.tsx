@@ -204,6 +204,7 @@ export default function EmployeeSearch() {
   const [licenses,     setLicenses]     = useState<License[]>([])
   const [assets,       setAssets]       = useState<Asset[]>([])
   const [subscriptions,setSubs]         = useState<Subscription[]>([])
+  const [employeeModalSnapshot, setEmployeeModalSnapshot] = useState('')
   const [nonPayrollForm, setNonPayrollForm] = useState({
     company_id: '',
     name: '',
@@ -214,22 +215,17 @@ export default function EmployeeSearch() {
 
   const employeeModalDirty = useMemo(() => {
     if (!addModal) return false
-    if (!editingEmployeeId && employeeTab === 'non_payroll') {
-      return JSON.stringify(nonPayrollForm) !== JSON.stringify({
-        company_id: nonPayrollForm.company_id,
-        name: '',
-        team: NON_PAYROLL_TEAM,
-        position: 'Non-payroll',
-        manager_name: '',
-      })
-    }
-    return JSON.stringify(newEmp) !== JSON.stringify({ ...BLANK_FORM, company_id: newEmp.company_id })
-  }, [addModal, editingEmployeeId, employeeTab, newEmp, nonPayrollForm])
+    const currentSnapshot = !editingEmployeeId && employeeTab === 'non_payroll'
+      ? JSON.stringify(nonPayrollForm)
+      : JSON.stringify(newEmp)
+    return currentSnapshot !== employeeModalSnapshot
+  }, [addModal, editingEmployeeId, employeeTab, newEmp, nonPayrollForm, employeeModalSnapshot])
 
   function closeEmployeeModal() {
     setAddModal(false)
     setEditingEmployeeId(null)
     setAddError('')
+    setEmployeeModalSnapshot('')
     setNewEmp(p => ({ ...BLANK_FORM, company_id: p.company_id || companies[0]?.id || '' }))
   }
 
@@ -635,7 +631,24 @@ export default function EmployeeSearch() {
           <option value="all">{t('emp.all_companies', locale)}</option>
           {companies.map(c => <option key={c.id} value={c.id}>{companyLabel(c.name)}</option>)}
         </select>
-        <button onClick={() => setAddModal(true)}
+        <button onClick={() => {
+          if (employeeTab === 'non_payroll') {
+            const initialForm = {
+              company_id: nonPayrollForm.company_id,
+              name: '',
+              team: NON_PAYROLL_TEAM,
+              position: 'Non-payroll',
+              manager_name: '',
+            }
+            setNonPayrollForm(initialForm)
+            setEmployeeModalSnapshot(JSON.stringify(initialForm))
+          } else {
+            const initialForm = { ...BLANK_FORM, company_id: newEmp.company_id || companies[0]?.id || '' }
+            setNewEmp(initialForm)
+            setEmployeeModalSnapshot(JSON.stringify(initialForm))
+          }
+          setAddModal(true)
+        }}
           className="px-4 py-2 bg-ink hover:bg-ink/90 text-white text-sm font-semibold rounded-lg whitespace-nowrap transition-colors">
           {t('emp.add', locale)}
         </button>
@@ -925,8 +938,7 @@ export default function EmployeeSearch() {
                 <div className="flex-shrink-0 ml-4 flex flex-col items-end gap-2">
                   <button
                     onClick={() => {
-                      setEditingEmployeeId(selected.id)
-                      setNewEmp({
+                      const initialForm = {
                         company_id: Array.isArray(selected.companies) ? selected.companies[0]?.id ?? '' : selected.companies?.id ?? '',
                         name: selected.name ?? '',
                         team: selected.team ?? '',
@@ -940,7 +952,10 @@ export default function EmployeeSearch() {
                         is_exempt: selected.is_exempt,
                         employment_type: baseEmploymentType(selected.employment_type),
                         is_non_payroll: isNonPayrollEmploymentType(selected.employment_type),
-                      })
+                      }
+                      setEditingEmployeeId(selected.id)
+                      setNewEmp(initialForm)
+                      setEmployeeModalSnapshot(JSON.stringify(initialForm))
                       setAddError('')
                       setAddModal(true)
                     }}
