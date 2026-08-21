@@ -1388,14 +1388,19 @@ export default function EmployeeSearch() {
 
               <div>
                 <label className="text-xs font-semibold text-ink-muted mb-1 block">{t('emp.add_modal.emp_type', locale)}</label>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {([
                     { val: 'office',     label: t('emp.add_modal.office', locale) },
                     { val: 'remote',     label: 'Remote' },
                     { val: 'contractor', label: locale === 'ko' ? 'IC/외주' : 'IC/Subcontract' },
+                    { val: 'non_payroll', label: locale === 'ko' ? '논페이롤' : 'Non-payroll' },
                   ] as const).map(opt => (
                     <button key={opt.val} type="button"
-                      onClick={() => setNewEmp(p => ({ ...p, employment_type: opt.val }))}
+                      onClick={() => setNewEmp(p => ({
+                        ...p,
+                        employment_type: opt.val,
+                        team: opt.val === 'non_payroll' && !p.team ? NON_PAYROLL_TEAM : p.team,
+                      }))}
                       className={`flex-1 py-1.5 text-xs rounded-lg border-2 font-semibold transition-colors ${
                         newEmp.employment_type === opt.val
                           ? 'bg-ink border-ink text-white'
