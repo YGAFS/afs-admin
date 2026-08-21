@@ -36,6 +36,11 @@ type Subscription = {
   cost_cad: number; billing_cycle: string | null; status: string
   linked_count: number
 }
+type LicenseAccountCandidate = {
+  id: string; display_name: string | null; email_address: string | null
+  company: string | null; status: string; employee_id: string | null
+}
+type EmployeeTab = 'active' | 'non_payroll' | 'terminated'
 
 function calcDays(code: string) { return ['L1','L2','S1','S2'].includes(code) ? 0.5 : 1 }
 
@@ -140,12 +145,13 @@ const BLANK_FORM: NewEmpForm = {
   vacation_allowance: 10, uses_accrual: true, is_exempt: false,
   employment_type: 'office',
 }
+const NON_PAYROLL_TEAM = 'Outside Payroll'
 
 export default function EmployeeSearch() {
   const { locale } = useLocale()
   const [query,        setQuery]        = useState('')
   const [compFilter,   setComp]         = useState('all')
-  const [showInactive, setShowInactive] = useState(false)
+  const [employeeTab,  setEmployeeTab]  = useState<EmployeeTab>('active')
   const [employees,    setEmps]         = useState<Employee[]>([])
   const [selected,     setSel]          = useState<Employee | null>(null)
   const [summary,      setSum]          = useState<Summary | null>(null)
@@ -180,12 +186,22 @@ export default function EmployeeSearch() {
   const [licenses,     setLicenses]     = useState<License[]>([])
   const [assets,       setAssets]       = useState<Asset[]>([])
   const [subscriptions,setSubs]         = useState<Subscription[]>([])
+  const [accountCandidates, setAccountCandidates] = useState<LicenseAccountCandidate[]>([])
+  const [nonPayrollForm, setNonPayrollForm] = useState({
+    company_id: '',
+    account_id: '',
+    name: '',
+    position: 'Non-payroll',
+  })
 
   useEffect(() => {
     supabase.from('companies').select('id,name').order('name')
       .then(({ data }) => {
         setComps(data ?? [])
-        if (data?.length) setNewEmp(p => ({ ...p, company_id: data[0].id }))
+        if (data?.length) {
+          setNewEmp(p => ({ ...p, company_id: data[0].id }))
+          setNonPayrollForm(p => ({ ...p, company_id: data[0].id }))
+        }
       })
   }, [])
 
@@ -193,9 +209,10 @@ export default function EmployeeSearch() {
     let q = supabase.from('employees')
       .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
       .order('name')
-    // Active: is_active=true AND no end_date. Terminated: is_active=false OR has end_date.
-    if (!showInactive) {
+    if (employeeTab === 'active') {
       q = q.eq('is_active', true)
+    } else if (employeeTab === 'non_payroll') {
+      q = q.eq('is_active', true).eq('employment_type', 'non_payroll')
     } else {
       q = q.or('is_active.eq.false,end_date.not.is.null')
     }
@@ -203,10 +220,21 @@ export default function EmployeeSearch() {
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
     q.then(({ data }) => {
       let emps = (data as Employee[]) ?? []
-      if (!showInactive) emps = emps.filter(e => !e.end_date)
+      if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && e.employment_type !== 'non_payroll')
+      if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date)
       setEmps(sortEmployees(emps, sortMode)); setSel(null)
     })
-  }, [query, compFilter, showInactive, sortMode])
+  }, [query, compFilter, employeeTab, sortMode])
+
+  useEffect(() => {
+    supabase.from('licenses')
+      .select('id,display_name,email_address,company,status,employee_id')
+      .eq('status', 'Active')
+      .is('employee_id', null)
+      .not('email_address', 'is', null)
+      .order('email_address')
+      .then(({ data }) => setAccountCandidates((data as LicenseAccountCandidate[]) ?? []))
+  }, [])
 
   async function loadStats(emp: Employee, year: number) {
     const today      = new Date()
@@ -429,11 +457,77 @@ export default function EmployeeSearch() {
     let q = supabase.from('employees')
       .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
       .order('name')
-    if (!showInactive) { q = q.eq('is_active', true) } else { q = q.or('is_active.eq.false,end_date.not.is.null') }
+    if (employeeTab === 'active') q = q.eq('is_active', true)
+    else if (employeeTab === 'non_payroll') q = q.eq('is_active', true).eq('employment_type', 'non_payroll')
+    else q = q.or('is_active.eq.false,end_date.not.is.null')
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
     q.then(({ data }) => {
       let emps = (data as Employee[]) ?? []
-      if (!showInactive) emps = emps.filter(e => !e.end_date)
+      if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && e.employment_type !== 'non_payroll')
+      if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date)
+      setEmps(sortEmployees(emps, sortMode))
+    })
+  }
+
+  async function handleAddNonPayroll() {
+    const selectedAccount = accountCandidates.find(a => a.id === nonPayrollForm.account_id)
+    if (!nonPayrollForm.company_id || !selectedAccount?.email_address) return
+
+    const finalName = nonPayrollForm.name.trim()
+      || selectedAccount.display_name?.trim()
+      || selectedAccount.email_address.split('@')[0]
+
+    setSaving(true)
+    setAddError('')
+
+    const { data: inserted, error } = await supabase.from('employees')
+      .insert({
+        company_id: nonPayrollForm.company_id,
+        name: finalName,
+        team: NON_PAYROLL_TEAM,
+        position: nonPayrollForm.position.trim() || 'Non-payroll',
+        start_date: null,
+        end_date: null,
+        is_active: true,
+        vacation_allowance: 0,
+        uses_accrual: false,
+        is_exempt: false,
+        sort_order: 99,
+        employment_type: 'non_payroll',
+      })
+      .select('id')
+      .single()
+
+    if (error || !inserted) {
+      setAddError(error?.message ?? 'Failed to register non-payroll person.')
+      setSaving(false)
+      return
+    }
+
+    const { error: linkError } = await supabase.from('licenses')
+      .update({ employee_id: inserted.id })
+      .eq('email_address', selectedAccount.email_address)
+      .is('employee_id', null)
+
+    if (linkError) {
+      setAddError(linkError.message)
+      setSaving(false)
+      return
+    }
+
+    setAccountCandidates(prev => prev.filter(a => a.id !== selectedAccount.id))
+    setAddModal(false)
+    setNonPayrollForm(p => ({ ...p, account_id: '', name: '', position: 'Non-payroll' }))
+    setSaving(false)
+
+    let q = supabase.from('employees')
+      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
+      .order('name')
+      .eq('is_active', true)
+      .eq('employment_type', 'non_payroll')
+    if (compFilter !== 'all') q = q.eq('company_id', compFilter)
+    q.then(({ data }) => {
+      const emps = ((data as Employee[]) ?? []).filter(e => !e.end_date)
       setEmps(sortEmployees(emps, sortMode))
     })
   }
@@ -457,6 +551,10 @@ export default function EmployeeSearch() {
     const h = Math.round(n * DAY_HOURS * 10) / 10
     return locale === 'ko' ? `${h}시간` : `${h}h`
   }
+  const selectedNonPayrollCompanyName = companies.find(c => c.id === nonPayrollForm.company_id)?.name
+  const filteredAccountCandidates = accountCandidates.filter(a =>
+    !selectedNonPayrollCompanyName || !a.company || a.company === selectedNonPayrollCompanyName
+  )
 
   return (
     <div>
@@ -490,19 +588,27 @@ export default function EmployeeSearch() {
         ))}
       </div>
 
-      {/* Active / Terminated tabs */}
+      {/* Active / Non-payroll / Terminated tabs */}
       <div className="flex border-b-2 border-line mb-4">
-        <button onClick={() => { setShowInactive(false); setSel(null) }}
+        <button onClick={() => { setEmployeeTab('active'); setSel(null) }}
           className={`px-5 py-2.5 text-sm font-bold border-b-2 -mb-0.5 transition-colors ${
-            !showInactive
+            employeeTab === 'active'
               ? 'border-ink text-ink'
               : 'border-transparent text-ink-faint hover:text-ink-muted'
           }`}>
           {t('emp.tab.active', locale)}
         </button>
-        <button onClick={() => { setShowInactive(true); setSel(null) }}
+        <button onClick={() => { setEmployeeTab('non_payroll'); setSel(null) }}
           className={`px-5 py-2.5 text-sm font-bold border-b-2 -mb-0.5 transition-colors ${
-            showInactive
+            employeeTab === 'non_payroll'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-ink-faint hover:text-ink-muted'
+          }`}>
+          Non-payroll
+        </button>
+        <button onClick={() => { setEmployeeTab('terminated'); setSel(null) }}
+          className={`px-5 py-2.5 text-sm font-bold border-b-2 -mb-0.5 transition-colors ${
+            employeeTab === 'terminated'
               ? 'border-signal-neg text-signal-neg'
               : 'border-transparent text-ink-faint hover:text-ink-muted'
           }`}>
@@ -515,7 +621,11 @@ export default function EmployeeSearch() {
         <div className="w-72 flex-shrink-0 border border-line rounded-xl overflow-hidden max-h-[520px] overflow-y-auto bg-white shadow-sm">
           {employees.length === 0 ? (
             <div className="px-4 py-10 text-center text-ink-faint text-sm">
-              {showInactive ? t('emp.no_terminated', locale) : t('emp.no_results', locale)}
+              {employeeTab === 'terminated'
+                ? t('emp.no_terminated', locale)
+                : employeeTab === 'non_payroll'
+                  ? 'No non-payroll people yet'
+                  : t('emp.no_results', locale)}
             </div>
           ) : employees.map(emp => (
             <div key={emp.id}
@@ -554,6 +664,9 @@ export default function EmployeeSearch() {
                     )}
                     {emp.employment_type === 'contractor' && (
                       <span className="text-xs bg-line text-ink-muted px-1.5 py-0.5 rounded font-medium">IC</span>
+                    )}
+                    {emp.employment_type === 'non_payroll' && (
+                      <span className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">Non-payroll</span>
                     )}
                     {emp.is_active && emp.start_date && new Date(emp.start_date) > new Date() && (
                       <span className="text-xs bg-line text-ink-muted px-1.5 py-0.5 rounded font-medium">
@@ -1113,10 +1226,67 @@ export default function EmployeeSearch() {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
           onClick={() => { setAddModal(false); setAddError('') }}>
           <div className="bg-white rounded-2xl p-6 w-96 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-ink mb-4">{t('emp.add_modal.title', locale)}</h3>
+            <h3 className="text-lg font-bold text-ink mb-4">
+              {employeeTab === 'non_payroll' ? 'Add Non-payroll Person' : t('emp.add_modal.title', locale)}
+            </h3>
             {addError && (
               <div className="mb-3 text-xs text-signal-neg bg-white border border-line rounded-lg px-3 py-2">{addError}</div>
             )}
+            {employeeTab === 'non_payroll' ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-semibold text-ink-muted mb-1 block">Company</label>
+                  <select value={nonPayrollForm.company_id}
+                    onChange={e => setNonPayrollForm(p => ({ ...p, company_id: e.target.value, account_id: '', name: '' }))}
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink bg-white">
+                    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-ink-muted mb-1 block">Match Existing Email Account</label>
+                  <select
+                    value={nonPayrollForm.account_id}
+                    onChange={e => {
+                      const chosen = filteredAccountCandidates.find(a => a.id === e.target.value)
+                      setNonPayrollForm(p => ({
+                        ...p,
+                        account_id: e.target.value,
+                        name: chosen?.display_name?.trim() || chosen?.email_address?.split('@')[0] || p.name,
+                      }))
+                    }}
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink bg-white">
+                    <option value="">Select an email account</option>
+                    {filteredAccountCandidates.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.email_address}{a.display_name ? ` — ${a.display_name}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {filteredAccountCandidates.length === 0 && (
+                    <p className="text-xs text-ink-faint mt-1">No unassigned active email accounts for this company.</p>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-ink-muted mb-1 block">Name</label>
+                  <input
+                    value={nonPayrollForm.name}
+                    onChange={e => setNonPayrollForm(p => ({ ...p, name: e.target.value }))}
+                    placeholder="Auto-filled from email account"
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-ink-muted mb-1 block">Position</label>
+                  <input
+                    value={nonPayrollForm.position}
+                    onChange={e => setNonPayrollForm(p => ({ ...p, position: e.target.value }))}
+                    placeholder="Non-payroll"
+                    className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
+                </div>
+                <div className="rounded-xl border border-line bg-pill px-3 py-2 text-xs text-ink-muted">
+                  Team will be saved as <span className="font-semibold text-ink">Outside Payroll</span>, and the selected email account will be linked automatically.
+                </div>
+              </div>
+            ) : (
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-semibold text-ink-muted mb-1 block">{t('emp.add_modal.company', locale)}</label>
@@ -1216,9 +1386,12 @@ export default function EmployeeSearch() {
                 </label>
               </div>
             </div>
+            )}
             <div className="flex gap-2 mt-5">
-              <button onClick={handleAddEmployee}
-                disabled={!newEmp.name.trim() || !newEmp.company_id || saving}
+              <button onClick={employeeTab === 'non_payroll' ? handleAddNonPayroll : handleAddEmployee}
+                disabled={employeeTab === 'non_payroll'
+                  ? (!nonPayrollForm.company_id || !nonPayrollForm.account_id || saving)
+                  : (!newEmp.name.trim() || !newEmp.company_id || saving)}
                 className="flex-1 bg-ink disabled:bg-line text-white rounded-xl py-2.5 text-sm font-bold transition-colors">
                 {t('common.add', locale)}
               </button>

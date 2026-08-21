@@ -208,7 +208,11 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
       .or(`start_date.is.null,start_date.lte.${lastDayStr}`)
       .order('sort_order').order('name')
 
-    const { data: emps } = await baseQ()
+    let { data: emps, error: empErr } = await baseQ()
+      .or('employment_type.eq.office,employment_type.eq.non_payroll,employment_type.is.null')
+    if (empErr) {
+      ;({ data: emps } = await baseQ())
+    }
 
     setEmployees(emps ?? [])
     if (!emps?.length) return
