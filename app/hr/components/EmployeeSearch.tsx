@@ -38,6 +38,21 @@ type Subscription = {
 }
 type EmployeeTab = 'active' | 'non_payroll' | 'terminated'
 
+function isNonPayrollEmploymentType(value?: string | null) {
+  return value === 'non_payroll' || !!value?.endsWith('_non_payroll')
+}
+
+function baseEmploymentType(value?: string | null) {
+  if (!value || value === 'non_payroll') return 'office'
+  if (value.endsWith('_non_payroll')) return value.replace(/_non_payroll$/, '')
+  return value
+}
+
+function composeEmploymentType(baseType: string, isNonPayroll: boolean) {
+  if (!isNonPayroll) return baseType
+  return baseType === 'office' ? 'non_payroll' : `${baseType}_non_payroll`
+}
+
 function calcDays(code: string) { return ['L1','L2','S1','S2'].includes(code) ? 0.5 : 1 }
 
 function positionRank(pos: string | null | undefined): number {
@@ -138,13 +153,14 @@ type NewEmpForm = {
   start_date: string; is_active: boolean; end_date: string
   vacation_allowance: number; uses_accrual: boolean; is_exempt: boolean
   employment_type: string
+  is_non_payroll: boolean
 }
 
 const BLANK_FORM: NewEmpForm = {
   company_id: '', name: '', team: '', position: '', manager_name: '',
   start_date: '', is_active: true, end_date: '',
   vacation_allowance: 10, uses_accrual: true, is_exempt: false,
-  employment_type: 'office',
+  employment_type: 'office', is_non_payroll: false,
 }
 const NON_PAYROLL_TEAM = 'Outside Payroll'
 
@@ -214,7 +230,7 @@ export default function EmployeeSearch() {
     if (employeeTab === 'active') {
       q = q.eq('is_active', true)
     } else if (employeeTab === 'non_payroll') {
-      q = q.eq('is_active', true).eq('employment_type', 'non_payroll')
+      q = q.eq('is_active', true)
     } else {
       q = q.or('is_active.eq.false,end_date.not.is.null')
     }
@@ -222,8 +238,8 @@ export default function EmployeeSearch() {
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
     q.then(({ data }) => {
       let emps = (data as Employee[]) ?? []
-      if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && e.employment_type !== 'non_payroll')
-      if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date)
+      if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && !isNonPayrollEmploymentType(e.employment_type))
+      if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date && isNonPayrollEmploymentType(e.employment_type))
       setEmps(sortEmployees(emps, sortMode)); setSel(null)
     })
   }, [query, compFilter, employeeTab, sortMode])
@@ -439,7 +455,7 @@ export default function EmployeeSearch() {
       sort_order:         99,
     }
     let { error } = await supabase.from('employees')
-      .insert({ ...basePayload, employment_type: newEmp.employment_type })
+      .insert({ ...basePayload, employment_type: composeEmploymentType(newEmp.employment_type, newEmp.is_non_payroll) })
     if (error?.message?.includes('employment_type')) {
       ;({ error } = await supabase.from('employees').insert(basePayload))
     }
@@ -451,13 +467,13 @@ export default function EmployeeSearch() {
       .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
       .order('name')
     if (employeeTab === 'active') q = q.eq('is_active', true)
-    else if (employeeTab === 'non_payroll') q = q.eq('is_active', true).eq('employment_type', 'non_payroll')
+    else if (employeeTab === 'non_payroll') q = q.eq('is_active', true)
     else q = q.or('is_active.eq.false,end_date.not.is.null')
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
     q.then(({ data }) => {
       let emps = (data as Employee[]) ?? []
-      if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && e.employment_type !== 'non_payroll')
-      if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date)
+      if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && !isNonPayrollEmploymentType(e.employment_type))
+      if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date && isNonPayrollEmploymentType(e.employment_type))
       setEmps(sortEmployees(emps, sortMode))
     })
   }
@@ -477,7 +493,7 @@ export default function EmployeeSearch() {
       vacation_allowance: newEmp.vacation_allowance,
       uses_accrual: newEmp.uses_accrual,
       is_exempt: newEmp.is_exempt,
-      employment_type: newEmp.employment_type,
+      employment_type: composeEmploymentType(newEmp.employment_type, newEmp.is_non_payroll),
     }
     const editingId = editingEmployeeId
     const { error } = await supabase.from('employees').update(payload).eq('id', editingId)
@@ -489,13 +505,13 @@ export default function EmployeeSearch() {
       .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
       .order('name')
     if (employeeTab === 'active') q = q.eq('is_active', true)
-    else if (employeeTab === 'non_payroll') q = q.eq('is_active', true).eq('employment_type', 'non_payroll')
+    else if (employeeTab === 'non_payroll') q = q.eq('is_active', true)
     else q = q.or('is_active.eq.false,end_date.not.is.null')
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
     q.then(({ data }) => {
       let emps = (data as Employee[]) ?? []
-      if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && e.employment_type !== 'non_payroll')
-      if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date)
+      if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && !isNonPayrollEmploymentType(e.employment_type))
+      if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date && isNonPayrollEmploymentType(e.employment_type))
       setEmps(sortEmployees(emps, sortMode))
       const updated = emps.find(e => e.id === editingId)
       if (updated) setSel(updated)
@@ -539,10 +555,9 @@ export default function EmployeeSearch() {
       .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
       .order('name')
       .eq('is_active', true)
-      .eq('employment_type', 'non_payroll')
     if (compFilter !== 'all') q = q.eq('company_id', compFilter)
     q.then(({ data }) => {
-      const emps = ((data as Employee[]) ?? []).filter(e => !e.end_date)
+      const emps = ((data as Employee[]) ?? []).filter(e => !e.end_date && isNonPayrollEmploymentType(e.employment_type))
       setEmps(sortEmployees(emps, sortMode))
     })
   }
@@ -670,13 +685,13 @@ export default function EmployeeSearch() {
                         {t('emp.badge.executive', locale)}
                       </span>
                     )}
-                    {emp.employment_type === 'remote' && (
+                    {baseEmploymentType(emp.employment_type) === 'remote' && (
                       <span className="text-xs bg-line text-ink-muted px-1.5 py-0.5 rounded font-medium">Remote</span>
                     )}
-                    {emp.employment_type === 'contractor' && (
+                    {baseEmploymentType(emp.employment_type) === 'contractor' && (
                       <span className="text-xs bg-line text-ink-muted px-1.5 py-0.5 rounded font-medium">IC</span>
                     )}
-                    {emp.employment_type === 'non_payroll' && (
+                    {isNonPayrollEmploymentType(emp.employment_type) && (
                       <span className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">Non-payroll</span>
                     )}
                     {emp.is_active && emp.start_date && new Date(emp.start_date) > new Date() && (
@@ -882,7 +897,8 @@ export default function EmployeeSearch() {
                         vacation_allowance: selected.vacation_allowance ?? 10,
                         uses_accrual: selected.uses_accrual,
                         is_exempt: selected.is_exempt,
-                        employment_type: selected.employment_type ?? 'office',
+                        employment_type: baseEmploymentType(selected.employment_type),
+                        is_non_payroll: isNonPayrollEmploymentType(selected.employment_type),
                       })
                       setAddError('')
                       setAddModal(true)
@@ -1393,14 +1409,9 @@ export default function EmployeeSearch() {
                     { val: 'office',     label: t('emp.add_modal.office', locale) },
                     { val: 'remote',     label: 'Remote' },
                     { val: 'contractor', label: locale === 'ko' ? 'IC/외주' : 'IC/Subcontract' },
-                    { val: 'non_payroll', label: locale === 'ko' ? '논페이롤' : 'Non-payroll' },
                   ] as const).map(opt => (
                     <button key={opt.val} type="button"
-                      onClick={() => setNewEmp(p => ({
-                        ...p,
-                        employment_type: opt.val,
-                        team: opt.val === 'non_payroll' && !p.team ? NON_PAYROLL_TEAM : p.team,
-                      }))}
+                      onClick={() => setNewEmp(p => ({ ...p, employment_type: opt.val }))}
                       className={`flex-1 py-1.5 text-xs rounded-lg border-2 font-semibold transition-colors ${
                         newEmp.employment_type === opt.val
                           ? 'bg-ink border-ink text-white'
@@ -1409,6 +1420,25 @@ export default function EmployeeSearch() {
                       {opt.label}
                     </button>
                   ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-ink-muted mb-1 block">Non-payroll</label>
+                <div className="flex gap-2">
+                  <button type="button"
+                    onClick={() => setNewEmp(p => ({ ...p, is_non_payroll: true, team: p.team || NON_PAYROLL_TEAM }))}
+                    className={`flex-1 py-2 rounded-lg text-sm font-semibold border-2 transition-colors ${
+                      newEmp.is_non_payroll ? 'bg-ink border-ink text-white' : 'bg-white border-line text-ink-muted'
+                    }`}>
+                    On
+                  </button>
+                  <button type="button"
+                    onClick={() => setNewEmp(p => ({ ...p, is_non_payroll: false }))}
+                    className={`flex-1 py-2 rounded-lg text-sm font-semibold border-2 transition-colors ${
+                      !newEmp.is_non_payroll ? 'bg-white border-line text-ink' : 'bg-white border-line text-ink-muted'
+                    }`}>
+                    Off
+                  </button>
                 </div>
               </div>
               <div className="flex gap-3 items-end pt-1">
