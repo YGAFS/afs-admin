@@ -25,6 +25,7 @@ type AuthCtx = {
   role: Role | 'none' | null
   locale: UiLanguage
   canManageLocale: boolean
+  isSuperAdmin: boolean
   setLocale: (locale: UiLanguage) => Promise<boolean>
 }
 
@@ -34,6 +35,7 @@ const AuthContext = createContext<AuthCtx>({
   role: null,
   locale: DEFAULT_UI_LANGUAGE,
   canManageLocale: false,
+  isSuperAdmin: false,
   setLocale: async () => false,
 })
 
@@ -44,6 +46,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [roleLoading, setRoleLoading] = useState(true)
   const [role, setRole] = useState<Role | 'none' | null>(null)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [locale, setLocaleState] = useState<UiLanguage>(DEFAULT_UI_LANGUAGE)
   const [settingsLoading, setSettingsLoading] = useState(true)
 
@@ -65,29 +68,41 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
+  const userId = user?.id ?? null
   const userEmail = user?.email ?? null
 
   useEffect(() => {
     if (loading) return
-    if (!userEmail) {
-      setRole(null)
+    if (!userId) {
+      setRole('none')
+      setIsSuperAdmin(false)
       setRoleLoading(false)
       setLocaleState(DEFAULT_UI_LANGUAGE)
       setSettingsLoading(false)
       return
     }
     setRoleLoading(true)
-    getSupabase()
-      .from('app_access')
-      .select('role')
-      .eq('email', userEmail)
-      .eq('app', 'warehousing')
-      .maybeSingle()
-      .then(({ data }) => {
-        setRole((data?.role as Role | undefined) ?? 'none')
-        setRoleLoading(false)
-      })
-  }, [userEmail, loading])
+    setRole('none')
+    setIsSuperAdmin(false)
+    async function loadAuthorization() {
+      const sb = getSupabase()
+      const { data: profile, error: profileError } = await sb.from('user_profiles').select('status,authz_migrated_at').eq('user_id', userId).maybeSingle()
+      if (profileError || (profile && profile.status !== 'active')) return
+      if (profile?.authz_migrated_at) {
+        const { data: globalRole, error: globalError } = await sb.from('user_global_roles').select('role').eq('user_id', userId).eq('role', 'super_admin').maybeSingle()
+        if (globalError) return
+        setIsSuperAdmin(!!globalRole)
+        const { data: appRole, error: appError } = await sb.from('app_user_roles').select('role').eq('user_id', userId).eq('app_key', 'warehousing').maybeSingle()
+        if (!appError && appRole && ['requester', 'purchasing', 'operations', 'bookkeeping', 'admin'].includes(appRole.role)) setRole(appRole.role as Role)
+        return
+      }
+      const normalizedEmail = userEmail?.trim().toLowerCase() ?? ''
+      setIsSuperAdmin(ADMIN_EMAILS.includes(normalizedEmail))
+      const { data: legacy, error: legacyError } = await sb.from('app_access').select('role').eq('email', normalizedEmail).eq('app', 'warehousing').maybeSingle()
+      if (!legacyError && legacy && ['requester', 'purchasing', 'operations', 'bookkeeping', 'admin'].includes(legacy.role)) setRole(legacy.role as Role)
+    }
+    loadAuthorization().finally(() => setRoleLoading(false))
+  }, [userId, userEmail, loading])
 
   useEffect(() => {
     if (loading) return
@@ -105,7 +120,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   }, [userEmail, loading])
 
   async function setLocale(locale: UiLanguage) {
-    if (!userEmail || !ADMIN_EMAILS.includes(userEmail)) return false
+    if (!userId || !isSuperAdmin) return false
     const { error } = await getSupabase()
       .from('warehousing_settings')
       .upsert({ key: 'ui_language', value: locale }, { onConflict: 'key' })
@@ -114,10 +129,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     return true
   }
 
-  const canManageLocale = !!userEmail && ADMIN_EMAILS.includes(userEmail)
+  const canManageLocale = !!userId && isSuperAdmin
 
   return (
-    <AuthContext.Provider value={{ user, loading: loading || roleLoading || settingsLoading, role, locale, canManageLocale, setLocale }}>
+    <AuthContext.Provider value={{ user, loading: loading || roleLoading || settingsLoading, role, locale, canManageLocale, isSuperAdmin, setLocale }}>
       {children}
     </AuthContext.Provider>
   )

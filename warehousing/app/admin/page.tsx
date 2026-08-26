@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
 import { useAuth, type Role } from '@/app/providers'
-import { ADMIN_EMAILS, type UiLanguage } from '@/lib/i18n'
+import type { UiLanguage } from '@/lib/i18n'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
@@ -22,15 +22,14 @@ const ROLES: { key: Role; label: string }[] = [
 ]
 
 export default function AdminPage() {
-  const { user, locale, canManageLocale, setLocale } = useAuth()
-  const isAdmin = !!user?.email && ADMIN_EMAILS.includes(user.email)
+  const { locale, canManageLocale, isSuperAdmin, setLocale } = useAuth()
 
   return (
     <div className="p-6 max-w-2xl">
       <h1 className="text-xl font-bold text-ink mb-1">{locale === 'ko' ? '관리자' : 'Admin'}</h1>
       <p className="text-sm text-ink-faint mb-6">{locale === 'ko' ? '권한 및 설정 관리' : 'Permissions and settings'}</p>
 
-      {isAdmin ? (
+      {isSuperAdmin ? (
         <div className="space-y-6">
           <Link href="/admin/categories" className="inline-block text-sm text-ink-muted hover:text-ink underline">
             {locale === 'ko' ? '구매 카테고리 관리 →' : 'Manage purchase categories ->'}
@@ -147,17 +146,14 @@ function BookkeepingEmailPanel({ locale }: { locale: UiLanguage }) {
 }
 
 interface AuthUser {
-  id: string
+  user_id: string
   email: string
   created_at: string
+  role: Role | null
+  source: 'uuid' | 'legacy'
 }
 
-interface UserRow {
-  email: string
-  role: Role | null
-  saving: boolean
-  saved: boolean
-}
+interface UserRow { user_id: string; email: string; role: Role | null; saving: boolean; saved: boolean }
 
 function RoleAccessPanel({ locale }: { locale: UiLanguage }) {
   const [rows, setRows] = useState<Record<string, UserRow>>({})
@@ -179,10 +175,9 @@ function RoleAccessPanel({ locale }: { locale: UiLanguage }) {
       return
     }
 
-    const [usersRes, accessRes] = await Promise.all([
-      fetch('/api/admin/users', { headers: { Authorization: `Bearer ${token}` } }),
-      supabase.from('app_access').select('email, role').eq('app', 'warehousing'),
-    ])
+    const usersRes = await fetch('/api/admin/users', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
 
     if (!usersRes.ok) {
       const body = await usersRes.json().catch(() => ({}))
@@ -191,34 +186,63 @@ function RoleAccessPanel({ locale }: { locale: UiLanguage }) {
       return
     }
 
-    const { users } = (await usersRes.json()) as { users: AuthUser[] }
-    const roleByEmail = new Map<string, Role>((accessRes.data ?? []).map(r => [r.email as string, r.role as Role]))
+    const { users } = (await usersRes.json()) as {
+      users: AuthUser[]
+    }
 
     const next: Record<string, UserRow> = {}
     for (const u of users) {
-      next[u.email] = { email: u.email, role: roleByEmail.get(u.email) ?? null, saving: false, saved: false }
+      next[u.user_id] = { user_id: u.user_id, email: u.email, role: u.role ?? null, saving: false, saved: false }
     }
     setRows(next)
     setLoading(false)
   }
 
-  function updateRow(email: string, patch: Partial<UserRow>) {
-    setRows(r => ({ ...r, [email]: { ...r[email], ...patch, saved: false } }))
+  function updateRow(userId: string, patch: Partial<UserRow>) {
+    setRows(r => ({ ...r, [userId]: { ...r[userId], ...patch, saved: false } }))
   }
 
-  async function save(email: string) {
-    const row = rows[email]
+  async function save(userId: string) {
+    const row = rows[userId]
     if (!row) return
-    updateRow(email, { saving: true })
+    updateRow(userId, { saving: true })
 
     if (row.role === null) {
-      const { error: delError } = await supabase.from('app_access').delete().eq('email', email).eq('app', 'warehousing')
-      updateRow(email, { saving: false, saved: !delError })
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData.session?.access_token
+      if (!token) {
+        updateRow(userId, { saving: false, saved: false })
+        return
+      }
+
+      const response = await fetch('/api/admin/users', {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ user_id: userId, app: 'warehousing' }),
+      })
+      updateRow(userId, { saving: false, saved: response.ok })
       return
     }
 
-    const { error: upsertError } = await supabase.from('app_access').upsert({ email, app: 'warehousing', role: row.role }, { onConflict: 'email,app' })
-    updateRow(email, { saving: false, saved: !upsertError })
+    const { data: sessionData } = await supabase.auth.getSession()
+    const token = sessionData.session?.access_token
+    if (!token) {
+      updateRow(userId, { saving: false, saved: false })
+      return
+    }
+
+    const response = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ user_id: userId, app: 'warehousing', role: row.role }),
+    })
+    updateRow(userId, { saving: false, saved: response.ok })
   }
 
   if (loading) {
@@ -246,14 +270,14 @@ function RoleAccessPanel({ locale }: { locale: UiLanguage }) {
               {row.saved && <span className="text-xs text-signal-pos">{locale === 'ko' ? '저장됨 ✓' : 'Saved ✓'}</span>}
               <select
                 value={row.role ?? ''}
-                onChange={e => updateRow(row.email, { role: (e.target.value || null) as Role | null })}
+                onChange={e => updateRow(row.user_id, { role: (e.target.value || null) as Role | null })}
                 className="border border-line rounded-lg px-2 py-1.5 text-sm"
               >
                 <option value="">{locale === 'ko' ? '— 접근 없음 —' : '-- No Access --'}</option>
                 {ROLES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
               </select>
               <button
-                onClick={() => save(row.email)}
+                onClick={() => save(row.user_id)}
                 disabled={row.saving}
                 className="px-3 py-1.5 text-xs text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-ink-faint transition-colors"
               >

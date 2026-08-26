@@ -6,6 +6,9 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { User } from '@supabase/supabase-js'
 import type { Locale } from '@/lib/i18n'
 
+const ROOT_SECTION_KEYS = ['hr', 'utilities', 'licenses', 'assets', 'supplies', 'admin'] as const
+const ADMIN_EMAILS = ['admin@afstransco.com']
+
 // Lazy singleton — only instantiated client-side (never during SSR/prerender)
 let _supabase: SupabaseClient | null = null
 function getSupabase() {
@@ -22,8 +25,8 @@ function getSupabase() {
 
 // allowedSections: null = full access to every section. Otherwise, only these
 // top-level sidebar sections (e.g. 'utilities', 'hr') are visible/reachable.
-type AuthCtx = { user: User | null; loading: boolean; allowedSections: string[] | null }
-const AuthContext = createContext<AuthCtx>({ user: null, loading: true, allowedSections: null })
+type AuthCtx = { user: User | null; loading: boolean; allowedSections: string[] | null; isSuperAdmin: boolean }
+const AuthContext = createContext<AuthCtx>({ user: null, loading: true, allowedSections: [], isSuperAdmin: false })
 export const useAuth = () => useContext(AuthContext)
 
 // ── Locale ────────────────────────────────────────────────────────────────────
@@ -38,7 +41,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const [user,    setUser]   = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [accessLoading, setAccessLoading] = useState(true)
-  const [allowedSections, setAllowedSections] = useState<string[] | null>(null)
+  const [allowedSections, setAllowedSections] = useState<string[] | null>([])
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [locale,  setLocaleState] = useState<Locale>('en')
 
   useEffect(() => {
@@ -65,35 +69,77 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   }, [])
 
   // Supabase re-emits onAuthStateChange (TOKEN_REFRESHED, USER_UPDATED, tab refocus, etc.)
-  // with a *new* user object for the same logical account. Keying this effect on that
-  // object reference re-ran the access lookup — and flipped `loading` true/false again —
-  // on every one of those events, which is what caused the repeated flicker even after
-  // the initial-load race was fixed. Keying on the email (a stable primitive) instead
-  // means it only re-runs when the signed-in account actually changes.
+  // Authorization is keyed by the stable auth user id, not by email.
+  const userId = user?.id ?? null
   const userEmail = user?.email ?? null
   useEffect(() => {
-    // Wait until the initial auth check has actually resolved — otherwise this runs
-    // once with the placeholder `user === null` before getUser() settles, briefly
-    // clearing accessLoading and letting the unfiltered layout flash on screen before
-    // flipping back to the loading state once the real user (and their section
-    // restrictions) come in.
     if (loading) return
-    if (!userEmail) {
-      setAllowedSections(null)
+    if (!userId) {
+      setAllowedSections([])
+      setIsSuperAdmin(false)
       setAccessLoading(false)
       return
     }
     setAccessLoading(true)
-    getSupabase()
-      .from('user_access')
-      .select('allowed_sections')
-      .eq('email', userEmail)
-      .maybeSingle()
-      .then(({ data }) => {
-        setAllowedSections((data?.allowed_sections as string[] | null) ?? null)
-        setAccessLoading(false)
-      })
-  }, [userEmail, loading])
+    setAllowedSections([])
+    setIsSuperAdmin(false)
+
+    async function loadAuthorization() {
+      const sb = getSupabase()
+      const { data: profile, error: profileError } = await sb
+        .from('user_profiles')
+        .select('status, authz_migrated_at')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      // A profile query error is fail-closed. It must never resurrect email access.
+      if (profileError) return
+      if (profile && profile.status !== 'active') return
+
+      if (profile?.authz_migrated_at) {
+        const { data: globalRole, error: globalError } = await sb
+          .from('user_global_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .eq('role', 'super_admin')
+          .maybeSingle()
+        if (globalError) return
+        if (globalRole) {
+          setIsSuperAdmin(true)
+          setAllowedSections([...ROOT_SECTION_KEYS])
+          return
+        }
+        const { data: grants, error: grantsError } = await sb
+          .from('user_section_access')
+          .select('section_key')
+          .eq('user_id', userId)
+        if (grantsError) return
+        setAllowedSections((grants ?? []).map(row => row.section_key))
+        return
+      }
+
+      // Compatibility is restricted to users without a completed UUID cutover.
+      const normalizedEmail = userEmail?.trim().toLowerCase() ?? ''
+      const { data: legacy, error: legacyError } = await sb
+        .from('user_access')
+        .select('allowed_sections')
+        .eq('email', normalizedEmail)
+        .maybeSingle()
+      if (legacyError) return
+      if (legacy) {
+        const sections = legacy.allowed_sections as string[] | null
+        setAllowedSections(sections === null ? [...ROOT_SECTION_KEYS] : sections)
+        return
+      }
+      // Explicit legacy ADMIN_EMAILS compatibility for the administrator with no row.
+      if (ADMIN_EMAILS.includes(normalizedEmail)) {
+        setIsSuperAdmin(true)
+        setAllowedSections([...ROOT_SECTION_KEYS])
+      }
+    }
+
+    loadAuthorization().finally(() => setAccessLoading(false))
+  }, [userId, userEmail, loading])
 
   async function setLocale(l: Locale) {
     setLocaleState(l)
@@ -103,7 +149,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading: loading || accessLoading, allowedSections }}>
+    <AuthContext.Provider value={{ user, loading: loading || accessLoading, allowedSections, isSuperAdmin }}>
       <LocaleContext.Provider value={{ locale, setLocale }}>
         {children}
       </LocaleContext.Provider>

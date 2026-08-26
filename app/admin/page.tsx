@@ -12,11 +12,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
 )
 
-// Must match ADMIN_EMAILS in app/api/admin/users/route.ts — that's the real
-// enforcement point (it's what the API actually checks); this just decides
-// whether to render the panel at all.
-const ADMIN_EMAILS = ['admin@afstransco.com']
-
 const SECTIONS: { key: string; label: string }[] = [
   { key: 'hr', label: 'HR / Attendance' },
   { key: 'utilities', label: 'Utility Dashboard' },
@@ -28,7 +23,7 @@ const SECTIONS: { key: string; label: string }[] = [
 
 export default function AdminPage() {
   const { locale, setLocale } = useLocale()
-  const { user } = useAuth()
+  const { isSuperAdmin } = useAuth()
 
   const languages: { code: Locale; label: string; flag: string }[] = [
     { code: 'en', label: t('settings.lang.en', locale), flag: '🇺🇸' },
@@ -62,7 +57,7 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {user?.email && ADMIN_EMAILS.includes(user.email) && (
+      {isSuperAdmin && (
         <div className="mt-6">
           <UserAccessPanel />
         </div>
@@ -72,12 +67,15 @@ export default function AdminPage() {
 }
 
 interface AuthUser {
-  id: string
+  user_id: string
   email: string
   created_at: string
+  sections: string[]
+  source: 'uuid' | 'legacy'
 }
 
 interface UserRow {
+  user_id: string
   email: string
   fullAccess: boolean
   sections: Set<string>
@@ -105,10 +103,9 @@ function UserAccessPanel() {
       return
     }
 
-    const [usersRes, accessRes] = await Promise.all([
-      fetch('/api/admin/users', { headers: { Authorization: `Bearer ${token}` } }),
-      supabase.from('user_access').select('email, allowed_sections'),
-    ])
+    const usersRes = await fetch('/api/admin/users', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
 
     if (!usersRes.ok) {
       const body = await usersRes.json().catch(() => ({}))
@@ -117,18 +114,18 @@ function UserAccessPanel() {
       return
     }
 
-    const { users } = (await usersRes.json()) as { users: AuthUser[] }
-    const accessByEmail = new Map<string, string[] | null>(
-      (accessRes.data ?? []).map(r => [r.email as string, r.allowed_sections as string[] | null])
-    )
+    const { users } = (await usersRes.json()) as {
+      users: AuthUser[]
+    }
 
     const next: Record<string, UserRow> = {}
     for (const u of users) {
-      const allowed = accessByEmail.get(u.email) ?? null
-      next[u.email] = {
+      const allowed = u.sections ?? []
+      next[u.user_id] = {
+        user_id: u.user_id,
         email: u.email,
-        fullAccess: allowed === null,
-        sections: new Set(allowed ?? SECTIONS.map(s => s.key)),
+        fullAccess: SECTIONS.every(s => allowed.includes(s.key)),
+        sections: new Set(allowed),
         saving: false,
         saved: false,
       }
@@ -137,19 +134,31 @@ function UserAccessPanel() {
     setLoading(false)
   }
 
-  function updateRow(email: string, patch: Partial<UserRow>) {
-    setRows(r => ({ ...r, [email]: { ...r[email], ...patch, saved: false } }))
+  function updateRow(userId: string, patch: Partial<UserRow>) {
+    setRows(r => ({ ...r, [userId]: { ...r[userId], ...patch, saved: false } }))
   }
 
-  async function save(email: string) {
-    const row = rows[email]
+  async function save(userId: string) {
+    const row = rows[userId]
     if (!row) return
-    updateRow(email, { saving: true })
-    const allowed_sections = row.fullAccess ? null : Array.from(row.sections)
-    const { error: upsertError } = await supabase
-      .from('user_access')
-      .upsert({ email, allowed_sections }, { onConflict: 'email' })
-    updateRow(email, { saving: false, saved: !upsertError })
+    updateRow(userId, { saving: true })
+    const sections = row.fullAccess ? SECTIONS.map(s => s.key) : Array.from(row.sections)
+    const { data: sessionData } = await supabase.auth.getSession()
+    const token = sessionData.session?.access_token
+    if (!token) {
+      updateRow(userId, { saving: false, saved: false })
+      return
+    }
+
+    const response = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ user_id: userId, sections }),
+    })
+    updateRow(userId, { saving: false, saved: response.ok })
   }
 
   if (loading) {
@@ -184,7 +193,7 @@ function UserAccessPanel() {
               <div className="flex items-center gap-3">
                 {row.saved && <span className="text-xs text-emerald-600">Saved ✓</span>}
                 <button
-                  onClick={() => save(row.email)}
+                  onClick={() => save(row.user_id)}
                   disabled={row.saving}
                   className="px-3 py-1 text-xs text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:bg-gray-300 transition-colors"
                 >
@@ -197,7 +206,7 @@ function UserAccessPanel() {
               <input
                 type="checkbox"
                 checked={row.fullAccess}
-                onChange={e => updateRow(row.email, { fullAccess: e.target.checked })}
+                onChange={e => updateRow(row.user_id, { fullAccess: e.target.checked })}
                 className="w-4 h-4 accent-blue-600"
               />
               Full Access
@@ -214,7 +223,7 @@ function UserAccessPanel() {
                         const next = new Set(row.sections)
                         if (e.target.checked) next.add(s.key)
                         else next.delete(s.key)
-                        updateRow(row.email, { sections: next })
+                        updateRow(row.user_id, { sections: next })
                       }}
                       className="w-3.5 h-3.5 accent-blue-600"
                     />
