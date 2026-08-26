@@ -8,6 +8,7 @@ import {
 import { createClient } from '@supabase/supabase-js'
 import { useSearchParams } from 'next/navigation'
 import { computeBillStatus, STATUS_BADGE, type BalanceStatus, type InvoiceStatus } from '@/lib/billStatus'
+import { useAuth } from '@/app/providers'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
@@ -161,7 +162,7 @@ function VendorDetailPanel({
   vendor, locations, bills, role, onClose, onRefresh,
 }: {
   vendor: Vendor; locations: Location[]; bills: Bill[]
-  role: Role; onClose: () => void; onRefresh: () => void
+  role: Role | null; onClose: () => void; onRefresh: () => void
 }) {
   const { copy, copiedId } = useCopy()
 
@@ -1213,12 +1214,13 @@ function VendorModal({
 function VendorsContent() {
   const searchParams = useSearchParams()
   const urlCompany   = searchParams.get('company') as Company | null
+  const { user } = useAuth()
 
   const [vendors,   setVendors]   = useState<Vendor[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [bills,     setBills]     = useState<Bill[]>([])
   const [loading,   setLoading]   = useState(true)
-  const [role,      setRole]      = useState<Role>('admin')
+  const [role,      setRole]      = useState<Role | null>(null)
 
   const [coFilter,   setCoFilter]   = useState<Company | 'all'>(urlCompany ?? 'afs')
   const [locFilter,  setLocFilter]  = useState<string>('all')
@@ -1248,6 +1250,26 @@ function VendorsContent() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => { if (urlCompany) setCoFilter(urlCompany) }, [urlCompany])
+
+  useEffect(() => {
+    if (!user) {
+      setRole(null)
+      return
+    }
+
+    supabase
+      .from('utility_user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error || (data?.role !== 'admin' && data?.role !== 'ap')) {
+          setRole(null)
+        } else {
+          setRole(data.role)
+        }
+      })
+  }, [user])
 
   // Re-sync selected vendor after refresh
   useEffect(() => {

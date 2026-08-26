@@ -289,7 +289,7 @@ const emptyBill: Omit<Bill, 'id' | 'created_at' | 'payment_methods'> = {
 
 export default function UtilityPage() {
   const { user } = useAuth()
-  const [role,    setRole]    = useState<Role>('admin')
+  const [role,    setRole]    = useState<Role | null>(null)
   const [bills,   setBills]   = useState<Bill[]>([])
   const [methods, setMethods] = useState<PaymentMethod[]>([])
   const [credits, setCredits] = useState<Credit[]>([])
@@ -313,13 +313,22 @@ export default function UtilityPage() {
   const [showCreditModal, setShowCreditModal] = useState(false)
 
   useEffect(() => {
-    if (!user) return
+    if (!user) {
+      setRole(null)
+      return
+    }
     supabase
       .from('utility_user_roles')
       .select('role')
       .eq('user_id', user.id)
       .maybeSingle()
-      .then(({ data }) => setRole((data?.role as Role) ?? 'admin'))
+      .then(({ data, error }) => {
+        if (error || (data?.role !== 'admin' && data?.role !== 'ap')) {
+          setRole(null)
+        } else {
+          setRole(data.role)
+        }
+      })
   }, [user])
 
   const load = useCallback(async () => {
@@ -1293,7 +1302,7 @@ function CreditRow({
   credit: Credit
   balance: number
   balanceTip?: string
-  role: Role
+  role: Role | null
   onDelete: (id: string) => void
 }) {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
@@ -1652,7 +1661,7 @@ function BillExpandPanel({
   noteEdit, setNoteEdit, onSaveNote,
 }: {
   bill: Bill
-  role: Role
+  role: Role | null
   onUpdateStatus: (bill: Bill, status: BalanceStatus) => void
   onCarryForward: (bill: Bill) => void
   onPartialPayment: (bill: Bill) => void
@@ -1753,7 +1762,7 @@ function DashboardTab({
   effectiveCompanyId: (bill: Bill) => Company
   expandedVendor: string | null
   setExpandedVendor: (v: string | null) => void
-  role: Role
+  role: Role | null
   onUpdateStatus: (bill: Bill, status: BalanceStatus) => void
   onCarryForward: (bill: Bill) => void
   onPartialPayment: (bill: Bill) => void
@@ -2164,7 +2173,7 @@ function PaymentMethodsModal({
   methods, role, onClose, onSave
 }: {
   methods: PaymentMethod[]
-  role: Role
+  role: Role | null
   onClose: () => void
   onSave: () => void
 }) {
