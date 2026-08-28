@@ -164,6 +164,13 @@ function dueDateLabel(bill: Bill) {
   const days = daysUntilDue(bill)!
   const fmt = new Date(bill.due_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   const s = computeBillStatus(bill)
+  // Auto-pay bills are settled in the ledger at import time, but remain visible
+  // in Current until their due date so upcoming scheduled payments are clear.
+  if (s === 'paid' && bill.is_auto_pay) {
+    if (days === 0) return `${fmt} (Today)`
+    if (days > 0 && days <= 7) return `${fmt} (${days}d left)`
+    return fmt
+  }
   if (s === 'paid' || s === 'paid_late' || s === 'carried_forward' || s === 'waived' || s === 'void') return fmt
   if (days < 0)   return `${fmt} (${Math.abs(days)}d overdue)`
   if (days === 0) return `${fmt} (Today)`
@@ -173,6 +180,12 @@ function dueDateLabel(bill: Bill) {
 
 function dueDateColor(bill: Bill) {
   const s = computeBillStatus(bill)
+  if (s === 'paid' && bill.is_auto_pay) {
+    const days = daysUntilDue(bill)
+    if (days !== null && days <= 3) return 'text-red-500 font-medium'
+    if (days !== null && days <= 7) return 'text-amber-600 font-medium'
+    return 'text-ink-muted'
+  }
   if (s === 'paid' || s === 'paid_late' || s === 'carried_forward' || s === 'waived' || s === 'void') return 'text-ink-faint'
   const days = daysUntilDue(bill)
   if (days === null) return 'text-ink-muted'
@@ -425,14 +438,16 @@ export default function UtilityPage() {
     return due >= today && due <= inSevenDays
   })
 
-  // "Current" = unpaid bills due this month or next month, excluding anything already overdue
+  // "Current" = unpaid bills due this month or next month, plus auto-pay bills
+  // already settled in the ledger but still before their due date.
   const curMonth  = today.getMonth()
   const curYear   = today.getFullYear()
   const nextMonthDate = new Date(curYear, curMonth + 1, 1)
   const currentBills = bills.filter(b => {
     if (coFilter !== 'all' && effectiveCompanyId(b) !== coFilter) return false
     const s = computeBillStatus(b)
-    if (s === 'overdue' || s === 'overdue_partial' || !isActiveOutstanding(b) || !b.due_date) return false
+    const isUpcomingAutoPay = b.is_auto_pay && s === 'paid' && !!b.due_date && daysUntilDue(b)! >= 0
+    if (s === 'overdue' || s === 'overdue_partial' || (!isActiveOutstanding(b) && !isUpcomingAutoPay) || !b.due_date) return false
     const d = new Date(b.due_date + 'T00:00:00')
     const isThisMonth = d.getFullYear() === curYear && d.getMonth() === curMonth
     const isNextMonth  = d.getFullYear() === nextMonthDate.getFullYear() && d.getMonth() === nextMonthDate.getMonth()
