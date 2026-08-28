@@ -422,8 +422,15 @@ export default function UtilityPage() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
-    const timer = window.setInterval(load, 60_000)
-    return () => window.clearInterval(timer)
+    const timer = window.setInterval(load, 15_000)
+    const refreshOnFocus = () => { if (document.visibilityState === 'visible') load() }
+    window.addEventListener('focus', refreshOnFocus)
+    document.addEventListener('visibilitychange', refreshOnFocus)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshOnFocus)
+      document.removeEventListener('visibilitychange', refreshOnFocus)
+    }
   }, [load])
 
   function saveNotifications(next: BillNotification[]) {
