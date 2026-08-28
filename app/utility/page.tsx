@@ -297,7 +297,8 @@ export default function UtilityPage() {
   const [loading, setLoading] = useState(true)
 
   const [mainTab,      setMainTab]      = useState<MainTab>('dashboard')
-  const [coFilter,     setCoFilter]     = useState<Company | 'all'>('afs')
+  // The dashboard is an across-company overview, so start with every company visible.
+  const [coFilter,     setCoFilter]     = useState<Company | 'all'>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [searchTerm,   setSearchTerm]   = useState('')
   const [expandedVendor, setExpandedVendor] = useState<string | null>(null)
@@ -726,7 +727,16 @@ export default function UtilityPage() {
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="text-xs font-semibold text-signal-neg">{fmtAmt(b)}</span>
                           <span className="text-xs text-signal-neg">{dueDateLabel(b)}</span>
-                          <button onClick={() => updateBillStatus(b, 'paid')} className="text-xs px-2 py-0.5 rounded bg-ink text-white hover:bg-ink/90 transition-colors" title="Mark paid">Paid</button>
+                          {b.is_auto_pay ? (
+                            <span
+                              className="text-xs px-2 py-0.5 rounded bg-pill text-amber-600 font-medium"
+                              title="Auto Pay is enabled, but payment has not been recorded as paid. Verify the payment."
+                            >
+                              Verify Auto Pay
+                            </span>
+                          ) : (
+                            <button onClick={() => updateBillStatus(b, 'paid')} className="text-xs px-2 py-0.5 rounded bg-ink text-white hover:bg-ink/90 transition-colors" title="Mark paid">Paid</button>
+                          )}
                         </div>
                       </div>
                     ))}
