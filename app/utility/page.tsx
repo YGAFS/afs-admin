@@ -1786,14 +1786,17 @@ function NotificationBell({
   const unread = notifications.filter(n => !n.read).length
 
   return (
-    <div className="relative">
+    <div className="fixed top-4 right-6 z-50">
       <button
         onClick={() => setOpen(v => !v)}
-        className="relative p-2 text-ink-muted bg-white border border-line rounded-lg hover:bg-pill transition-colors"
+        className="relative w-9 h-9 flex items-center justify-center text-ink-muted bg-white border border-line rounded-lg shadow-sm hover:bg-pill hover:text-ink transition-colors"
         title="Bill notifications"
         aria-label={`Bill notifications${unread ? `, ${unread} unread` : ''}`}
       >
-        <span className="text-lg leading-none">🔔</span>
+        <svg className="w-[18px] h-[18px]" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 8a5 5 0 0 0-10 0c0 5-2 5-2 6.5h14C17 13 15 13 15 8Z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 17h4" />
+        </svg>
         {unread > 0 && (
           <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 flex items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold">
             {unread > 99 ? '99+' : unread}
