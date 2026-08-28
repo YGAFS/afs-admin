@@ -941,7 +941,7 @@ export default function UtilityPage() {
                             <div className="flex items-center gap-1">
                               {bill.onedrive_file_url && (
                                 <a href={bill.onedrive_file_url} target="_blank" rel="noreferrer"
-                                  className="px-1.5 py-0.5 text-[11px] text-ink-faint hover:text-signal-pos transition-colors" title="Open file">File</a>
+                                  className="px-2 py-0.5 text-[11px] text-blue-600 font-medium rounded hover:bg-blue-50 transition-colors" title="Open or download the bill file">Download</a>
                               )}
                               {(() => {
                                 const s = computeBillStatus(bill)
@@ -1735,7 +1735,7 @@ function BillExpandPanel({
           <div className="flex items-center gap-2">
             {bill.onedrive_file_url && (
               <a href={bill.onedrive_file_url} target="_blank" rel="noreferrer"
-                className="text-xs text-ink-faint hover:text-signal-pos transition-colors" title="Open file">File</a>
+                className="text-xs text-blue-600 font-medium hover:underline transition-colors" title="Open or download the bill file">Download</a>
             )}
             <button onClick={() => onEdit(bill)} className="text-xs text-ink-faint hover:text-ink transition-colors" title="Edit">Edit</button>
             {deleteConfirm === bill.id ? (
