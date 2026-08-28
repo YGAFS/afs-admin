@@ -80,3 +80,15 @@ def test_already_paid_vendor_registers_full_charge_as_paid():
     assert payload["is_auto_pay"] is True
     assert payload["is_paid"] is True
     assert payload["balance_status"] == "paid"
+
+
+def test_auto_pay_bill_is_registered_as_paid():
+    payload = bill_payload_from_parsed(
+        company_id="zfs", utility_name="Water", provider="Fontana Water",
+        parsed=_parsed(), location_id=None, service_account_id=None, auto_pay=True,
+    )
+    assert payload["is_auto_pay"] is True
+    assert payload["is_paid"] is True
+    assert payload["balance_status"] == "paid"
+    assert payload["amount_paid"] == 100.0
+    assert payload["remaining_balance"] == 0

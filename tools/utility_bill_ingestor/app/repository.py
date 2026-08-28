@@ -243,7 +243,11 @@ def bill_payload_from_parsed(
         excess_payment = Decimal(0)
 
     already_paid = getattr(parsed, "already_paid", False)
-    amount_paid = computed_total if already_paid else excess_payment
+    # Auto-pay is the account's payment policy. For this system it also means
+    # the newly imported bill is considered settled, so it must not enter the
+    # dashboard as overdue and require a manual Paid action.
+    settled = already_paid or auto_pay
+    amount_paid = computed_total if settled else excess_payment
 
     return {
         "company_id": company_id,
@@ -257,7 +261,7 @@ def bill_payload_from_parsed(
         "late_fee": _d(parsed.late_fee) or 0,
         "adjustments": _d(parsed.adjustments) or 0,
         "amount_paid": _d(amount_paid) or 0,
-        "remaining_balance": 0 if already_paid else _d(max((computed_total or Decimal(0)) - amount_paid, Decimal(0))),
+        "remaining_balance": 0 if settled else _d(max((computed_total or Decimal(0)) - amount_paid, Decimal(0))),
         "currency": parsed.currency,
         "issue_date": _iso(parsed.issue_date),
         "due_date": _iso(parsed.due_date),
@@ -268,9 +272,9 @@ def bill_payload_from_parsed(
         "location_id": location_id,
         "service_account_id": service_account_id,
         "is_auto_pay": already_paid or auto_pay,
-        "is_paid": already_paid,
-        "balance_status": "paid" if already_paid else "open",
+        "is_paid": settled,
+        "balance_status": "paid" if settled else "open",
         "invoice_status": "active",
         "needs_amount_review": bool(parsed.warnings),
-        "notes": "Imported via utility-bill-ingestor" + (" — auto-paid" if already_paid else ""),
+        "notes": "Imported via utility-bill-ingestor" + (" — auto-paid" if settled else ""),
     }
