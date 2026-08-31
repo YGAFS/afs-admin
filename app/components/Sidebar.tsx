@@ -238,8 +238,15 @@ function AppSidebar({
 function UtilitySidebar() {
   const [open, setOpen] = useState(true)
   const path = usePathname()
+  const router = useRouter()
   const { allowedSections } = useAuth()
+  const { locale } = useLocale()
   const canSeeHr = !allowedSections || allowedSections.includes('hr')
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.replace('/login')
+  }
 
   return (
     <AppSidebar
@@ -249,6 +256,20 @@ function UtilitySidebar() {
       homeHref={canSeeHr ? '/hr' : '/utilities/overview'}
       items={UTILITY_NAV}
       activeMatcher={(href) => path.startsWith(href)}
+      footer={
+        <button
+          onClick={handleLogout}
+          className={`w-full flex items-center py-2.5 rounded-xl text-sm transition-colors text-ink-muted hover:bg-pill hover:text-ink ${open ? 'gap-2 px-3' : 'justify-center px-2'}`}
+          title={t('auth.logout', locale)}
+        >
+          <svg className="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 6l-4 4 4 4" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 10h9" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4h2a2 2 0 012 2v8a2 2 0 01-2 2h-2" />
+          </svg>
+          {open && <span>{t('auth.logout', locale)}</span>}
+        </button>
+      }
     />
   )
 }

@@ -35,27 +35,29 @@ export default function AdminPage() {
       <h1 className="text-xl font-bold text-gray-800 mb-1">{t('settings.title', locale)}</h1>
       <p className="text-sm text-gray-400 mb-6">{t('nav.admin', locale)}</p>
 
-      <div className="bg-white rounded-xl shadow border border-gray-100 p-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-0.5">{t('settings.language', locale)}</h2>
-        <p className="text-xs text-gray-400 mb-4">{t('settings.language.desc', locale)}</p>
-        <div className="flex gap-3">
-          {languages.map(lang => (
-            <button
-              key={lang.code}
-              onClick={() => setLocale(lang.code)}
-              className={`flex items-center gap-2.5 px-5 py-3 rounded-xl border-2 text-sm font-medium transition-colors ${
-                locale === lang.code
-                  ? 'border-blue-600 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <span className="text-lg">{lang.flag}</span>
-              {lang.label}
-              {locale === lang.code && <span className="ml-1 text-blue-500">✓</span>}
-            </button>
-          ))}
+      {isSuperAdmin && (
+        <div className="bg-white rounded-xl shadow border border-gray-100 p-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-0.5">{t('settings.language', locale)}</h2>
+          <p className="text-xs text-gray-400 mb-4">{t('settings.language.desc', locale)}</p>
+          <div className="flex gap-3">
+            {languages.map(lang => (
+              <button
+                key={lang.code}
+                onClick={() => setLocale(lang.code)}
+                className={`flex items-center gap-2.5 px-5 py-3 rounded-xl border-2 text-sm font-medium transition-colors ${
+                  locale === lang.code
+                    ? 'border-blue-600 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <span className="text-lg">{lang.flag}</span>
+                {lang.label}
+                {locale === lang.code && <span className="ml-1 text-blue-500">✓</span>}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {isSuperAdmin && (
         <div className="mt-6">
@@ -95,43 +97,52 @@ function UserAccessPanel() {
   async function load() {
     setLoading(true)
     setError(null)
-    const { data: sessionData } = await supabase.auth.getSession()
-    const token = sessionData.session?.access_token
-    if (!token) {
-      setError('Not signed in.')
-      setLoading(false)
-      return
-    }
-
-    const usersRes = await fetch('/api/admin/users', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-
-    if (!usersRes.ok) {
-      const body = await usersRes.json().catch(() => ({}))
-      setError(body.error || `Failed to load users (${usersRes.status})`)
-      setLoading(false)
-      return
-    }
-
-    const { users } = (await usersRes.json()) as {
-      users: AuthUser[]
-    }
-
-    const next: Record<string, UserRow> = {}
-    for (const u of users) {
-      const allowed = u.sections ?? []
-      next[u.user_id] = {
-        user_id: u.user_id,
-        email: u.email,
-        fullAccess: SECTIONS.every(s => allowed.includes(s.key)),
-        sections: new Set(allowed),
-        saving: false,
-        saved: false,
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData.session?.access_token
+      if (!token) {
+        setError('Not signed in.')
+        return
       }
+
+      const usersRes = await fetch('/api/admin/users', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const body: unknown = await usersRes.json().catch(() => null)
+
+      if (!usersRes.ok) {
+        const message = body && typeof body === 'object' && 'error' in body && typeof body.error === 'string'
+          ? body.error
+          : `Failed to load users (${usersRes.status})`
+        setError(message)
+        return
+      }
+
+      if (!body || typeof body !== 'object' || !('users' in body) || !Array.isArray(body.users)) {
+        throw new Error('Invalid user list response')
+      }
+
+      const next: Record<string, UserRow> = {}
+      for (const user of body.users) {
+        if (!user || typeof user !== 'object' || typeof user.user_id !== 'string' || !user.user_id || typeof user.email !== 'string' || !user.email) {
+          throw new Error('Invalid user list row')
+        }
+        const allowed = Array.isArray(user.sections) ? user.sections : []
+        next[user.user_id] = {
+          user_id: user.user_id,
+          email: user.email,
+          fullAccess: SECTIONS.every(s => allowed.includes(s.key)),
+          sections: new Set(allowed),
+          saving: false,
+          saved: false,
+        }
+      }
+      setRows(next)
+    } catch {
+      setError('Failed to load users.')
+    } finally {
+      setLoading(false)
     }
-    setRows(next)
-    setLoading(false)
   }
 
   function updateRow(userId: string, patch: Partial<UserRow>) {

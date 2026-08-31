@@ -1,14 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
-)
+import { hrFetch } from '@/lib/hrApi'
 
 type Stats = { total: number; absent: number; wfh: number; highVac: number }
 type EmployeeRow = {
@@ -27,12 +22,9 @@ export default function HrSummaryCards() {
     async function load() {
       const today = new Date().toISOString().split('T')[0]
 
-      const [{ data: emps }, { data: todayEntries }] = await Promise.all([
-        supabase.from('employees').select('id,vacation_allowance,uses_accrual,is_exempt,employment_type')
-          .eq('is_active', true),
-        supabase.from('leave_entries').select('employee_id,leave_code')
-          .eq('date', today),
-      ])
+      const { data: result } = await hrFetch<{ employees: EmployeeRow[]; entries: Array<{ employee_id: string; leave_code: string; date?: string }> }>('/api/hr/summary')
+      const emps = result?.employees ?? []
+      const todayEntries = (result?.entries ?? []).filter(e => e.date === today)
 
       if (!emps) return
       const payrollEmps = (emps as EmployeeRow[]).filter(e => !e.employment_type || e.employment_type === 'office')
@@ -51,13 +43,10 @@ export default function HrSummaryCards() {
 
       // High vacation usage: used >= 18 days this year
       const year = new Date().getFullYear()
-      const { data: yearEntries } = await supabase.from('leave_entries')
-        .select('employee_id,leave_code')
-        .in('employee_id', payrollEmps.map(e => e.id))
-        .gte('date', `${year}-01-01`).lte('date', `${year}-12-31`)
+      const yearEntries = (result?.entries ?? []).filter(e => e.date?.startsWith(`${year}-`) && payrollEmps.some(emp => emp.id === e.employee_id))
 
       const vacUsed: Record<string, number> = {}
-      for (const e of (yearEntries ?? [])) {
+      for (const e of yearEntries) {
         if (!['L','L1','L2','L3'].includes(e.leave_code)) continue
         const d = ['L1','L2'].includes(e.leave_code) ? 0.5 : 1
         vacUsed[e.employee_id] = (vacUsed[e.employee_id] ?? 0) + d

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { hrFetch } from '@/lib/hrApi'
 import { useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
 
@@ -36,6 +37,7 @@ type Subscription = {
   cost_cad: number; billing_cycle: string | null; status: string
   linked_count: number
 }
+type CompanyRow = { id: string; name: string }
 type EmployeeTab = 'active' | 'non_payroll' | 'terminated'
 
 function isNonPayrollEmploymentType(value?: string | null) {
@@ -238,8 +240,8 @@ export default function EmployeeSearch() {
   }
 
   useEffect(() => {
-    supabase.from('companies').select('id,name').order('name')
-      .then(({ data }) => {
+    hrFetch<{ data: CompanyRow[] }>('/api/hr/companies').then(({ data: result }) => {
+      const data = result?.data
         setComps(data ?? [])
         if (data?.length) {
           setNewEmp(p => ({ ...p, company_id: data[0].id }))
@@ -249,25 +251,30 @@ export default function EmployeeSearch() {
   }, [])
 
   useEffect(() => {
-    let q = supabase.from('employees')
-      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
-      .order('name')
-    if (employeeTab === 'active') {
-      q = q.eq('is_active', true)
-    } else if (employeeTab === 'non_payroll') {
-      q = q.eq('is_active', true)
-    } else {
-      q = q.or('is_active.eq.false,end_date.not.is.null')
-    }
-    if (query)                q = q.ilike('name', `%${query}%`)
-    if (compFilter !== 'all') q = q.eq('company_id', compFilter)
-    q.then(({ data }) => {
-      let emps = (data as Employee[]) ?? []
+    const url = compFilter === 'all' ? '/api/hr/employees' : `/api/hr/employees?companyId=${encodeURIComponent(compFilter)}`
+    hrFetch<{ data: Employee[] }>(url).then(({ data: result }) => {
+      let emps = result?.data ?? []
+      if (query) emps = emps.filter(e => e.name.toLowerCase().includes(query.toLowerCase()))
+      if (employeeTab === 'active' || employeeTab === 'non_payroll') emps = emps.filter(e => e.is_active)
+      else emps = emps.filter(e => !e.is_active || !!e.end_date)
       if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && !isNonPayrollEmploymentType(e.employment_type))
       if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date && isNonPayrollEmploymentType(e.employment_type))
       setEmps(sortEmployees(emps, sortMode)); setSel(null)
     })
   }, [query, compFilter, employeeTab, sortMode])
+
+  async function refreshEmployeeList(selectId?: string) {
+    const url = compFilter === 'all' ? '/api/hr/employees' : `/api/hr/employees?companyId=${encodeURIComponent(compFilter)}`
+    const { data: result } = await hrFetch<{ data: Employee[] }>(url)
+    let emps = result?.data ?? []
+    if (query) emps = emps.filter(e => e.name.toLowerCase().includes(query.toLowerCase()))
+    if (employeeTab === 'active' || employeeTab === 'non_payroll') emps = emps.filter(e => e.is_active)
+    else emps = emps.filter(e => !e.is_active || !!e.end_date)
+    if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && !isNonPayrollEmploymentType(e.employment_type))
+    if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date && isNonPayrollEmploymentType(e.employment_type))
+    setEmps(sortEmployees(emps, sortMode))
+    if (selectId) setSel(emps.find(e => e.id === selectId) ?? null)
+  }
 
   useEffect(() => {
     if (!addModal) return
@@ -291,19 +298,16 @@ export default function EmployeeSearch() {
     const vacCodes   = ['L','L1','L2','L3']
 
     const [yearRes, allVacRes] = await Promise.all([
-      supabase.from('leave_entries').select('date,leave_code').eq('employee_id', emp.id)
-        .gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
+      hrFetch<{ data: { date: string; leave_code: string }[] }>(`/api/hr/leave-entries?employeeId=${emp.id}`),
       emp.start_date
-        ? supabase.from('leave_entries').select('date,leave_code').eq('employee_id', emp.id)
-            .gte('date', emp.start_date).lte('date', effectiveDateIso)
-            .in('leave_code', vacCodes)
-        : Promise.resolve({ data: [] as { date: string; leave_code: string }[], error: null }),
+        ? hrFetch<{ data: { date: string; leave_code: string }[] }>(`/api/hr/leave-entries?employeeId=${emp.id}`)
+        : Promise.resolve({ data: { data: [] as { date: string; leave_code: string }[] }, error: null }),
     ])
 
     // Calendar-year summary for monthly overview table
     const s: Summary = { vac: 0, sick: 0, wfh: 0, toil: 0, other: 0 }
     const m: Monthly = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i+1, { vac:0, sick:0, wfh:0, toil:0, other:0 }]))
-    for (const e of (yearRes.data ?? [])) {
+    for (const e of (yearRes.data?.data ?? []).filter(e => e.date.startsWith(`${year}-`))) {
       const mo = parseInt(e.date.split('-')[1], 10)
       const d  = calcDays(e.leave_code)
       if      (['L','L1','L2','L3'].includes(e.leave_code)) { s.vac  += d; m[mo].vac  += d }
@@ -321,7 +325,7 @@ export default function EmployeeSearch() {
     }
 
     const periods   = getAllAnnivPeriods(emp.start_date, effectiveDate)
-    const vacEntries = allVacRes.data ?? []
+    const vacEntries = (allVacRes.data?.data ?? []).filter(e => e.date >= (emp.start_date ?? '') && e.date <= effectiveDateIso && vacCodes.includes(e.leave_code))
     let carryIn = 0
     const history: PeriodStat[] = []
 
@@ -434,7 +438,7 @@ export default function EmployeeSearch() {
     if (!selected || !editField) return
     setSaving(true)
     const val = editValue || null
-    await supabase.from('employees').update({ [editField]: val }).eq('id', selected.id)
+    await hrFetch(`/api/hr/employees/${selected.id}`, { method: 'PATCH', body: JSON.stringify({ [editField]: val }) })
     const updated = { ...selected, [editField]: val ?? undefined }
     setSel(updated)
     setEmps(p => p.map(e => e.id === selected.id ? updated : e))
@@ -444,7 +448,7 @@ export default function EmployeeSearch() {
   async function handleTerminate() {
     if (!selected || !termDate) return
     setSaving(true)
-    await supabase.from('employees').update({ is_active: false, end_date: termDate }).eq('id', selected.id)
+    await hrFetch(`/api/hr/employees/${selected.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: false, end_date: termDate }) })
     setEmps(p => p.filter(e => e.id !== selected.id))
     setSel(null); setTermModal(false); setTermDate(''); setSaving(false)
   }
@@ -452,7 +456,7 @@ export default function EmployeeSearch() {
   async function handleReactivate() {
     if (!selected) return
     setSaving(true)
-    await supabase.from('employees').update({ is_active: true, end_date: null }).eq('id', selected.id)
+    await hrFetch(`/api/hr/employees/${selected.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: true, end_date: null }) })
     setEmps(p => p.filter(e => e.id !== selected.id))
     setSel(null); setSaving(false)
   }
@@ -460,14 +464,14 @@ export default function EmployeeSearch() {
   async function handleDeleteEmployee() {
     if (!selected) return
     setSaving(true)
-    await supabase.from('employees').delete().eq('id', selected.id)
+    await hrFetch(`/api/hr/employees/${selected.id}`, { method: 'DELETE' })
     setEmps(p => p.filter(e => e.id !== selected.id))
     setSel(null); setDeleteConfirm(false); setSaving(false)
   }
 
   async function handleDeleteDirect(empId: string) {
     setSaving(true)
-    await supabase.from('employees').delete().eq('id', empId)
+    await hrFetch(`/api/hr/employees/${empId}`, { method: 'DELETE' })
     setEmps(p => p.filter(e => e.id !== empId))
     if (selected?.id === empId) setSel(null)
     setQuickDeleteId(null)
@@ -491,28 +495,12 @@ export default function EmployeeSearch() {
       is_exempt:          newEmp.is_exempt,
       sort_order:         99,
     }
-    let { error } = await supabase.from('employees')
-      .insert({ ...basePayload, employment_type: composeEmploymentType(newEmp.employment_type, newEmp.is_non_payroll) })
-    if (error?.message?.includes('employment_type')) {
-      ;({ error } = await supabase.from('employees').insert(basePayload))
-    }
+    let { error } = await hrFetch('/api/hr/employees', { method: 'POST', body: JSON.stringify({ ...basePayload, employment_type: composeEmploymentType(newEmp.employment_type, newEmp.is_non_payroll) }) })
     if (error) { setAddError(error.message); setSaving(false); return }
     setAddModal(false)
     setNewEmp(p => ({ ...BLANK_FORM, company_id: p.company_id }))
     setSaving(false)
-    let q = supabase.from('employees')
-      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
-      .order('name')
-    if (employeeTab === 'active') q = q.eq('is_active', true)
-    else if (employeeTab === 'non_payroll') q = q.eq('is_active', true)
-    else q = q.or('is_active.eq.false,end_date.not.is.null')
-    if (compFilter !== 'all') q = q.eq('company_id', compFilter)
-    q.then(({ data }) => {
-      let emps = (data as Employee[]) ?? []
-      if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && !isNonPayrollEmploymentType(e.employment_type))
-      if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date && isNonPayrollEmploymentType(e.employment_type))
-      setEmps(sortEmployees(emps, sortMode))
-    })
+    refreshEmployeeList()
   }
 
   async function handleSaveEmployeeEdit() {
@@ -533,26 +521,12 @@ export default function EmployeeSearch() {
       employment_type: composeEmploymentType(newEmp.employment_type, newEmp.is_non_payroll),
     }
     const editingId = editingEmployeeId
-    const { error } = await supabase.from('employees').update(payload).eq('id', editingId)
+    const { error } = await hrFetch(`/api/hr/employees/${editingId}`, { method: 'PATCH', body: JSON.stringify(payload) })
     if (error) { setAddError(error.message); setSaving(false); return }
     setAddModal(false)
     setEditingEmployeeId(null)
     setSaving(false)
-    let q = supabase.from('employees')
-      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
-      .order('name')
-    if (employeeTab === 'active') q = q.eq('is_active', true)
-    else if (employeeTab === 'non_payroll') q = q.eq('is_active', true)
-    else q = q.or('is_active.eq.false,end_date.not.is.null')
-    if (compFilter !== 'all') q = q.eq('company_id', compFilter)
-    q.then(({ data }) => {
-      let emps = (data as Employee[]) ?? []
-      if (employeeTab === 'active') emps = emps.filter(e => !e.end_date && !isNonPayrollEmploymentType(e.employment_type))
-      if (employeeTab === 'non_payroll') emps = emps.filter(e => !e.end_date && isNonPayrollEmploymentType(e.employment_type))
-      setEmps(sortEmployees(emps, sortMode))
-      const updated = emps.find(e => e.id === editingId)
-      if (updated) setSel(updated)
-    })
+    refreshEmployeeList(editingId)
   }
 
   async function handleAddNonPayroll() {
@@ -561,8 +535,7 @@ export default function EmployeeSearch() {
     setSaving(true)
     setAddError('')
 
-    const { error } = await supabase.from('employees')
-      .insert({
+    const { error } = await hrFetch('/api/hr/employees', { method: 'POST', body: JSON.stringify({
         company_id: nonPayrollForm.company_id,
         name: nonPayrollForm.name.trim(),
         team: nonPayrollForm.team.trim() || NON_PAYROLL_TEAM,
@@ -576,7 +549,7 @@ export default function EmployeeSearch() {
         is_exempt: false,
         sort_order: 99,
         employment_type: 'non_payroll',
-      })
+      }) })
 
     if (error) {
       setAddError(error.message ?? 'Failed to register non-payroll person.')
@@ -588,15 +561,7 @@ export default function EmployeeSearch() {
     setNonPayrollForm(p => ({ ...p, name: '', team: NON_PAYROLL_TEAM, position: 'Non-payroll', manager_name: '' }))
     setSaving(false)
 
-    let q = supabase.from('employees')
-      .select('id,name,team,manager_name,vacation_allowance,position,is_exempt,uses_accrual,is_active,start_date,end_date,probation_start,probation_end,employment_type,companies(id,name)')
-      .order('name')
-      .eq('is_active', true)
-    if (compFilter !== 'all') q = q.eq('company_id', compFilter)
-    q.then(({ data }) => {
-      const emps = ((data as Employee[]) ?? []).filter(e => !e.end_date && isNonPayrollEmploymentType(e.employment_type))
-      setEmps(sortEmployees(emps, sortMode))
-    })
+    refreshEmployeeList()
   }
 
   function getVacStats(emp: Employee, periodUsed: number, co: number, asOf?: Date) {
@@ -794,7 +759,7 @@ export default function EmployeeSearch() {
                           onChange={e => setPosValue(e.target.value)}
                           onKeyDown={async e => {
                             if (e.key === 'Enter') {
-                              await supabase.from('employees').update({ position: posValue || null }).eq('id', selected.id)
+                              await hrFetch(`/api/hr/employees/${selected.id}`, { method: 'PATCH', body: JSON.stringify({ position: posValue || null }) })
                               setEmps(prev => prev.map(em => em.id === selected.id ? { ...em, position: posValue } : em))
                               setSel(s => s ? { ...s, position: posValue } : s)
                               setPosEdit(false)
@@ -802,7 +767,7 @@ export default function EmployeeSearch() {
                           }}
                           className="text-sm border border-ink rounded px-2 py-0.5 w-36 focus:outline-none focus:ring-1 focus:ring-ink" />
                         <button onClick={async () => {
-                          await supabase.from('employees').update({ position: posValue || null }).eq('id', selected.id)
+                          await hrFetch(`/api/hr/employees/${selected.id}`, { method: 'PATCH', body: JSON.stringify({ position: posValue || null }) })
                           setEmps(prev => prev.map(em => em.id === selected.id ? { ...em, position: posValue } : em))
                           setSel(s => s ? { ...s, position: posValue } : s)
                           setPosEdit(false)
@@ -833,7 +798,7 @@ export default function EmployeeSearch() {
                           onChange={e => setTeamValue(e.target.value)}
                           onKeyDown={async e => {
                             if (e.key === 'Enter') {
-                              await supabase.from('employees').update({ team: teamValue || null }).eq('id', selected.id)
+                              await hrFetch(`/api/hr/employees/${selected.id}`, { method: 'PATCH', body: JSON.stringify({ team: teamValue || null }) })
                               setEmps(prev => prev.map(em => em.id === selected.id ? { ...em, team: teamValue } : em))
                               setSel(s => s ? { ...s, team: teamValue } : s)
                               setTeamEdit(false)
@@ -841,7 +806,7 @@ export default function EmployeeSearch() {
                           }}
                           className="text-sm border border-ink rounded px-2 py-0.5 w-32 focus:outline-none focus:ring-1 focus:ring-ink" />
                         <button onClick={async () => {
-                          await supabase.from('employees').update({ team: teamValue || null }).eq('id', selected.id)
+                          await hrFetch(`/api/hr/employees/${selected.id}`, { method: 'PATCH', body: JSON.stringify({ team: teamValue || null }) })
                           setEmps(prev => prev.map(em => em.id === selected.id ? { ...em, team: teamValue } : em))
                           setSel(s => s ? { ...s, team: teamValue } : s)
                           setTeamEdit(false)
@@ -1592,14 +1557,14 @@ export default function EmployeeSearch() {
         const saveProb = async () => {
           const finalStart = probStartMode === 'hire' ? (selected.start_date ?? null) : (probStartVal || null)
           const finalEnd   = probEndVal || null
-          await supabase.from('employees').update({ probation_start: finalStart, probation_end: finalEnd }).eq('id', selected.id)
+          await hrFetch(`/api/hr/employees/${selected.id}`, { method: 'PATCH', body: JSON.stringify({ probation_start: finalStart, probation_end: finalEnd }) })
           const updated = { ...selected, probation_start: finalStart ?? undefined, probation_end: finalEnd ?? undefined }
           setSel(updated)
           setEmps(p => p.map(e => e.id === selected.id ? updated : e))
           setProbModal(false)
         }
         const deleteProb = async () => {
-          await supabase.from('employees').update({ probation_start: null, probation_end: null }).eq('id', selected.id)
+          await hrFetch(`/api/hr/employees/${selected.id}`, { method: 'PATCH', body: JSON.stringify({ probation_start: null, probation_end: null }) })
           const updated = { ...selected, probation_start: undefined, probation_end: undefined }
           setSel(updated)
           setEmps(p => p.map(e => e.id === selected.id ? updated : e))

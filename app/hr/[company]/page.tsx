@@ -4,15 +4,10 @@ import { useEffect, useRef, useState } from 'react'
 import { sendGraphMail, sendPendingMailAfterRedirect, msalLogout, getMsal } from '@/lib/graphMail'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@supabase/supabase-js'
 import AttendanceGrid from '../components/AttendanceGrid'
 import { useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
-)
+import { hrFetch } from '@/lib/hrApi'
 
 const COMPANY_MAP: Record<string, string> = { afs: 'AFS', tnt: 'TNT', zfs: 'ZFS' }
 
@@ -168,7 +163,7 @@ export default function CompanyAttendancePage() {
   const [calYear,        setCalYear]        = useState(0)
   const [calMonth,       setCalMonth]       = useState(0)
   const [emailEntries,   setEmailEntries]   = useState<EmailEntry[]>([])
-  const [emailEmps,      setEmailEmps]      = useState<Array<{ id: string; name: string }>>([])
+  const [emailEmps,      setEmailEmps]      = useState<Array<{ id: string; name: string; start_date?: string | null; end_date?: string | null }>>([])
   const [emailLoading,   setEmailLoading]   = useState(false)
   const [emailSenders,   setEmailSenders]   = useState<EmailContact[]>([])
   const [emailRecips,    setEmailRecips]    = useState<EmailContact[]>([])
@@ -225,8 +220,8 @@ export default function CompanyAttendancePage() {
   useEffect(() => {
     const label = COMPANY_MAP[company]
     if (!label) return
-    supabase.from('companies').select('id').ilike('name', `%${label}%`).single()
-      .then(({ data }) => setCompanyId(data?.id ?? null))
+    hrFetch<{ data: Array<{ id: string; code: string }> }>(`/api/hr/companies?code=${label}`)
+      .then(({ data: result }) => setCompanyId(result?.data?.[0]?.id ?? null))
   }, [company])
 
   useEffect(() => {
@@ -244,17 +239,13 @@ export default function CompanyAttendancePage() {
   }, [showEmailModal, Array.from(emailDates).sort().join(','), toId])
 
   async function loadTerminated() {
-    const { data } = await supabase.from('employees')
-      .select('id,name,team,position,start_date,end_date')
-      .eq('company_id', companyId!)
-      .not('end_date', 'is', null)
-      .order('end_date', { ascending: false })
-    const yearTerminated = (data ?? []).filter(emp => emp.end_date?.startsWith(`${year}-`))
+    const { data: result } = await hrFetch<{ data: TermEmp[] }>(`/api/hr/employees?companyId=${companyId}`)
+    const yearTerminated = (result?.data ?? []).filter(emp => emp.end_date?.startsWith(`${year}-`))
     setTerminated(yearTerminated)
   }
 
   async function reactivate(empId: string) {
-    await supabase.from('employees').update({ is_active: true, end_date: null }).eq('id', empId)
+    await hrFetch(`/api/hr/employees/${empId}`, { method: 'PATCH', body: JSON.stringify({ is_active: true, end_date: null }) })
     setTerminated(p => p.filter(e => e.id !== empId))
     setGridKey(k => k + 1)
   }
@@ -262,9 +253,7 @@ export default function CompanyAttendancePage() {
   async function confirmDateEdit() {
     if (!dateEdit) return
     setSaving(true)
-    await supabase.from('employees')
-      .update({ [dateEdit.field]: dateValue || null })
-      .eq('id', dateEdit.emp.id)
+    await hrFetch(`/api/hr/employees/${dateEdit.emp.id}`, { method: 'PATCH', body: JSON.stringify({ [dateEdit.field]: dateValue || null }) })
     setTerminated(p => p.map(e =>
       e.id === dateEdit.emp.id ? { ...e, [dateEdit.field]: dateValue || undefined } : e
     ))
@@ -280,11 +269,8 @@ export default function CompanyAttendancePage() {
     const daysInMo = new Date(cy, cm, 0).getDate()
     const first = `${cy}-${padFn(cm)}-01`
     const last  = `${cy}-${padFn(cm)}-${padFn(daysInMo)}`
-    const { data: emps } = await supabase.from('employees')
-      .select('id,name').eq('company_id', companyId)
-      .or(`end_date.is.null,end_date.gte.${first}`)
-      .or(`start_date.is.null,start_date.lte.${last}`)
-      .order('name')
+    const { data: empResult } = await hrFetch<{ data: Array<{ id: string; name: string; start_date?: string | null; end_date?: string | null }> }>(`/api/hr/employees?companyId=${companyId}`)
+    const emps = (empResult?.data ?? []).filter(e => (!e.end_date || e.end_date >= first) && (!e.start_date || e.start_date <= last))
     const ids = (emps ?? []).map(e => e.id)
     const entries = ids.length ? await loadEmailEntries(ids, first, last) : []
     setEmailEmps(prev => {
@@ -303,16 +289,8 @@ export default function CompanyAttendancePage() {
   }
 
   async function loadEmailEntries(ids: string[], first: string, last: string): Promise<EmailEntry[]> {
-    const withReport = await supabase.from('leave_entries')
-      .select('employee_id,date,leave_code,hours,reported_at')
-      .in('employee_id', ids).gte('date', first).lte('date', last)
-
-    if (!withReport.error) return (withReport.data ?? []) as EmailEntry[]
-
-    const fallback = await supabase.from('leave_entries')
-      .select('employee_id,date,leave_code,hours')
-      .in('employee_id', ids).gte('date', first).lte('date', last)
-    return (fallback.data ?? []) as EmailEntry[]
+    const { data: result } = await hrFetch<{ data: EmailEntry[] }>(`/api/hr/leave-entries?companyId=${companyId}&first=${first}&last=${last}`)
+    return (result?.data ?? []).filter(e => ids.includes(e.employee_id))
   }
 
   function getReportableEmailEntries() {
@@ -445,11 +423,7 @@ export default function CompanyAttendancePage() {
       reported_by: reportedBy,
     }
 
-    const results = await Promise.all(entries.map(e => supabase.from('leave_entries')
-      .update(patch)
-      .eq('employee_id', e.employee_id)
-      .eq('date', e.date)
-      .eq('leave_code', e.leave_code)))
+    const results = await Promise.all(entries.map(e => hrFetch('/api/hr/leave-entries', { method: 'PATCH', body: JSON.stringify({ employee_id: e.employee_id, date: e.date, leave_code: e.leave_code, ...patch }) })))
     const error = results.find(r => r.error)?.error
     if (error) throw error
 

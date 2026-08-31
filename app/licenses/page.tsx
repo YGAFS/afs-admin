@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { hrFetch } from '@/lib/hrApi'
 import { useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
 
@@ -904,16 +905,16 @@ export default function LicensesPage() {
     const [
       { data: lic, error: licErr },
       { data: sub, error: subErr },
-      { data: emp },
+      directoryResult,
       { data: plans },
     ] = await Promise.all([
       supabase.from('licenses')
-        .select('id,account_id,display_name,email_address,alias,account_type,license_plan,monthly_cost_cad,status,company,employee_id,created_date,notes,employees!employee_id(name)')
+        .select('id,account_id,display_name,email_address,alias,account_type,license_plan,monthly_cost_cad,status,company,employee_id,created_date,notes')
         .order('company'),
       supabase.from('subscriptions')
-        .select('*,employees!employee_id(name)')
+        .select('*')
         .order('vendor'),
-      supabase.from('employees').select('id,name').eq('is_active', true).is('end_date', null).order('name'),
+      hrFetch<{ data: Employee[] }>('/api/employee-directory?section=licenses'),
       supabase.from('email_plans').select('*').order('name'),
     ])
 
@@ -923,19 +924,29 @@ export default function LicensesPage() {
     const seMap: Record<string, SubEmployee[]> = {}
     const { data: seRows, error: seErr } = await supabase
       .from('subscription_employees')
-      .select('subscription_id,employee_id,employees!employee_id(name)')
+      .select('subscription_id,employee_id')
     if (seErr) console.warn('[subscription_employees]', seErr.message)
     ;(seRows as SubEmpRow[] ?? []).forEach(row => {
       if (!seMap[row.subscription_id]) seMap[row.subscription_id] = []
-      seMap[row.subscription_id].push({ employee_id: row.employee_id, employees: row.employees })
+      seMap[row.subscription_id].push({ employee_id: row.employee_id, employees: null })
     })
 
+    const emp = directoryResult.data?.data ?? []
+    const employeeNames = new Map((emp as Employee[]).map((employee: Employee) => [employee.id, employee.name]))
     const subsWithEmployees: Subscription[] = (sub ?? []).map((s: Subscription) => ({
       ...s,
+      employees: s.employee_id ? [{ name: employeeNames.get(s.employee_id) ?? '' }] : null,
       subscription_employees: seMap[s.id] ?? [],
     }))
 
-    setLicenses((lic as License[]) ?? [])
+    for (const rows of Object.values(seMap)) {
+      for (const row of rows) row.employees = row.employee_id ? [{ name: employeeNames.get(row.employee_id) ?? '' }] : null
+    }
+
+    setLicenses(((lic as License[]) ?? []).map(license => ({
+      ...license,
+      employees: license.employee_id ? [{ name: employeeNames.get(license.employee_id) ?? '' }] : null,
+    })))
     setSubscriptions(subsWithEmployees)
     setEmployees((emp as Employee[]) ?? [])
     setEmailPlans((plans as EmailPlan[]) ?? [])

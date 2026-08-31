@@ -1,14 +1,9 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { hrFetch } from '@/lib/hrApi'
 import { useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
-)
 
 type LeaveCode = 'L'|'L1'|'L2'|'L3'|'S'|'S1'|'S2'|'S3'|'W'|'W1'|'W2'|'W3'|'T'|'T1'|'T2'|'T3'|'B'|'O'|'C'
 type Employee  = {
@@ -199,42 +194,16 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   useEffect(() => { load() }, [companyId, year, month])
 
   async function load() {
-    const baseQ = () => supabase.from('employees')
-      .select('id,name,team,manager_name,vacation_allowance,position,sort_order,is_exempt,uses_accrual,start_date,end_date,probation_start,probation_end,employment_type')
-      .eq('company_id', companyId)
-      .or(`end_date.is.null,end_date.gte.${firstDayStr}`)
-      .or(`start_date.is.null,start_date.lte.${lastDayStr}`)
-      .order('sort_order').order('name')
-
-    let { data: emps, error: empErr } = await baseQ()
-      .or('employment_type.eq.office,employment_type.is.null')
-    if (empErr) {
-      ;({ data: emps } = await baseQ())
-    }
+    if (!companyId) return
+    const result = await hrFetch<{ employees: Employee[]; monthEntries: any[]; yearEntries: any[]; prevYearEntries: any[]; prevPrevYearEntries: any[]; notes: any[]; flags: any[] }>(
+      `/api/hr/attendance?companyId=${encodeURIComponent(companyId)}&first=${firstDayStr}&last=${lastDayStr}&year=${year}`)
+    if (result.error || !result.data) return
+    let emps = result.data.employees.filter(e => !e.employment_type || e.employment_type === 'office')
 
     setEmployees(emps ?? [])
     if (!emps?.length) return
 
-    const ids = emps.map(e => e.id)
-    const monthEntriesPromise = supabase.from('leave_entries').select('employee_id,date,leave_code,hours,reported_at')
-      .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr)
-    const [{ data: me, error: meError }, { data: ye }, { data: prevYe }, { data: prevPrevYe }, { data: notesRaw }, { data: flagsRaw }] = await Promise.all([
-      monthEntriesPromise,
-      supabase.from('leave_entries').select('employee_id,date,leave_code,hours')
-        .in('employee_id', ids).gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
-      supabase.from('leave_entries').select('employee_id,date,leave_code')
-        .in('employee_id', ids).gte('date', `${year-1}-01-01`).lte('date', `${year-1}-12-31`),
-      supabase.from('leave_entries').select('employee_id,date,leave_code')
-        .in('employee_id', ids).gte('date', `${year-2}-01-01`).lte('date', `${year-2}-12-31`),
-      supabase.from('attendance_notes').select('employee_id,date,note')
-        .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
-      supabase.from('attendance_flags').select('employee_id,date,flag_type,time,reason')
-        .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr),
-    ])
-    const monthEntries = meError
-      ? (await supabase.from('leave_entries').select('employee_id,date,leave_code,hours')
-          .in('employee_id', ids).gte('date', firstDayStr).lte('date', lastDayStr)).data
-      : me
+    const { monthEntries, yearEntries: ye, prevYearEntries: prevYe, prevPrevYearEntries: prevPrevYe, notes: notesRaw, flags: flagsRaw } = result.data
 
     const lm: Record<string, LeaveCell[]> = {}
     for (const e of (monthEntries ?? [])) {
@@ -289,12 +258,9 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     setSaving(true)
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
-    const { error } = await supabase.from('leave_entries')
-      .upsert({ employee_id: empId, date: dateStr, leave_code: code, hours: hours ?? null }, { onConflict: 'employee_id,date,leave_code' })
+    const { error } = await hrFetch('/api/hr/leave-entries', { method: 'POST', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code, hours: hours ?? null }) })
     if (error) { alert(`저장 실패: ${error.message}`); setSaving(false); return }
-    await supabase.from('leave_entries')
-      .update({ reported_at: null, reported_to: null, reported_cc: null, reported_subject: null, reported_by: null })
-      .eq('employee_id', empId).eq('date', dateStr).eq('leave_code', code)
+    await hrFetch('/api/hr/leave-entries', { method: 'PATCH', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code, reported_at: null, reported_to: null, reported_cc: null, reported_subject: null, reported_by: null }) })
     setLeaveMap(p => {
       const existing = (p[key] ?? []).filter(e => e.code !== code)
       return { ...p, [key]: [...existing, { code, hours, reportedAt: null }] }
@@ -307,8 +273,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     setSaving(true)
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
-    const { error } = await supabase.from('leave_entries')
-      .delete().eq('employee_id', empId).eq('date', dateStr).eq('leave_code', code)
+    const { error } = await hrFetch('/api/hr/leave-entries', { method: 'DELETE', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code }) })
     if (!error) setLeaveMap(p => ({ ...p, [key]: (p[key] ?? []).filter(e => e.code !== code) }))
     setSaving(false)
     load()
@@ -318,7 +283,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     setSaving(true)
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
-    const { error } = await supabase.from('leave_entries').delete().eq('employee_id', empId).eq('date', dateStr)
+    const { error } = await hrFetch('/api/hr/leave-entries', { method: 'DELETE', body: JSON.stringify({ employee_id: empId, date: dateStr }) })
     if (!error) setLeaveMap(p => { const n = { ...p }; delete n[key]; return n })
     setSaving(false); setEditing(null); setPendingCode(null); setPendingHours('')
     load()
@@ -327,8 +292,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   async function saveNote(empId: string, day: number, note: string) {
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key = `${empId}_${day}`
-    await supabase.from('attendance_notes')
-      .upsert({ employee_id: empId, date: dateStr, note }, { onConflict: 'employee_id,date' })
+    await hrFetch('/api/hr/attendance-notes', { method: 'POST', body: JSON.stringify({ employee_id: empId, date: dateStr, note }) })
     setNoteMap(p => ({ ...p, [key]: note }))
     setNoteModal(null)
   }
@@ -336,9 +300,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   async function saveFlag(empId: string, day: number, type: FlagType, time: string, reason: string) {
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key = `${empId}_${day}`
-    const { error } = await supabase.from('attendance_flags')
-      .upsert({ employee_id: empId, date: dateStr, flag_type: type, time: time || null, reason: reason.trim() || null },
-        { onConflict: 'employee_id,date,flag_type' })
+    const { error } = await hrFetch('/api/hr/attendance-flags', { method: 'POST', body: JSON.stringify({ employee_id: empId, date: dateStr, flag_type: type, time: time || null, reason: reason.trim() || null }) })
     if (error) { alert(`저장 실패: ${error.message}`); return }
     setFlagMap(p => ({ ...p, [key]: { ...(p[key] ?? {}), [type]: { time: time || undefined, reason: reason.trim() || undefined } } }))
     setFlagModal(null)
@@ -347,8 +309,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   async function deleteFlag(empId: string, day: number, type: FlagType) {
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key = `${empId}_${day}`
-    await supabase.from('attendance_flags').delete()
-      .eq('employee_id', empId).eq('date', dateStr).eq('flag_type', type)
+    await hrFetch('/api/hr/attendance-flags', { method: 'DELETE', body: JSON.stringify({ employee_id: empId, date: dateStr, flag_type: type }) })
     setFlagMap(p => {
       const entry = { ...(p[key] ?? {}) }
       delete entry[type]
@@ -368,7 +329,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     })
     if (targets.length) {
       const rows = targets.map(emp => ({ employee_id: emp.id, date: dateStr, leave_code: 'B', hours: null }))
-      await supabase.from('leave_entries').upsert(rows, { onConflict: 'employee_id,date,leave_code' })
+      await hrFetch('/api/hr/leave-entries', { method: 'POST', body: JSON.stringify(rows) })
       setLeaveMap(prev => {
         const next = { ...prev }
         for (const emp of targets) {
@@ -385,7 +346,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     setSaving(true); setColMenu(null)
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const ids = employees.map(e => e.id)
-    await supabase.from('leave_entries').delete().in('employee_id', ids).eq('date', dateStr)
+    await hrFetch('/api/hr/leave-entries', { method: 'DELETE', body: JSON.stringify({ employee_ids: ids, date: dateStr }) })
     setLeaveMap(prev => {
       const next = { ...prev }
       for (const emp of employees) delete next[`${emp.id}_${day}`]
@@ -397,7 +358,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   async function deleteNote(empId: string, day: number) {
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key = `${empId}_${day}`
-    await supabase.from('attendance_notes').delete().eq('employee_id', empId).eq('date', dateStr)
+    await hrFetch('/api/hr/attendance-notes', { method: 'DELETE', body: JSON.stringify({ employee_id: empId, date: dateStr }) })
     setNoteMap(p => { const n = { ...p }; delete n[key]; return n })
     setNoteCtx(null)
   }
@@ -425,22 +386,22 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
     setSaving(true)
     const { emp, field } = dateModal
     if (field === 'reactivate') {
-      await supabase.from('employees').update({ is_active: true, end_date: null }).eq('id', emp.id)
+      await hrFetch(`/api/hr/employees/${emp.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: true, end_date: null }) })
       onReactivate?.()
     } else {
-      await supabase.from('employees').update({ [field]: dateValue || null }).eq('id', emp.id)
+      await hrFetch(`/api/hr/employees/${emp.id}`, { method: 'PATCH', body: JSON.stringify({ [field]: dateValue || null }) })
     }
     setDateModal(null); setDateValue(''); setSaving(false); load()
   }
 
   async function handleAddEmployee() {
     if (!newEmp.name.trim() || !addingToTeam) return
-    await supabase.from('employees').insert({
+    await hrFetch('/api/hr/employees', { method: 'POST', body: JSON.stringify({
       company_id: companyId, name: newEmp.name.trim(), team: addingToTeam,
       position: newEmp.position || null, start_date: newEmp.start_date || null,
       vacation_allowance: newEmp.vacation_allowance, uses_accrual: newEmp.uses_accrual,
       is_active: true, sort_order: 99,
-    })
+    }) })
     setAddingToTeam(null)
     setNewEmp({ name: '', position: '', start_date: '', vacation_allowance: 10, uses_accrual: true })
     load()
@@ -960,7 +921,7 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
             <div className="flex gap-2">
               <button id="pos-save"
                 onClick={async () => {
-                  await supabase.from('employees').update({ position: posValue || null }).eq('id', posModal.emp.id)
+                  await hrFetch(`/api/hr/employees/${posModal.emp.id}`, { method: 'PATCH', body: JSON.stringify({ position: posValue || null }) })
                   setEmployees(prev => prev.map(e =>
                     e.id === posModal.emp.id ? { ...e, position: posValue || null } : e
                   ))
@@ -984,14 +945,14 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
         const saveProb = async () => {
           const finalStart = probStartMode === 'hire' ? (emp.start_date ?? null) : (probStartVal || null)
           const finalEnd   = probEndVal || null
-          await supabase.from('employees').update({ probation_start: finalStart, probation_end: finalEnd }).eq('id', emp.id)
+          await hrFetch(`/api/hr/employees/${emp.id}`, { method: 'PATCH', body: JSON.stringify({ probation_start: finalStart, probation_end: finalEnd }) })
           setEmployees(prev => prev.map(e =>
             e.id === emp.id ? { ...e, probation_start: finalStart ?? undefined, probation_end: finalEnd ?? undefined } : e
           ))
           setProbModal(null)
         }
         const deleteProb = async () => {
-          await supabase.from('employees').update({ probation_start: null, probation_end: null }).eq('id', emp.id)
+          await hrFetch(`/api/hr/employees/${emp.id}`, { method: 'PATCH', body: JSON.stringify({ probation_start: null, probation_end: null }) })
           setEmployees(prev => prev.map(e =>
             e.id === emp.id ? { ...e, probation_start: undefined, probation_end: undefined } : e
           ))

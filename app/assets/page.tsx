@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { hrFetch } from '@/lib/hrApi'
 import { useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
 
@@ -538,14 +539,14 @@ export default function AssetsPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: a }, { data: e }] = await Promise.all([
+    const [{ data: a }, directoryResult] = await Promise.all([
       supabase.from('assets')
         .select('id,asset_id,company,category,item_name,brand,model,chipset,serial_number,purchase_date,purchase_price,vendor,warranty_end,condition,location,notes,employee_id,asset_people_id')
         .order('asset_id'),
-      supabase.from('employees').select('id,name').eq('is_active', true).order('name'),
+      hrFetch<{ data: Employee[] }>('/api/employee-directory?section=assets'),
     ])
     setAssets((a as Asset[]) ?? [])
-    setEmployees((e as Employee[]) ?? [])
+    setEmployees((directoryResult.data?.data as Employee[]) ?? [])
     await loadPeople()
     setLoading(false)
   }, [loadPeople])
