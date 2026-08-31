@@ -12,8 +12,9 @@ export async function GET(req: NextRequest, { params }: Params) {
   const segment = parts[0]
   const db = segment === 'companies' ? null : tableBySegment[segment as keyof typeof tableBySegment]
   const companyId = uuid(req.nextUrl.searchParams.get('companyId'))
+  const companyCode = req.nextUrl.searchParams.get('companyCode')
   const employeeId = uuid(req.nextUrl.searchParams.get('employeeId'))
-  const auth = await authorizeHrRequest(req, { action: 'read', companyId, employeeId, allowCompanyDiscovery: segment === 'companies', allowAssignedCompanies: segment === 'summary' || (segment === 'employees' && !companyId) })
+  const auth = await authorizeHrRequest(req, { action: 'read', companyId, companyCode, employeeId, allowCompanyDiscovery: segment === 'companies', allowAssignedCompanies: segment === 'summary' || (segment === 'employees' && !companyId && !companyCode) })
   if (!auth) return jsonError('Forbidden', 403)
   if (segment === 'companies') {
     let query = auth.db.from('companies').select('*').order('name')
@@ -34,14 +35,19 @@ export async function GET(req: NextRequest, { params }: Params) {
     return entries.error ? jsonError('Failed to load HR summary', 500) : Response.json({ employees: result.data ?? [], entries: entries.data ?? [] })
   }
   if (segment === 'attendance') {
-    const { data: employees, error: employeesError } = await auth.db.from('employees').select('*').eq('company_id', auth.companyId!).or(`end_date.is.null,end_date.gte.${req.nextUrl.searchParams.get('first')}`).or(`start_date.is.null,start_date.lte.${req.nextUrl.searchParams.get('last')}`)
+    if (!auth.companyId) return jsonError('Company scope required', 403)
+    const { data: employees, error: employeesError } = await auth.db.from('employees')
+      .select('id,name,team,manager_name,vacation_allowance,position,sort_order,is_exempt,uses_accrual,start_date,end_date,probation_start,probation_end,employment_type')
+      .eq('company_id', auth.companyId)
+      .or(`end_date.is.null,end_date.gte.${req.nextUrl.searchParams.get('first')}`)
+      .or(`start_date.is.null,start_date.lte.${req.nextUrl.searchParams.get('last')}`)
     if (employeesError) return jsonError('Failed to load employees', 500)
     const ids = (employees ?? []).map(x => x.id)
-    const range = (field: string) => ids.length ? auth.db.from(field).select('*').in('employee_id', ids).gte('date', req.nextUrl.searchParams.get('first')!).lte('date', req.nextUrl.searchParams.get('last')!) : Promise.resolve({ data: [], error: null })
+    const range = (field: string, columns: string) => ids.length ? auth.db.from(field).select(columns).in('employee_id', ids).gte('date', req.nextUrl.searchParams.get('first')!).lte('date', req.nextUrl.searchParams.get('last')!) : Promise.resolve({ data: [], error: null })
     const [month, year, prev, prevPrev, notes, flags] = await Promise.all([
-      range('leave_entries'), ids.length ? auth.db.from('leave_entries').select('*').in('employee_id', ids).gte('date', `${req.nextUrl.searchParams.get('year')}-01-01`).lte('date', `${req.nextUrl.searchParams.get('year')}-12-31`) : Promise.resolve({ data: [], error: null }),
-      ids.length ? auth.db.from('leave_entries').select('*').in('employee_id', ids).gte('date', `${Number(req.nextUrl.searchParams.get('year')) - 1}-01-01`).lte('date', `${Number(req.nextUrl.searchParams.get('year')) - 1}-12-31`) : Promise.resolve({ data: [], error: null }),
-      ids.length ? auth.db.from('leave_entries').select('*').in('employee_id', ids).gte('date', `${Number(req.nextUrl.searchParams.get('year')) - 2}-01-01`).lte('date', `${Number(req.nextUrl.searchParams.get('year')) - 2}-12-31`) : Promise.resolve({ data: [], error: null }), range('attendance_notes'), range('attendance_flags'),
+      range('leave_entries', 'employee_id,date,leave_code,hours,reported_at'), ids.length ? auth.db.from('leave_entries').select('employee_id,date,leave_code,hours,reported_at').in('employee_id', ids).gte('date', `${req.nextUrl.searchParams.get('year')}-01-01`).lte('date', `${req.nextUrl.searchParams.get('year')}-12-31`) : Promise.resolve({ data: [], error: null }),
+      ids.length ? auth.db.from('leave_entries').select('employee_id,date,leave_code,hours,reported_at').in('employee_id', ids).gte('date', `${Number(req.nextUrl.searchParams.get('year')) - 1}-01-01`).lte('date', `${Number(req.nextUrl.searchParams.get('year')) - 1}-12-31`) : Promise.resolve({ data: [], error: null }),
+      ids.length ? auth.db.from('leave_entries').select('employee_id,date,leave_code,hours,reported_at').in('employee_id', ids).gte('date', `${Number(req.nextUrl.searchParams.get('year')) - 2}-01-01`).lte('date', `${Number(req.nextUrl.searchParams.get('year')) - 2}-12-31`) : Promise.resolve({ data: [], error: null }), range('attendance_notes', 'employee_id,date,note'), range('attendance_flags', 'employee_id,date,flag_type,time,reason'),
     ])
     return Response.json({ employees: employees ?? [], monthEntries: month.data ?? [], yearEntries: year.data ?? [], prevYearEntries: prev.data ?? [], prevPrevYearEntries: prevPrev.data ?? [], notes: notes.data ?? [], flags: flags.data ?? [] })
   }

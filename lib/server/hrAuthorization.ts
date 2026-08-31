@@ -25,7 +25,7 @@ function bearerToken(req: NextRequest) {
 
 export async function authorizeHrRequest(
   req: NextRequest,
-  options: { action: HrAction; companyId?: string | null; employeeId?: string | null; employeeIds?: string[]; allowCompanyAdmin?: boolean; allowCompanyDiscovery?: boolean; allowAssignedCompanies?: boolean }
+  options: { action: HrAction; companyId?: string | null; companyCode?: string | null; employeeId?: string | null; employeeIds?: string[]; allowCompanyAdmin?: boolean; allowCompanyDiscovery?: boolean; allowAssignedCompanies?: boolean }
 ): Promise<HrAuthorization | null> {
   try {
     const db = serviceClient()
@@ -46,6 +46,13 @@ export async function authorizeHrRequest(
 
     let resolvedCompanyId = options.companyId ?? null
     let assignedCompanyIds: string[] = resolvedCompanyId ? [resolvedCompanyId] : []
+    if (!resolvedCompanyId && options.companyCode) {
+      const { data: company, error: companyError } = await db
+        .from('companies').select('id').eq('code', options.companyCode.toUpperCase()).maybeSingle()
+      if (companyError || !company?.id) return null
+      resolvedCompanyId = company.id
+      assignedCompanyIds = [company.id]
+    }
     if (options.employeeId) {
       const { data: employee, error: employeeError } = await db
         .from('employees').select('id,company_id').eq('id', options.employeeId).maybeSingle()

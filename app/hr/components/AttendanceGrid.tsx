@@ -129,8 +129,8 @@ function effectiveAccrualStart(
   return emp.start_date
 }
 
-export default function AttendanceGrid({ companyId, year, month, onReactivate }: {
-  companyId: string; year: number; month: number; onReactivate?: () => void
+export default function AttendanceGrid({ companyId, companyCode, year, month, onReactivate }: {
+  companyId: string; companyCode?: string; year: number; month: number; onReactivate?: () => void
 }) {
   const { locale } = useLocale()
   const [employees,    setEmployees]    = useState<Employee[]>([])
@@ -194,9 +194,9 @@ export default function AttendanceGrid({ companyId, year, month, onReactivate }:
   useEffect(() => { load() }, [companyId, year, month])
 
   async function load() {
-    if (!companyId) return
+    if (!companyId && !companyCode) return
     const result = await hrFetch<{ employees: Employee[]; monthEntries: any[]; yearEntries: any[]; prevYearEntries: any[]; prevPrevYearEntries: any[]; notes: any[]; flags: any[] }>(
-      `/api/hr/attendance?companyId=${encodeURIComponent(companyId)}&first=${firstDayStr}&last=${lastDayStr}&year=${year}`)
+      `/api/hr/attendance?${companyCode ? `companyCode=${encodeURIComponent(companyCode)}` : `companyId=${encodeURIComponent(companyId)}`}&first=${firstDayStr}&last=${lastDayStr}&year=${year}`)
     if (result.error || !result.data) return
     let emps = result.data.employees.filter(e => !e.employment_type || e.employment_type === 'office')
 

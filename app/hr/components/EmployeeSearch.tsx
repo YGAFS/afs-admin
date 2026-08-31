@@ -35,7 +35,7 @@ type Asset = {
 type Subscription = {
   id: string; vendor: string | null; product: string | null; plan_name: string | null
   cost_cad: number; billing_cycle: string | null; status: string
-  linked_count: number
+  linked_count: number | null
 }
 type CompanyRow = { id: string; name: string }
 type EmployeeTab = 'active' | 'non_payroll' | 'terminated'
@@ -297,12 +297,8 @@ export default function EmployeeSearch() {
     const effectiveDateIso = emp.end_date ?? todayIsoStr
     const vacCodes   = ['L','L1','L2','L3']
 
-    const [yearRes, allVacRes] = await Promise.all([
-      hrFetch<{ data: { date: string; leave_code: string }[] }>(`/api/hr/leave-entries?employeeId=${emp.id}`),
-      emp.start_date
-        ? hrFetch<{ data: { date: string; leave_code: string }[] }>(`/api/hr/leave-entries?employeeId=${emp.id}`)
-        : Promise.resolve({ data: { data: [] as { date: string; leave_code: string }[] }, error: null }),
-    ])
+    const yearRes = await hrFetch<{ data: { date: string; leave_code: string }[] }>(`/api/hr/leave-entries?employeeId=${emp.id}`)
+    const allVacRes = yearRes
 
     // Calendar-year summary for monthly overview table
     const s: Summary = { vac: 0, sick: 0, wfh: 0, toil: 0, other: 0 }
@@ -372,6 +368,14 @@ export default function EmployeeSearch() {
         .eq('employee_id', emp.id)
         .then(async ({ data: seRows }) => {
           if (!seRows?.length) { setSubs([]); return }
+          const baseSubs: Subscription[] = seRows
+            .map(r => {
+              const s = r.subscriptions as any
+              if (!s) return null
+              return { ...s, linked_count: null }
+            })
+            .filter(Boolean) as Subscription[]
+          setSubs(baseSubs)
           const subIds = seRows.map(r => r.subscription_id)
           const { data: counts } = await supabase.from('subscription_employees')
             .select('subscription_id').in('subscription_id', subIds)
@@ -379,14 +383,7 @@ export default function EmployeeSearch() {
           for (const r of (counts ?? [])) {
             countMap[r.subscription_id] = (countMap[r.subscription_id] ?? 0) + 1
           }
-          const subs: Subscription[] = seRows
-            .map(r => {
-              const s = r.subscriptions as any
-              if (!s) return null
-              return { ...s, linked_count: countMap[r.subscription_id] ?? 1 }
-            })
-            .filter(Boolean) as Subscription[]
-          setSubs(subs)
+          setSubs(current => current.map(sub => ({ ...sub, linked_count: countMap[sub.id] ?? 1 })))
         }),
     ])
   }
@@ -1207,7 +1204,7 @@ export default function EmployeeSearch() {
                 const individualCost = licenses.filter(l => l.account_type === 'Individual').reduce((s, l) => s + (l.monthly_cost_cad ?? 0), 0)
                 const subMonthlyCost = subscriptions.reduce((s, sub) => {
                   const mo = sub.billing_cycle === 'Annual' ? sub.cost_cad / 12 : sub.cost_cad
-                  return s + mo / sub.linked_count
+                  return s + mo / (sub.linked_count ?? 1)
                 }, 0)
                 const totalCost = individualCost + subMonthlyCost
                 return (
@@ -1263,7 +1260,7 @@ export default function EmployeeSearch() {
                         <div className="px-3 py-2 bg-pill text-xs font-bold text-ink-muted">{t('emp.subs.title', locale)}</div>
                         {subscriptions.map(sub => {
                           const mo = sub.billing_cycle === 'Annual' ? sub.cost_cad / 12 : sub.cost_cad
-                          const perPerson = mo / sub.linked_count
+                          const perPerson = mo / (sub.linked_count ?? 1)
                           return (
                             <div key={sub.id} className="px-3 py-2.5 border-t border-line-soft flex items-center justify-between">
                               <div className="min-w-0">
@@ -1272,7 +1269,9 @@ export default function EmployeeSearch() {
                                 </div>
                                 <div className="text-xs text-ink-faint">
                                   {sub.plan_name ?? sub.billing_cycle ?? ''}
-                                  {sub.linked_count > 1 && ` · ${locale === 'ko' ? `${sub.linked_count}명 공유` : `shared by ${sub.linked_count}`}`}
+                                  {sub.linked_count === null
+                                    ? ' · …'
+                                    : sub.linked_count > 1 && ` · ${locale === 'ko' ? `${sub.linked_count}명 공유` : `shared by ${sub.linked_count}`}`}
                                 </div>
                               </div>
                               <span className="text-xs font-semibold text-ink flex-shrink-0 ml-2">

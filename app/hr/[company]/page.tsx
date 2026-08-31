@@ -564,8 +564,8 @@ export default function CompanyAttendancePage() {
         ))}
       </div>
 
-      {companyId
-        ? <AttendanceGrid key={gridKey} companyId={companyId} year={year} month={month}
+      {COMPANY_MAP[company]
+        ? <AttendanceGrid key={gridKey} companyId={companyId ?? ''} companyCode={COMPANY_MAP[company]} year={year} month={month}
             onReactivate={() => { setGridKey(k => k + 1); loadTerminated() }} />
         : <div className="text-center py-16 text-ink-faint">{t('common.loading', locale)}</div>
       }
