@@ -63,14 +63,28 @@ export default function CalendarPage() {
   const [selected, setSelected] = useState<number | null>(null)
 
   useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    const firstDow = new Date(year, month, 1).getDay()
+    const gridStart = new Date(year, month, 1 - firstDow)
+    const cellsInGrid = Math.ceil((firstDow + new Date(year, month + 1, 0).getDate()) / 7) * 7
+    const gridEnd = new Date(gridStart)
+    gridEnd.setDate(gridStart.getDate() + cellsInGrid - 1)
+    const iso = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    const start = iso(gridStart)
+    const end = iso(gridEnd)
+
     supabase
       .from('utility_bills')
       .select('id,company_id,utility_name,provider,amount,currency,issue_date,due_date,bill_number,is_paid,balance_status,invoice_status')
+      .or(`and(due_date.gte.${start},due_date.lte.${end}),and(issue_date.gte.${start},issue_date.lte.${end})`)
       .then(({ data }) => {
+        if (cancelled) return
         setBills((data as Bill[]) ?? [])
         setLoading(false)
       })
-  }, [])
+    return () => { cancelled = true }
+  }, [year, month])
 
   async function togglePaid(bill: Bill) {
     const newPaid = bill.balance_status !== 'paid'

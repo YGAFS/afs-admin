@@ -319,7 +319,6 @@ export default function UtilityPage() {
   const [expandedVendor, setExpandedVendor] = useState<string | null>(null)
   const [focusedBillId, setFocusedBillId] = useState<string | null>(null)
   const [notifications, setNotifications] = useState<BillNotification[]>([])
-  const notificationsInitialized = useRef(false)
 
   const [showModal,     setShowModal]     = useState(false)
   const [editBill,      setEditBill]      = useState<Partial<Bill>>(emptyBill)
@@ -330,56 +329,6 @@ export default function UtilityPage() {
   const [applyConfirm,  setApplyConfirm]  = useState<string | null>(null)
   const [showPMModal,   setShowPMModal]   = useState(false)
   const [showCreditModal, setShowCreditModal] = useState(false)
-
-  function syncBillNotifications(nextBills: Bill[]) {
-    if (typeof window === 'undefined') return
-    const versionsKey = 'afs_utility_bill_notification_versions'
-    const notificationsKey = 'afs_utility_bill_notifications'
-    const previousVersions = JSON.parse(localStorage.getItem(versionsKey) ?? '{}') as Record<string, string>
-    const previousNotifications = JSON.parse(localStorage.getItem(notificationsKey) ?? '[]') as BillNotification[]
-    const nextVersions: Record<string, string> = { ...previousVersions }
-    const nextNotifications = [...previousNotifications]
-    const now = new Date().toISOString()
-
-    for (const bill of nextBills) {
-      const version = bill.updated_at || bill.created_at
-      const previousVersion = previousVersions[bill.id]
-      nextVersions[bill.id] = version
-      if (!notificationsInitialized.current) continue
-      if (!previousVersion || version <= previousVersion) continue
-      nextNotifications.unshift({
-        id: `${bill.id}:${version}`,
-        billId: bill.id,
-        kind: 'updated',
-        version,
-        createdAt: now,
-        read: false,
-      })
-    }
-
-    // A new bill has no previous version and should notify after the initial baseline.
-    if (notificationsInitialized.current) {
-      for (const bill of nextBills) {
-        if (previousVersions[bill.id]) continue
-        nextNotifications.unshift({
-          id: `${bill.id}:${bill.created_at}`,
-          billId: bill.id,
-          kind: 'new',
-          version: bill.created_at,
-          createdAt: now,
-          read: false,
-        })
-      }
-    }
-
-    const deduped = Array.from(new Map(nextNotifications.map(n => [n.id, n])).values())
-      .filter(n => nextBills.some(b => b.id === n.billId))
-      .slice(0, 100)
-    localStorage.setItem(versionsKey, JSON.stringify(nextVersions))
-    localStorage.setItem(notificationsKey, JSON.stringify(deduped))
-    setNotifications(deduped)
-    notificationsInitialized.current = true
-  }
 
   useEffect(() => {
     if (!user) {
@@ -400,6 +349,42 @@ export default function UtilityPage() {
       })
   }, [user])
 
+  const refreshBills = useCallback(async () => {
+    const { data } = await supabase
+      .from('utility_bills')
+      .select('*, payment_methods(*), balance_status, invoice_status, total_due, amount_paid, remaining_balance, late_fee, tax, adjustments, needs_amount_review, carried_forward_to_bill_id, carried_forward_amount')
+      .order('due_date', { ascending: true, nullsFirst: false })
+    setBills((data as Bill[]) ?? [])
+  }, [])
+
+  const refreshNotifications = useCallback(async () => {
+    if (!user?.id) return
+    const { data: notificationRows } = await supabase
+      .from('utility_bill_notifications')
+      .select('id,bill_id,kind,version,created_at,read_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(100)
+    setNotifications((notificationRows ?? []).map(row => ({
+      id: row.id,
+      billId: row.bill_id,
+      kind: row.kind as 'new' | 'updated',
+      version: row.version,
+      createdAt: row.created_at,
+      read: !!row.read_at,
+    })))
+  }, [user?.id])
+
+  const refreshCredits = useCallback(async () => {
+    const { data } = await supabase.from('utility_credits').select('*').order('credit_date', { ascending: false })
+    setCredits((data as Credit[]) ?? [])
+  }, [])
+
+  const refreshPaymentMethods = useCallback(async () => {
+    const { data } = await supabase.from('payment_methods').select('*').order('label')
+    setMethods((data as PaymentMethod[]) ?? [])
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     const [{ data }, { data: pm }, { data: cr }, { data: v }] = await Promise.all([
@@ -411,19 +396,22 @@ export default function UtilityPage() {
       supabase.from('utility_credits').select('*').order('credit_date', { ascending: false }),
       supabase.from('utility_vendors').select('id, company_id, name').order('name'),
     ])
-    const nextBills = (data as Bill[]) ?? []
-    setBills(nextBills)
-    syncBillNotifications(nextBills)
+    setBills((data as Bill[]) ?? [])
     setMethods((pm as PaymentMethod[]) ?? [])
     setCredits((cr as Credit[]) ?? [])
     setVendors((v as VendorRef[]) ?? [])
     setLoading(false)
-  }, [])
+  }, [user?.id])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(); refreshNotifications() }, [load, refreshNotifications])
   useEffect(() => {
-    const timer = window.setInterval(load, 15_000)
-    const refreshOnFocus = () => { if (document.visibilityState === 'visible') load() }
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refreshBills()
+        refreshNotifications()
+      }
+    }, 60_000)
+    const refreshOnFocus = () => { if (document.visibilityState === 'visible') { refreshBills(); refreshNotifications() } }
     window.addEventListener('focus', refreshOnFocus)
     document.addEventListener('visibilitychange', refreshOnFocus)
     return () => {
@@ -431,19 +419,26 @@ export default function UtilityPage() {
       window.removeEventListener('focus', refreshOnFocus)
       document.removeEventListener('visibilitychange', refreshOnFocus)
     }
-  }, [load])
+  }, [refreshBills, refreshNotifications])
 
   function saveNotifications(next: BillNotification[]) {
     setNotifications(next)
-    localStorage.setItem('afs_utility_bill_notifications', JSON.stringify(next))
   }
 
-  function markNotificationRead(id: string) {
-    saveNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n))
+  async function markNotificationRead(id: string) {
+    const now = new Date().toISOString()
+    const { error } = await supabase.from('utility_bill_notifications').update({ read_at: now }).eq('id', id).eq('user_id', user?.id ?? '')
+    if (!error) saveNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n))
   }
 
-  function markAllNotificationsRead() {
-    saveNotifications(notifications.map(n => ({ ...n, read: true })))
+  async function markAllNotificationsRead() {
+    const { error } = await supabase.from('utility_bill_notifications').update({ read_at: new Date().toISOString() }).eq('user_id', user?.id ?? '').is('read_at', null)
+    if (!error) saveNotifications(notifications.map(n => ({ ...n, read: true })))
+  }
+
+  async function deleteNotification(id: string) {
+    const { error } = await supabase.from('utility_bill_notifications').delete().eq('id', id).eq('user_id', user?.id ?? '')
+    if (!error) setNotifications(current => current.filter(n => n.id !== id))
   }
 
   function openNotification(notification: BillNotification) {
@@ -649,7 +644,8 @@ export default function UtilityPage() {
     setShowModal(false)
     setEditingId(null)
     setEditBill(emptyBill)
-    load()
+    refreshBills()
+    refreshNotifications()
   }
 
   async function deleteBill(id: string) {
@@ -706,7 +702,8 @@ export default function UtilityPage() {
       }
     }
     setApplyConfirm(null)
-    load()
+    refreshBills()
+    refreshCredits()
   }
 
   function openEdit(bill: Bill) {
@@ -731,6 +728,7 @@ export default function UtilityPage() {
             onOpen={openNotification}
             onMarkRead={markNotificationRead}
             onMarkAllRead={markAllNotificationsRead}
+            onDelete={deleteNotification}
           />
           <div className="flex gap-1 bg-white border border-line rounded-lg p-1">
             {([
@@ -1051,14 +1049,14 @@ export default function UtilityPage() {
                         <td className="px-4 py-3">
                           <StatusDropdown bill={bill} onUpdate={updateBillStatus} onCarryForward={setCarryForwardBill} onPartialPayment={setPartialPaymentBill} />
                         </td>
-                        {role === 'admin' && (
+                        {(role === 'admin' || bill.onedrive_file_url) && (
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1">
                               {bill.onedrive_file_url && (
                                 <a href={bill.onedrive_file_url} target="_blank" rel="noreferrer"
                                   className="px-2 py-0.5 text-[11px] text-blue-600 font-medium rounded hover:bg-blue-50 transition-colors" title="Open or download the bill file">Download</a>
                               )}
-                              {(() => {
+                              {role === 'admin' && (() => {
                                 const s = computeBillStatus(bill)
                                 const key = accountKey(bill.company_id, bill.utility_name, bill.account_number)
                                 const avail = availableCreditByAccount.get(key) ?? 0
@@ -1077,15 +1075,15 @@ export default function UtilityPage() {
                                   <button onClick={() => setApplyConfirm(bill.id)} className="px-1.5 py-0.5 text-[11px] text-ink-faint hover:text-signal-pos transition-colors" title={`Apply account credit (${sym}${avail.toFixed(2)} available)`}>Credit</button>
                                 )
                               })()}
-                              <button onClick={() => openEdit(bill)} className="px-1.5 py-0.5 text-[11px] text-ink-faint hover:text-ink transition-colors" title="Edit">Edit</button>
-                              {deleteConfirm === bill.id ? (
+                              {role === 'admin' && <button onClick={() => openEdit(bill)} className="px-1.5 py-0.5 text-[11px] text-ink-faint hover:text-ink transition-colors" title="Edit">Edit</button>}
+                              {role === 'admin' && (deleteConfirm === bill.id ? (
                                 <span className="flex items-center gap-1 text-xs">
                                   <button onClick={() => deleteBill(bill.id)} className="text-signal-neg font-semibold">Del</button>
                                   <button onClick={() => setDeleteConfirm(null)} className="text-ink-faint">✕</button>
                                 </span>
                               ) : (
                                 <button onClick={() => setDeleteConfirm(bill.id)} className="px-1.5 py-0.5 text-[11px] text-ink-faint hover:text-signal-neg transition-colors" title="Delete">Del</button>
-                              )}
+                              ))}
                             </div>
                           </td>
                         )}
@@ -1357,7 +1355,7 @@ export default function UtilityPage() {
           methods={methods}
           role={role}
           onClose={() => setShowPMModal(false)}
-          onSave={() => { setShowPMModal(false); load() }}
+           onSave={() => { setShowPMModal(false); refreshPaymentMethods() }}
         />
       )}
 
@@ -1365,7 +1363,7 @@ export default function UtilityPage() {
         <CreditModal
           credits={credits}
           onClose={() => setShowCreditModal(false)}
-          onSave={() => load()}
+           onSave={() => refreshCredits()}
         />
       )}
 
@@ -1400,7 +1398,7 @@ export default function UtilityPage() {
               }
             }
             setCarryForwardBill(null)
-            load()
+            refreshBills()
           }}
         />
       )}
@@ -1774,13 +1772,14 @@ function CarryForwardModal({
 // ── Dashboard Tab ────────────────────────────────────────────────────────────
 
 function NotificationBell({
-  notifications, bills, onOpen, onMarkRead, onMarkAllRead,
+  notifications, bills, onOpen, onMarkRead, onMarkAllRead, onDelete,
 }: {
   notifications: BillNotification[]
   bills: Bill[]
   onOpen: (notification: BillNotification) => void
   onMarkRead: (id: string) => void
   onMarkAllRead: () => void
+  onDelete: (id: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const unread = notifications.filter(n => !n.read).length
@@ -1827,8 +1826,10 @@ function NotificationBell({
                         </div>
                       </div>
                     </button>
-                    {!notification.read && (
+                    {!notification.read ? (
                       <button onClick={() => onMarkRead(notification.id)} className="ml-4 mt-1 text-[11px] text-blue-600 hover:underline">Mark read</button>
+                    ) : (
+                      <button onClick={() => onDelete(notification.id)} className="ml-4 mt-1 text-[11px] text-ink-faint hover:text-signal-neg hover:underline">Delete</button>
                     )}
                   </div>
                 )
@@ -1914,21 +1915,21 @@ function BillExpandPanel({
       </div>
       <div className="col-span-2 flex items-center justify-between pt-1">
         <StatusDropdown bill={bill} onUpdate={onUpdateStatus} onCarryForward={onCarryForward} onPartialPayment={onPartialPayment} />
-        {role === 'admin' && (
+        {(role === 'admin' || bill.onedrive_file_url) && (
           <div className="flex items-center gap-2">
             {bill.onedrive_file_url && (
               <a href={bill.onedrive_file_url} target="_blank" rel="noreferrer"
                 className="text-xs text-blue-600 font-medium hover:underline transition-colors" title="Open or download the bill file">Download</a>
             )}
-            <button onClick={() => onEdit(bill)} className="text-xs text-ink-faint hover:text-ink transition-colors" title="Edit">Edit</button>
-            {deleteConfirm === bill.id ? (
+            {role === 'admin' && <button onClick={() => onEdit(bill)} className="text-xs text-ink-faint hover:text-ink transition-colors" title="Edit">Edit</button>}
+            {role === 'admin' && (deleteConfirm === bill.id ? (
               <span className="flex items-center gap-1 text-sm">
                 <button onClick={() => onDelete(bill.id)} className="text-signal-neg font-semibold">Del</button>
                 <button onClick={() => setDeleteConfirm(null)} className="text-ink-faint">✕</button>
               </span>
             ) : (
               <button onClick={() => setDeleteConfirm(bill.id)} className="text-xs text-ink-faint hover:text-signal-neg transition-colors" title="Delete">Del</button>
-            )}
+            ))}
           </div>
         )}
       </div>

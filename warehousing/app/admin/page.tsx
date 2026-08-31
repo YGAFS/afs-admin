@@ -167,35 +167,44 @@ function RoleAccessPanel({ locale }: { locale: UiLanguage }) {
   async function load() {
     setLoading(true)
     setError(null)
-    const { data: sessionData } = await supabase.auth.getSession()
-    const token = sessionData.session?.access_token
-    if (!token) {
-      setError(locale === 'ko' ? '로그인이 필요합니다.' : 'You must be signed in.')
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData.session?.access_token
+      if (!token) {
+        setError(locale === 'ko' ? '로그인이 필요합니다.' : 'You must be signed in.')
+        return
+      }
+
+      const usersRes = await fetch('/api/admin/users', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const body: unknown = await usersRes.json().catch(() => null)
+
+      if (!usersRes.ok) {
+        const message = body && typeof body === 'object' && 'error' in body && typeof body.error === 'string'
+          ? body.error
+          : (locale === 'ko' ? `사용자 목록을 불러오지 못했습니다 (${usersRes.status})` : `Failed to load users (${usersRes.status})`)
+        setError(message)
+        return
+      }
+
+      if (!body || typeof body !== 'object' || !('users' in body) || !Array.isArray(body.users)) {
+        throw new Error('Invalid user list response')
+      }
+
+      const next: Record<string, UserRow> = {}
+      for (const user of body.users) {
+        if (!user || typeof user !== 'object' || typeof user.user_id !== 'string' || !user.user_id || typeof user.email !== 'string' || !user.email) {
+          throw new Error('Invalid user list row')
+        }
+        next[user.user_id] = { user_id: user.user_id, email: user.email, role: typeof user.role === 'string' ? user.role as Role : null, saving: false, saved: false }
+      }
+      setRows(next)
+    } catch {
+      setError(locale === 'ko' ? '사용자 목록을 불러오지 못했습니다.' : 'Failed to load users.')
+    } finally {
       setLoading(false)
-      return
     }
-
-    const usersRes = await fetch('/api/admin/users', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-
-    if (!usersRes.ok) {
-      const body = await usersRes.json().catch(() => ({}))
-      setError(body.error || (locale === 'ko' ? `사용자 목록을 불러오지 못했습니다 (${usersRes.status})` : `Failed to load users (${usersRes.status})`))
-      setLoading(false)
-      return
-    }
-
-    const { users } = (await usersRes.json()) as {
-      users: AuthUser[]
-    }
-
-    const next: Record<string, UserRow> = {}
-    for (const u of users) {
-      next[u.user_id] = { user_id: u.user_id, email: u.email, role: u.role ?? null, saving: false, saved: false }
-    }
-    setRows(next)
-    setLoading(false)
   }
 
   function updateRow(userId: string, patch: Partial<UserRow>) {

@@ -539,17 +539,18 @@ export default function AssetsPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: a }, directoryResult] = await Promise.all([
+    const [{ data: a }, directoryResult, { data: people }] = await Promise.all([
       supabase.from('assets')
         .select('id,asset_id,company,category,item_name,brand,model,chipset,serial_number,purchase_date,purchase_price,vendor,warranty_end,condition,location,notes,employee_id,asset_people_id')
         .order('asset_id'),
       hrFetch<{ data: Employee[] }>('/api/employee-directory?section=assets'),
+      supabase.from('asset_people').select('id,name,email,company').order('name'),
     ])
     setAssets((a as Asset[]) ?? [])
     setEmployees((directoryResult.data?.data as Employee[]) ?? [])
-    await loadPeople()
+    setAssetPeople((people as AssetPerson[]) ?? [])
     setLoading(false)
-  }, [loadPeople])
+  }, [])
 
   useEffect(() => { load() }, [load])
 

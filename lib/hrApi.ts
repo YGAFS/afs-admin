@@ -2,8 +2,16 @@
 
 import { supabase } from '@/lib/supabase'
 
+let sessionPromise: ReturnType<typeof supabase.auth.getSession> | null = null
+supabase.auth.onAuthStateChange(() => { sessionPromise = null })
+
+function getSession() {
+  if (!sessionPromise) sessionPromise = supabase.auth.getSession()
+  return sessionPromise
+}
+
 export async function hrFetch<T = unknown>(path: string, init?: RequestInit): Promise<{ data: T | null; error: Error | null }> {
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+  const { data: { session }, error: sessionError } = await getSession()
   if (sessionError || !session?.access_token) return { data: null, error: new Error('Authenticated session required') }
   try {
     const response = await fetch(path, {

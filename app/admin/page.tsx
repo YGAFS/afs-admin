@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useAuth, useLocale } from '@/app/providers'
 import { t, type Locale } from '@/lib/i18n'
+import Link from 'next/link'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
@@ -64,6 +65,7 @@ export default function AdminPage() {
           <UserAccessPanel />
         </div>
       )}
+      {isSuperAdmin && <Link href="/admin/pto-policy" className="mt-6 block rounded-xl border border-line-soft bg-white p-5 text-sm font-semibold text-ink shadow-sm hover:bg-pill">Manage company PTO policies <span className="text-ink-muted">→</span></Link>}
     </div>
   )
 }

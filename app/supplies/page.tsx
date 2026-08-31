@@ -89,9 +89,9 @@ export default function SuppliesPage() {
 
   async function loadData() {
     const [c,i,o] = await Promise.all([
-      supabase.from('companies').select('*').order('code'),
-      supabase.from('supply_items').select('*').order('name'),
-      supabase.from('supply_orders').select('*').order('order_date',{ascending:false})
+      supabase.from('companies').select('id,code,name,next_reorder_date,alert_days_before').order('code'),
+      supabase.from('supply_items').select('id,name,category,unit,company_id,supplier,ea_per_unit').order('name'),
+      supabase.from('supply_orders').select('id,item_id,order_date,quantity,unit_price,total_cost,invoice_ref,status,consumed,ea_per_unit,company_id').order('order_date',{ascending:false})
     ])
     if(c.data){
       setCompanies(c.data)

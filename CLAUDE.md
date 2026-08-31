@@ -96,7 +96,7 @@ Restricts which top-level sidebar sections (`/hr`, `/utilities`, `/licenses`, `/
 - **This is client-side only** — there is no `middleware.ts` and Supabase RLS on most tables is currently wide-open (`using (true)`) to any authenticated user. A restricted user cannot *see* other sections in the UI, but if the underlying tables' RLS policies allow it, direct API calls could still read/write that data. Treat this as UI-level restriction for trusted internal staff, not a hard security boundary — tighten RLS per-table if that's needed later.
 - To restrict a user: insert/update a row in `user_access`, e.g. `allowed_sections = '{utilities}'` for Utility Dashboard only.
 - **Creating the actual login account (Supabase Auth user + password) must be done manually** in the Supabase Dashboard → Authentication → Users — Claude will not create accounts or set passwords.
-- **Admin panel** (`/admin`, live as of 2026-08-13): a "User Access" section at the bottom of Settings, visible only to `admin@afstransco.com` (hardcoded `ADMIN_EMAILS` in both `app/admin/page.tsx` and `app/api/admin/users/route.ts` — keep the two in sync). Lists every Supabase Auth user with a Full Access checkbox + per-section checkboxes, writing straight to `user_access`. Listing auth users needs the Admin API (service-role key), which the browser can never hold — `app/api/admin/users/route.ts` is this repo's first Next.js API route, using a **server-only** `SUPABASE_SERVICE_ROLE_KEY` env var (deliberately not `NEXT_PUBLIC_`, set in `.env.local` and in Vercel's Production env vars) and verifying the caller's Supabase JWT is one of `ADMIN_EMAILS` before calling `auth.admin.listUsers()`.
+- **Admin panel** (`/admin`, live as of 2026-08-13): a "User Access" section at the bottom of Settings, visible only to `admin@afstransco.com` (hardcoded `ADMIN_EMAILS` in both `app/admin/page.tsx` and `app/api/admin/users/route.ts` — keep the two in sync). Lists every Supabase Auth user with a Full Access checkbox + per-section checkboxes, reading and updating `user_access` through the protected server API. Listing auth users needs the Admin API (service-role key), which the browser can never hold — `app/api/admin/users/route.ts` is this repo's first Next.js API route, using a **server-only** `SUPABASE_SERVICE_ROLE_KEY` env var (deliberately not `NEXT_PUBLIC_`, set in `.env.local` and in Vercel's Production env vars) and verifying the caller's Supabase JWT is one of `ADMIN_EMAILS` before calling `auth.admin.listUsers()`.
 
 ---
 
@@ -213,3 +213,16 @@ Thank you.
 - [ ] Run `supabase/add_utility_credits.sql` in Supabase SQL Editor to enable the "Add Credit" feature on the Utility Bills page (account-level balance adjustments not tied to a specific bill)
 - [ ] Set up `tools/utility_bill_ingestor/.env` (copy from `.env.example`, fill in `SUPABASE_SERVICE_ROLE_KEY` from Supabase Dashboard) before running the ingestor
 - [ ] Run `supabase/add_vendor_payment_methods.sql` in Supabase SQL Editor to enable linking an already-registered payment method to a vendor (`app/utilities/vendors/page.tsx` Payment Methods tab) instead of re-entering it each time
+
+### Warehousing (Purchase Request module, `warehousing/`) — new, run in this order
+
+- [ ] Run `supabase/warehousing_app_access.sql` in Supabase SQL Editor (creates `app_access`, seeds `admin@afstransco.com` as Warehousing admin)
+- [ ] Run `supabase/warehousing_purchase_requests.sql` (creates `purchase_categories` + 7 seeded categories, `customers`, `purchase_requests`, the `PR-YYYY-NNNN` number generator)
+- [ ] Run `supabase/warehousing_activity_attachments.sql` (creates `purchase_request_attachments`, `purchase_request_activity`)
+- [ ] Run `supabase/warehousing_settings.sql` (creates the key/value settings table used for the bookkeeper recipient email)
+- [ ] Create a **private** Storage bucket named `purchase-attachments` in Supabase Dashboard → Storage → New Bucket (uncheck "Public") — cannot be done via SQL
+- [ ] Run `supabase/warehousing_storage_policies.sql` (storage RLS for that bucket) — only after the bucket exists
+- [ ] Create a new Vercel project pointed at this repo with Root Directory = `warehousing`, add DNS + attach the domain `warehousing.afstransco.com`
+- [ ] Set env vars in that Vercel project: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_AZURE_CLIENT_ID`, `NEXT_PUBLIC_AZURE_TENANT_ID` — same values as the main app's `.env.local` (same Supabase project, same Azure AD app)
+- [ ] In Azure Portal → App registrations → the app behind `NEXT_PUBLIC_AZURE_CLIENT_ID` → Authentication, add `https://warehousing.afstransco.com/auth/callback` as an additional Redirect URI (needed for the "Send to Bookkeeping" email button)
+- [ ] After first deploy, log in as `admin@afstransco.com` at `/admin` and: (1) grant roles to other staff, (2) set the bookkeeper recipient email — nothing works for anyone else until roles are granted

@@ -24,11 +24,14 @@ function parseYear(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const requestStarted = performance.now()
+  const authStarted = performance.now()
   const year = parseYear(req)
   if (year === null) return portalJsonError('Invalid year', 400)
 
   const auth = await authorizeEmployeePortalRequest(req)
   if (!auth) return portalJsonError('Employee portal access denied', 403)
+  const authMs = performance.now() - authStarted
 
   const { employee, db } = auth
   // `year` controls the returned history. EmployeeSearch's balance is as of
@@ -36,6 +39,7 @@ export async function GET(req: NextRequest) {
   const currentDate = todayIso()
   const effectiveAsOf = employee.end_date && employee.end_date < currentDate ? employee.end_date : currentDate
 
+  const queryStarted = performance.now()
   const [companyResult, leaveResult] = await Promise.all([
     db.from('companies').select('id,code,name').eq('id', employee.company_id).maybeSingle(),
     db.from('leave_entries')
@@ -45,6 +49,7 @@ export async function GET(req: NextRequest) {
   ])
   if (companyResult.error || !companyResult.data) return portalJsonError('Failed to load employee company', 500)
   if (leaveResult.error) return portalJsonError('Failed to load employee leave history', 500)
+  const queryMs = performance.now() - queryStarted
 
   const leaveEntries: PtoLeaveEntryInput[] = (leaveResult.data ?? []).map(entry => ({
     id: entry.id,
@@ -64,6 +69,7 @@ export async function GET(req: NextRequest) {
     year,
     asOfDate: effectiveAsOf,
   })
+  const ptoMs = performance.now() - queryStarted - queryMs
 
   const leaveHistory = (leaveResult.data ?? [])
     .filter(entry => entry.date.startsWith(`${year}-`) && RELEVANT_CODES.has(entry.leave_code))
@@ -96,5 +102,8 @@ export async function GET(req: NextRequest) {
       dayHours: 8,
       hourlyLeaveUsesLegacyDayWeighting: true,
     },
-  })
+  }, { headers: {
+    'Cache-Control': 'no-store',
+    'Server-Timing': `auth;dur=${authMs.toFixed(1)},db;dur=${queryMs.toFixed(1)},pto;dur=${ptoMs.toFixed(1)},total;dur=${(performance.now() - requestStarted).toFixed(1)}`,
+  } })
 }

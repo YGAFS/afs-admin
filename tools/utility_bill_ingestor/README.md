@@ -355,9 +355,11 @@ and generate small synthetic PDFs on the fly with PyMuPDF.
   Fontana Water, Burrtec, Orkin) plus a generic fallback. **US Bank** (ZFS,
   Printer) has no dedicated extractor yet — its bills will go to `review`
   until one is written (see "Adding a new vendor extractor" above).
-- TNT's Biscayne and Pickering locations have no utility accounts registered
-  in Supabase yet, so bills for those sites will resolve to `needs_review`
-  (site can't be confirmed) until the corresponding `utility_service_accounts`
+- TNT's Pickering location has one utility account registered (Rogers 5G
+  router/WiFi, account `5-0882-6140` — originally misfiled as "Biscayne",
+  corrected 2026-08-14). Biscayne itself still has no utility accounts
+  registered, so bills for that site will resolve to `needs_review` (site
+  can't be confirmed) until the corresponding `utility_service_accounts`
   rows and `config/vendors.yaml` account numbers exist.
 - No AI/LLM fallback extractor — by design, per the brief. The `BillExtractor`
   interface is generic enough to add one later without touching the pipeline.

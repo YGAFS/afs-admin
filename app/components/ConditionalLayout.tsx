@@ -10,20 +10,21 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   const pathname = usePathname()
   const router   = useRouter()
   const isLogin  = pathname === '/login' || pathname.startsWith('/auth/')
+  const isPortal = pathname === '/portal' || pathname.startsWith('/portal/')
   const section  = pathname.split('/')[1] ?? ''
 
   useEffect(() => {
-    if (!loading && !user && !isLogin) {
+    if (!loading && !user && !isLogin && !isPortal) {
       router.replace('/login')
       return
     }
-    if (!loading && user && !isLogin && allowedSections && !allowedSections.includes(section)) {
+    if (!loading && user && !isLogin && !isPortal && allowedSections && !allowedSections.includes(section)) {
       router.replace(`/${allowedSections[0]}`)
     }
   }, [user, loading, isLogin, allowedSections, section, router])
 
   // Login page — no sidebar, full screen
-  if (isLogin) {
+  if (isLogin || isPortal) {
     return <div className="flex-1 overflow-auto">{children}</div>
   }
 

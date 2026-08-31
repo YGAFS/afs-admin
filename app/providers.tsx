@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { getMsal } from '@/lib/msal'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { User } from '@supabase/supabase-js'
@@ -38,6 +39,8 @@ export const useLocale = () => useContext(LocaleContext)
 // ── Combined Provider ─────────────────────────────────────────────────────────
 
 export default function Providers({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const isPortal = pathname === '/portal' || pathname.startsWith('/portal/')
   const [user,    setUser]   = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [accessLoading, setAccessLoading] = useState(true)
@@ -46,13 +49,19 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const [locale,  setLocaleState] = useState<Locale>('en')
 
   useEffect(() => {
+    if (isPortal) {
+      setUser(null)
+      setLoading(false)
+      return
+    }
     // Initialize MSAL on every page load so popup windows can process OAuth callbacks
     if (process.env.NEXT_PUBLIC_AZURE_CLIENT_ID) {
       getMsal().catch(() => {})
     }
-  }, [])
+  }, [isPortal])
 
   useEffect(() => {
+    if (isPortal) return
     const sb = getSupabase()
     sb.auth.getUser().then(({ data }) => {
       const u = data.user ?? null
@@ -66,13 +75,19 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       setLocaleState((u?.user_metadata?.locale as Locale) ?? 'en')
     })
     return () => subscription.unsubscribe()
-  }, [])
+  }, [isPortal])
 
   // Supabase re-emits onAuthStateChange (TOKEN_REFRESHED, USER_UPDATED, tab refocus, etc.)
   // Authorization is keyed by the stable auth user id, not by email.
   const userId = user?.id ?? null
   const userEmail = user?.email ?? null
   useEffect(() => {
+    if (isPortal) {
+      setAllowedSections([])
+      setIsSuperAdmin(false)
+      setAccessLoading(false)
+      return
+    }
     if (loading) return
     if (!userId) {
       setAllowedSections([])
@@ -139,7 +154,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     }
 
     loadAuthorization().finally(() => setAccessLoading(false))
-  }, [userId, userEmail, loading])
+  }, [userId, userEmail, loading, isPortal])
 
   async function setLocale(l: Locale) {
     setLocaleState(l)

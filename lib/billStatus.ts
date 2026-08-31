@@ -17,6 +17,7 @@ export interface BillForStatus {
   balance_status: BalanceStatus
   invoice_status: InvoiceStatus | null
   due_date: string | null
+  is_auto_pay?: boolean
   paid_at?: string | null
 }
 
@@ -31,6 +32,10 @@ export function computeBillStatus(bill: BillForStatus): BillStatusResult {
   }
   if (s === 'carried_forward') return 'carried_forward'
   if (s === 'waived') return 'waived'
+  // Auto-pay bills can remain open briefly while the payment provider settles
+  // the charge. They should stay in the Current/Auto Pay view, not be treated
+  // as manually overdue during that reconciliation window.
+  if (bill.is_auto_pay) return 'upcoming'
   if (!bill.due_date) return s === 'partially_paid' ? 'overdue_partial' : 'open'
   const today = new Date(new Date().toDateString())
   const due = new Date(bill.due_date + 'T00:00:00')
