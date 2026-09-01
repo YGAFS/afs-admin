@@ -13,7 +13,9 @@ function createTiming() {
   const timing: HrTiming = { add: (name, elapsedMs) => entries.push([name, elapsedMs]) }
   const finish = (response: Response, operation: string) => {
     entries.push([operation, performance.now() - startedAt])
+    const summary = entries.map(([name, ms]) => `${name}=${ms.toFixed(1)}ms`).join(' ')
     response.headers.set('Server-Timing', entries.map(([name, ms]) => `${name.replace(/[^a-zA-Z0-9_.-]/g, '_')};dur=${ms.toFixed(1)}`).join(', '))
+    console.info(`[HR timing] ${operation} ${summary}`)
     return response
   }
   return { timing, finish }
