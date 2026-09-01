@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useLayoutEffect, useState, useRef } from 'react'
 import { hrFetch } from '@/lib/hrApi'
 import { useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
@@ -168,6 +168,32 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
   const menuRef    = useRef<HTMLDivElement>(null)
   const noteCtxRef = useRef<HTMLDivElement>(null)
   const colMenuRef = useRef<HTMLDivElement>(null)
+  const saveTraceRef = useRef<{ id: number; operation: string; startedAt: number } | null>(null)
+  const saveTraceSequence = useRef(0)
+
+  function saveTraceMark(label: string) {
+    const trace = saveTraceRef.current
+    if (!trace) return
+    console.info(`[HR lifecycle] ${trace.operation} #${trace.id} ${label} +${Math.round(performance.now() - trace.startedAt)}ms`)
+  }
+
+  function beginSaveTrace(operation: string) {
+    const id = ++saveTraceSequence.current
+    saveTraceRef.current = { id, operation, startedAt: performance.now() }
+    saveTraceMark('handler entered')
+  }
+
+  useLayoutEffect(() => {
+    saveTraceMark(`React commit saving=${saving} leaveMapKeys=${Object.keys(leaveMap).length}`)
+  }, [saving, leaveMap])
+
+  useEffect(() => {
+    if (saving) saveTraceMark('Saving UI committed visible')
+    else if (saveTraceRef.current) {
+      saveTraceMark('Saving UI committed hidden / lifecycle end')
+      saveTraceRef.current = null
+    }
+  }, [saving])
 
   const daysInMonth    = new Date(year, month, 0).getDate()
   const days           = Array.from({ length: daysInMonth }, (_, i) => i + 1)
@@ -283,42 +309,60 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
   }
 
   async function addEntry(empId: string, day: number, code: LeaveCode, hours?: number) {
+    beginSaveTrace(`ADD ${code}`)
     const saveStartedAt = performance.now()
+    saveTraceMark('setSaving(true) call')
     setSaving(true)
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
     const existing = (leaveMap[key] ?? []).find(e => e.code === code)
+    saveTraceMark('fetch POST about to start')
     const { data: saved, error } = await hrFetch<{ data?: Array<{ employee_id: string; date: string; leave_code: LeaveCode; hours: number | null; reported_at?: string | null }> }>('/api/hr/leave-entries', { method: 'POST', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code, hours: hours ?? null, reported_at: null, reported_to: null, reported_cc: null, reported_subject: null, reported_by: null }) })
+    saveTraceMark('fetch POST/API complete')
     if (error) { alert(`저장 실패: ${error.message}`); setSaving(false); return }
+    saveTraceMark('client leaveMap state update call')
     setLeaveMap(p => {
       const existing = (p[key] ?? []).filter(e => e.code !== code)
       const row = saved?.data?.[0]
       return { ...p, [key]: [...existing, { code, hours: row?.hours ?? hours, reportedAt: row?.reported_at ?? null }] }
     })
     if (!existing) applyStatsDelta(empId, code, 1, dateStr)
+    saveTraceMark('setSaving(false) call')
     setSaving(false); setPendingCode(null); setPendingHours('')
     console.info(`[HR timing] save ${code} total ${Math.round(performance.now() - saveStartedAt)}ms; POST only; post-save load removed`)
   }
 
   async function removeEntry(empId: string, day: number, code: LeaveCode) {
+    beginSaveTrace(`DELETE ${code}`)
+    saveTraceMark('setSaving(true) call')
     setSaving(true)
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
     const hadEntry = (leaveMap[key] ?? []).some(e => e.code === code)
+    saveTraceMark('fetch DELETE about to start')
     const { error } = await hrFetch('/api/hr/leave-entries', { method: 'DELETE', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code }) })
+    saveTraceMark('fetch DELETE/API complete')
+    saveTraceMark('client leaveMap state update call')
     if (!error) setLeaveMap(p => ({ ...p, [key]: (p[key] ?? []).filter(e => e.code !== code) }))
     if (!error && hadEntry) applyStatsDelta(empId, code, -1, dateStr)
+    saveTraceMark('setSaving(false) call')
     setSaving(false)
   }
 
   async function clearCell(empId: string, day: number) {
+    beginSaveTrace('CLEAR CELL')
+    saveTraceMark('setSaving(true) call')
     setSaving(true)
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
     const previous = leaveMap[key] ?? []
+    saveTraceMark('fetch DELETE about to start')
     const { error } = await hrFetch('/api/hr/leave-entries', { method: 'DELETE', body: JSON.stringify({ employee_id: empId, date: dateStr }) })
+    saveTraceMark('fetch DELETE/API complete')
+    saveTraceMark('client leaveMap state update call')
     if (!error) setLeaveMap(p => { const n = { ...p }; delete n[key]; return n })
     if (!error) previous.forEach(entry => applyStatsDelta(empId, entry.code, -1, dateStr))
+    saveTraceMark('setSaving(false) call')
     setSaving(false); setEditing(null); setPendingCode(null); setPendingHours('')
   }
 
