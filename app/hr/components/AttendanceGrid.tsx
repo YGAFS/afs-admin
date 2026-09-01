@@ -170,6 +170,24 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
   const colMenuRef = useRef<HTMLDivElement>(null)
   const saveTraceRef = useRef<{ id: number; operation: string; startedAt: number } | null>(null)
   const saveTraceSequence = useRef(0)
+  const savingCountRef = useRef(0)
+  const savingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function startSaving() {
+    savingCountRef.current += 1
+    if (savingCountRef.current !== 1) return
+    savingTimerRef.current = setTimeout(() => {
+      if (savingCountRef.current > 0) setSaving(true)
+    }, 300)
+  }
+
+  function finishSaving() {
+    savingCountRef.current = Math.max(0, savingCountRef.current - 1)
+    if (savingCountRef.current > 0) return
+    if (savingTimerRef.current) clearTimeout(savingTimerRef.current)
+    savingTimerRef.current = null
+    setSaving(false)
+  }
 
   function saveTraceMark(label: string) {
     const trace = saveTraceRef.current
@@ -194,6 +212,10 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
       saveTraceRef.current = null
     }
   }, [saving])
+
+  useEffect(() => () => {
+    if (savingTimerRef.current) clearTimeout(savingTimerRef.current)
+  }, [])
 
   const daysInMonth    = new Date(year, month, 0).getDate()
   const days           = Array.from({ length: daysInMonth }, (_, i) => i + 1)
@@ -311,59 +333,81 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
   async function addEntry(empId: string, day: number, code: LeaveCode, hours?: number) {
     beginSaveTrace(`ADD ${code}`)
     const saveStartedAt = performance.now()
-    saveTraceMark('setSaving(true) call')
-    setSaving(true)
+    saveTraceMark('startSaving() call')
+    startSaving()
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
-    const existing = (leaveMap[key] ?? []).find(e => e.code === code)
+    const previousEntries = leaveMap[key] ?? []
+    const existing = previousEntries.find(e => e.code === code)
+    setLeaveMap(p => {
+      const nextEntries = (p[key] ?? []).filter(e => e.code !== code)
+      return { ...p, [key]: [...nextEntries, { code, hours, reportedAt: null }] }
+    })
+    if (!existing) applyStatsDelta(empId, code, 1, dateStr)
     saveTraceMark('fetch POST about to start')
     const { data: saved, error } = await hrFetch<{ data?: Array<{ employee_id: string; date: string; leave_code: LeaveCode; hours: number | null; reported_at?: string | null }> }>('/api/hr/leave-entries', { method: 'POST', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code, hours: hours ?? null, reported_at: null, reported_to: null, reported_cc: null, reported_subject: null, reported_by: null }) })
     saveTraceMark('fetch POST/API complete')
-    if (error) { alert(`저장 실패: ${error.message}`); setSaving(false); return }
+    if (error) {
+      alert(`저장 실패: ${error.message}`)
+      setLeaveMap(p => ({ ...p, [key]: previousEntries }))
+      if (!existing) applyStatsDelta(empId, code, -1, dateStr)
+      finishSaving()
+      return
+    }
     saveTraceMark('client leaveMap state update call')
     setLeaveMap(p => {
       const existing = (p[key] ?? []).filter(e => e.code !== code)
       const row = saved?.data?.[0]
       return { ...p, [key]: [...existing, { code, hours: row?.hours ?? hours, reportedAt: row?.reported_at ?? null }] }
     })
-    if (!existing) applyStatsDelta(empId, code, 1, dateStr)
-    saveTraceMark('setSaving(false) call')
-    setSaving(false); setPendingCode(null); setPendingHours('')
+    saveTraceMark('finishSaving() call')
+    finishSaving(); setPendingCode(null); setPendingHours('')
     console.info(`[HR timing] save ${code} total ${Math.round(performance.now() - saveStartedAt)}ms; POST only; post-save load removed`)
   }
 
   async function removeEntry(empId: string, day: number, code: LeaveCode) {
     beginSaveTrace(`DELETE ${code}`)
-    saveTraceMark('setSaving(true) call')
-    setSaving(true)
+    saveTraceMark('startSaving() call')
+    startSaving()
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
-    const hadEntry = (leaveMap[key] ?? []).some(e => e.code === code)
+    const previousEntries = leaveMap[key] ?? []
+    const removedEntries = previousEntries.filter(e => e.code === code)
+    setLeaveMap(p => ({ ...p, [key]: (p[key] ?? []).filter(e => e.code !== code) }))
+    if (removedEntries.length) applyStatsDelta(empId, code, -1, dateStr)
     saveTraceMark('fetch DELETE about to start')
     const { error } = await hrFetch('/api/hr/leave-entries', { method: 'DELETE', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code }) })
     saveTraceMark('fetch DELETE/API complete')
+    if (error) {
+      alert(`삭제 실패: ${error.message}`)
+      setLeaveMap(p => ({ ...p, [key]: previousEntries }))
+      if (removedEntries.length) applyStatsDelta(empId, code, 1, dateStr)
+    }
     saveTraceMark('client leaveMap state update call')
-    if (!error) setLeaveMap(p => ({ ...p, [key]: (p[key] ?? []).filter(e => e.code !== code) }))
-    if (!error && hadEntry) applyStatsDelta(empId, code, -1, dateStr)
-    saveTraceMark('setSaving(false) call')
-    setSaving(false)
+    saveTraceMark('finishSaving() call')
+    finishSaving()
   }
 
   async function clearCell(empId: string, day: number) {
     beginSaveTrace('CLEAR CELL')
-    saveTraceMark('setSaving(true) call')
-    setSaving(true)
+    saveTraceMark('startSaving() call')
+    startSaving()
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
     const previous = leaveMap[key] ?? []
+    setLeaveMap(p => { const n = { ...p }; delete n[key]; return n })
+    previous.forEach(entry => applyStatsDelta(empId, entry.code, -1, dateStr))
     saveTraceMark('fetch DELETE about to start')
     const { error } = await hrFetch('/api/hr/leave-entries', { method: 'DELETE', body: JSON.stringify({ employee_id: empId, date: dateStr }) })
     saveTraceMark('fetch DELETE/API complete')
+    if (error) {
+      alert(`삭제 실패: ${error.message}`)
+      setLeaveMap(p => ({ ...p, [key]: previous }))
+      previous.forEach(entry => applyStatsDelta(empId, entry.code, 1, dateStr))
+    }
     saveTraceMark('client leaveMap state update call')
-    if (!error) setLeaveMap(p => { const n = { ...p }; delete n[key]; return n })
-    if (!error) previous.forEach(entry => applyStatsDelta(empId, entry.code, -1, dateStr))
-    saveTraceMark('setSaving(false) call')
-    setSaving(false); setEditing(null); setPendingCode(null); setPendingHours('')
+    saveTraceMark('finishSaving() call')
+    finishSaving(); setEditing(null); setPendingCode(null); setPendingHours('')
   }
 
   async function saveNote(empId: string, day: number, note: string) {
@@ -396,7 +440,7 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
   }
 
   async function setColumnHoliday(day: number) {
-    setSaving(true); setColMenu(null)
+    startSaving(); setColMenu(null)
     const dateStr  = `${year}-${pad(month)}-${pad(day)}`
     const cellDate = new Date(year, month - 1, day)
     const targets  = employees.filter(emp => {
@@ -416,11 +460,11 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
         return next
       })
     }
-    setSaving(false)
+    finishSaving()
   }
 
   async function clearColumn(day: number) {
-    setSaving(true); setColMenu(null)
+    startSaving(); setColMenu(null)
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const ids = employees.map(e => e.id)
     const previous = employees.map(emp => ({ empId: emp.id, entries: leaveMap[`${emp.id}_${day}`] ?? [] }))
@@ -431,7 +475,7 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
       return next
     })
     if (!error) previous.forEach(({ empId, entries }) => entries.forEach(entry => applyStatsDelta(empId, entry.code, -1, dateStr)))
-    setSaving(false)
+    finishSaving()
   }
 
   async function deleteNote(empId: string, day: number) {
@@ -462,7 +506,7 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
 
   async function confirmDateModal() {
     if (!dateModal) return
-    setSaving(true)
+    startSaving()
     const { emp, field } = dateModal
     if (field === 'reactivate') {
       await hrFetch(`/api/hr/employees/${emp.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: true, end_date: null }) })
@@ -470,7 +514,7 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
     } else {
       await hrFetch(`/api/hr/employees/${emp.id}`, { method: 'PATCH', body: JSON.stringify({ [field]: dateValue || null }) })
     }
-    setDateModal(null); setDateValue(''); setSaving(false); load()
+    setDateModal(null); setDateValue(''); finishSaving(); load()
   }
 
   async function handleAddEmployee() {
