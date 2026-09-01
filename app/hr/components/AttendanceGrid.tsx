@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useState, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react'
 import { hrFetch } from '@/lib/hrApi'
 import { useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
@@ -170,6 +170,9 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
   const colMenuRef = useRef<HTMLDivElement>(null)
   const saveTraceRef = useRef<{ id: number; operation: string; startedAt: number } | null>(null)
   const saveTraceSequence = useRef(0)
+  const loadTraceSequence = useRef(0)
+  const loadTraceRef = useRef<{ id: number; startedAt: number; apiDoneAt: number; transformDoneAt?: number } | null>(null)
+  const renderProfileRef = useRef<{ startedAt: number; rowCount: number; cellCount: number } | null>(null)
   const savingCountRef = useRef(0)
   const savingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -205,6 +208,20 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
     saveTraceMark(`React commit saving=${saving} leaveMapKeys=${Object.keys(leaveMap).length}`)
   }, [saving, leaveMap])
 
+  useLayoutEffect(() => {
+    const trace = loadTraceRef.current
+    if (!trace || !employees.length || !renderProfileRef.current) return
+    const render = renderProfileRef.current
+    const committedAt = performance.now()
+    console.info(`[HR initial] load #${trace.id} React commit +${Math.round(committedAt - trace.startedAt)}ms; API→commit ${Math.round(committedAt - trace.apiDoneAt)}ms; transform→commit ${Math.round(committedAt - (trace.transformDoneAt ?? trace.apiDoneAt))}ms; rows=${render.rowCount}; cells=${render.cellCount}`)
+    requestAnimationFrame(() => {
+      const domAt = performance.now()
+      console.info(`[HR initial] load #${trace.id} table DOM/paint +${Math.round(domAt - trace.startedAt)}ms; commit→DOM ${Math.round(domAt - committedAt)}ms`)
+    })
+    loadTraceRef.current = null
+    renderProfileRef.current = null
+  }, [employees, leaveMap, noteMap, flagMap, ys, vacStatMap])
+
   useEffect(() => {
     if (saving) saveTraceMark('Saving UI committed visible')
     else if (saveTraceRef.current) {
@@ -221,6 +238,13 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
   const days           = Array.from({ length: daysInMonth }, (_, i) => i + 1)
   const today          = new Date()
   const isCurrentMonth = year === today.getFullYear() && month === today.getMonth() + 1
+  const todayDay       = today.getDate()
+  const dayMeta = useMemo(() => days.map(day => ({
+    day,
+    dow: new Date(year, month - 1, day).getDay(),
+    date: new Date(year, month - 1, day),
+    isToday: isCurrentMonth && day === todayDay,
+  })), [year, month, daysInMonth, isCurrentMonth, todayDay])
   const pad            = (n: number) => String(n).padStart(2, '0')
   const firstDayStr    = `${year}-${pad(month)}-01`
   const lastDayStr     = `${year}-${pad(month)}-${pad(daysInMonth)}`
@@ -239,13 +263,19 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
   }, [])
 
   useEffect(() => { setPendingCode(null); setPendingHours(''); if (!editing) setDropPos(null) }, [editing])
-  useEffect(() => { load() }, [companyId, year, month])
+  useEffect(() => { load() }, [companyCode, year, month])
 
   async function load() {
     if (!companyId && !companyCode) return
+    const loadId = ++loadTraceSequence.current
+    const loadStartedAt = performance.now()
+    console.info(`[HR initial] load #${loadId} start`)
     const result = await hrFetch<{ employees: Employee[]; monthEntries: any[]; yearEntries: any[]; prevYearEntries: any[]; prevPrevYearEntries: any[]; notes: any[]; flags: any[] }>(
       `/api/hr/attendance?${companyCode ? `companyCode=${encodeURIComponent(companyCode)}` : `companyId=${encodeURIComponent(companyId)}`}&first=${firstDayStr}&last=${lastDayStr}&year=${year}`)
+    const apiDoneAt = performance.now()
+    console.info(`[HR initial] load #${loadId} API complete +${Math.round(apiDoneAt - loadStartedAt)}ms`)
     if (result.error || !result.data) return
+    const transformStartedAt = performance.now()
     let emps = result.data.employees.filter(e => !e.employment_type || e.employment_type === 'office')
 
     setEmployees(emps ?? [])
@@ -299,6 +329,9 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
     for (const emp of emps) {
       vsMap[emp.id] = calcAnnivVacStat(emp, allVacByEmp[emp.id] ?? [], now)
     }
+    const transformDoneAt = performance.now()
+    loadTraceRef.current = { id: loadId, startedAt: loadStartedAt, apiDoneAt, transformDoneAt }
+    console.info(`[HR initial] load #${loadId} data transformation +${Math.round(transformDoneAt - transformStartedAt)}ms; rows=${emps.length}; monthEntries=${monthEntries?.length ?? 0}; yearEntries=${ye?.length ?? 0}; notes=${notesRaw?.length ?? 0}; flags=${flagsRaw?.length ?? 0}`)
     setVacStatMap(vsMap)
   }
 
@@ -531,16 +564,24 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
   }
 
   const fallbackTeam = locale === 'ko' ? '기타' : 'Other'
-  const teams = employees.reduce<Record<string, Employee[]>>((acc, e) => {
-    const k = e.team || fallbackTeam
-    acc[k] = [...(acc[k] ?? []), e]
-    return acc
-  }, {})
-  const sortedTeams = Object.entries(teams).sort(([a], [b]) => {
-    const ai = TEAM_ORDER.indexOf(a) >= 0 ? TEAM_ORDER.indexOf(a) : 99
-    const bi = TEAM_ORDER.indexOf(b) >= 0 ? TEAM_ORDER.indexOf(b) : 99
-    return ai - bi || a.localeCompare(b)
-  })
+  const sortedTeams = useMemo(() => {
+    const teams = employees.reduce<Record<string, Employee[]>>((acc, e) => {
+      const k = e.team || fallbackTeam
+      ;(acc[k] ??= []).push(e)
+      return acc
+    }, {})
+    return Object.entries(teams).sort(([a], [b]) => {
+      const ai = TEAM_ORDER.indexOf(a) >= 0 ? TEAM_ORDER.indexOf(a) : 99
+      const bi = TEAM_ORDER.indexOf(b) >= 0 ? TEAM_ORDER.indexOf(b) : 99
+      return ai - bi || a.localeCompare(b)
+    })
+  }, [employees, fallbackTeam])
+
+  if (loadTraceRef.current && employees.length && !renderProfileRef.current) {
+    const rowCount = sortedTeams.reduce((count, [, teamEmployees]) => count + teamEmployees.length, 0)
+    renderProfileRef.current = { startedAt: performance.now(), rowCount, cellCount: rowCount * daysInMonth }
+    console.info(`[HR initial] AttendanceGrid render start rows=${rowCount}; cells=${rowCount * daysInMonth}`)
+  }
 
   return (
     <>
@@ -551,9 +592,7 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
               <th className="sticky left-0 z-10 bg-pill border border-line-strong px-3 py-2 text-left text-ink min-w-44 font-bold">
                 {t('grid.col.employee', locale)}
               </th>
-              {days.map(d => {
-                const dow     = new Date(year, month - 1, d).getDay()
-                const isToday = isCurrentMonth && d === today.getDate()
+              {dayMeta.map(({ day: d, dow, isToday }) => {
                 const isColMenuOpen = colMenu?.day === d
                 return (
                   <th key={d}
@@ -649,7 +688,7 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
                         const dow           = new Date(year, month - 1, d).getDay()
                         const isToday       = isCurrentMonth && d === today.getDate()
                         const isEdit        = editing?.empId === emp.id && editing?.day === d
-                        const cellDate      = new Date(year, month - 1, d)
+                      const cellDate      = dayMeta[d - 1].date
                         const isBeforeStart = !!(startDateObj && cellDate < startDateObj)
                         const isAfterEnd    = !!(endDateObj   && cellDate > endDateObj)
                         const blocked       = isBeforeStart || isAfterEnd
