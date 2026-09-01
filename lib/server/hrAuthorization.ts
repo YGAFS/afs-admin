@@ -40,14 +40,22 @@ export async function authorizeHrRequest(
     const user = auth.user
     if (authError || !user?.id) return null
 
-    const { data: profile, error: profileError } = await timed('profile', db
+    const profilePromise = timed('profile', db
       .from('user_profiles').select('status').eq('user_id', user.id).maybeSingle()
     )
-    if (profileError || !profile || profile.status !== 'active') return null
-
-    const { data: globalRole, error: globalError } = await timed('globalRole', db
+    const globalRolePromise = timed('globalRole', db
       .from('user_global_roles').select('role').eq('user_id', user.id).eq('role', 'super_admin').maybeSingle()
     )
+    const employeeScopePromise = options.employeeId
+      ? timed('employee.scope', db.from('employees').select('id,company_id').eq('id', options.employeeId).maybeSingle())
+      : options.employeeIds?.length
+        ? timed('employee.bulkScope', db.from('employees').select('id,company_id').in('id', options.employeeIds))
+        : Promise.resolve({ data: null, error: null })
+    const [{ data: profile, error: profileError }, { data: globalRole, error: globalError }, employeeScope] = await Promise.all([
+      profilePromise, globalRolePromise, employeeScopePromise,
+    ])
+
+    if (profileError || !profile || profile.status !== 'active') return null
     if (globalError) return null
     const isSuperAdmin = !!globalRole
 
@@ -62,18 +70,14 @@ export async function authorizeHrRequest(
       assignedCompanyIds = [company.id]
     }
     if (options.employeeId) {
-      const { data: employee, error: employeeError } = await timed('employee.scope', db
-        .from('employees').select('id,company_id').eq('id', options.employeeId).maybeSingle()
-      )
+      const { data: employee, error: employeeError } = employeeScope as { data: { id: string; company_id: string | null } | null; error: unknown }
       if (employeeError || !employee || !employee.company_id) return null
       if (resolvedCompanyId && resolvedCompanyId !== employee.company_id) return null
       resolvedCompanyId = employee.company_id
       assignedCompanyIds = [employee.company_id]
     }
     if (options.employeeIds?.length) {
-      const { data: employees, error: employeesError } = await timed('employee.bulkScope', db
-        .from('employees').select('id,company_id').in('id', options.employeeIds)
-      )
+      const { data: employees, error: employeesError } = employeeScope as { data: Array<{ id: string; company_id: string | null }> | null; error: unknown }
       if (employeesError || !employees || employees.length !== options.employeeIds.length) return null
       const companies = new Set(employees.map(employee => employee.company_id))
       if (companies.size !== 1) return null
