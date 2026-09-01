@@ -254,39 +254,72 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
     setVacStatMap(vsMap)
   }
 
+  function applyStatsDelta(empId: string, code: LeaveCode, delta: number, dateStr: string) {
+    setYS(prev => {
+      const current = prev[empId] ?? { vacTaken: 0, sick: 0, wfh: 0, ot: 0 }
+      const next = { ...current }
+      const half = ['L1','L2','S1','S2'].includes(code) ? 0.5 : 1
+      if (['L','L1','L2','L3'].includes(code)) next.vacTaken += delta * half
+      else if (['S','S1','S2','S3'].includes(code)) next.sick += delta * half
+      else if (['W','W1','W2','W3'].includes(code)) next.wfh += delta * (code === 'W' ? 1 : 0.5)
+      else if (code === 'O') next.ot += delta
+      return { ...prev, [empId]: next }
+    })
+    const emp = employees.find(e => e.id === empId)
+    if (!emp || !emp.uses_accrual || emp.is_exempt || !emp.start_date || !['L','L1','L2','L3'].includes(code)) return
+    const todayStr = todayIso()
+    if (dateStr > todayStr) return
+    const periods = getAnnivPeriods(emp.start_date, new Date())
+    const current = periods[periods.length - 1]
+    if (!current) return
+    const date = isoToLocal(dateStr)
+    if (date < current.pStart || date > new Date()) return
+    setVacStatMap(prev => {
+      const stat = prev[empId]
+      if (!stat) return prev
+      const used = ['L1','L2'].includes(code) ? 0.5 : 1
+      return { ...prev, [empId]: { ...stat, periodUsed: stat.periodUsed + delta * used } }
+    })
+  }
+
   async function addEntry(empId: string, day: number, code: LeaveCode, hours?: number) {
+    const saveStartedAt = performance.now()
     setSaving(true)
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
-    const { error } = await hrFetch('/api/hr/leave-entries', { method: 'POST', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code, hours: hours ?? null }) })
+    const existing = (leaveMap[key] ?? []).find(e => e.code === code)
+    const { data: saved, error } = await hrFetch<{ data?: Array<{ employee_id: string; date: string; leave_code: LeaveCode; hours: number | null; reported_at?: string | null }> }>('/api/hr/leave-entries', { method: 'POST', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code, hours: hours ?? null, reported_at: null, reported_to: null, reported_cc: null, reported_subject: null, reported_by: null }) })
     if (error) { alert(`저장 실패: ${error.message}`); setSaving(false); return }
-    await hrFetch('/api/hr/leave-entries', { method: 'PATCH', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code, reported_at: null, reported_to: null, reported_cc: null, reported_subject: null, reported_by: null }) })
     setLeaveMap(p => {
       const existing = (p[key] ?? []).filter(e => e.code !== code)
-      return { ...p, [key]: [...existing, { code, hours, reportedAt: null }] }
+      const row = saved?.data?.[0]
+      return { ...p, [key]: [...existing, { code, hours: row?.hours ?? hours, reportedAt: row?.reported_at ?? null }] }
     })
+    if (!existing) applyStatsDelta(empId, code, 1, dateStr)
     setSaving(false); setPendingCode(null); setPendingHours('')
-    load()
+    console.info(`[HR timing] save ${code} total ${Math.round(performance.now() - saveStartedAt)}ms; POST only; post-save load removed`)
   }
 
   async function removeEntry(empId: string, day: number, code: LeaveCode) {
     setSaving(true)
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
+    const hadEntry = (leaveMap[key] ?? []).some(e => e.code === code)
     const { error } = await hrFetch('/api/hr/leave-entries', { method: 'DELETE', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code }) })
     if (!error) setLeaveMap(p => ({ ...p, [key]: (p[key] ?? []).filter(e => e.code !== code) }))
+    if (!error && hadEntry) applyStatsDelta(empId, code, -1, dateStr)
     setSaving(false)
-    load()
   }
 
   async function clearCell(empId: string, day: number) {
     setSaving(true)
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key     = `${empId}_${day}`
+    const previous = leaveMap[key] ?? []
     const { error } = await hrFetch('/api/hr/leave-entries', { method: 'DELETE', body: JSON.stringify({ employee_id: empId, date: dateStr }) })
     if (!error) setLeaveMap(p => { const n = { ...p }; delete n[key]; return n })
+    if (!error) previous.forEach(entry => applyStatsDelta(empId, entry.code, -1, dateStr))
     setSaving(false); setEditing(null); setPendingCode(null); setPendingHours('')
-    load()
   }
 
   async function saveNote(empId: string, day: number, note: string) {
@@ -329,8 +362,8 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
     })
     if (targets.length) {
       const rows = targets.map(emp => ({ employee_id: emp.id, date: dateStr, leave_code: 'B', hours: null }))
-      await hrFetch('/api/hr/leave-entries', { method: 'POST', body: JSON.stringify(rows) })
-      setLeaveMap(prev => {
+      const { error } = await hrFetch('/api/hr/leave-entries', { method: 'POST', body: JSON.stringify(rows) })
+      if (!error) setLeaveMap(prev => {
         const next = { ...prev }
         for (const emp of targets) {
           const key = `${emp.id}_${day}`
@@ -339,20 +372,22 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
         return next
       })
     }
-    setSaving(false); load()
+    setSaving(false)
   }
 
   async function clearColumn(day: number) {
     setSaving(true); setColMenu(null)
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const ids = employees.map(e => e.id)
-    await hrFetch('/api/hr/leave-entries', { method: 'DELETE', body: JSON.stringify({ employee_ids: ids, date: dateStr }) })
-    setLeaveMap(prev => {
+    const previous = employees.map(emp => ({ empId: emp.id, entries: leaveMap[`${emp.id}_${day}`] ?? [] }))
+    const { error } = await hrFetch('/api/hr/leave-entries', { method: 'DELETE', body: JSON.stringify({ employee_ids: ids, date: dateStr }) })
+    if (!error) setLeaveMap(prev => {
       const next = { ...prev }
       for (const emp of employees) delete next[`${emp.id}_${day}`]
       return next
     })
-    setSaving(false); load()
+    if (!error) previous.forEach(({ empId, entries }) => entries.forEach(entry => applyStatsDelta(empId, entry.code, -1, dateStr)))
+    setSaving(false)
   }
 
   async function deleteNote(empId: string, day: number) {

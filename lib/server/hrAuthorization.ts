@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient, type User } from '@supabase/supabase
 import { NextRequest } from 'next/server'
 
 export type HrAction = 'read' | 'write' | 'delete'
+export type HrTiming = { add: (name: string, elapsedMs: number) => void }
 export type HrAuthorization = {
   user: User
   db: SupabaseClient
@@ -25,45 +26,54 @@ function bearerToken(req: NextRequest) {
 
 export async function authorizeHrRequest(
   req: NextRequest,
-  options: { action: HrAction; companyId?: string | null; companyCode?: string | null; employeeId?: string | null; employeeIds?: string[]; allowCompanyAdmin?: boolean; allowCompanyDiscovery?: boolean; allowAssignedCompanies?: boolean }
+  options: { action: HrAction; companyId?: string | null; companyCode?: string | null; employeeId?: string | null; employeeIds?: string[]; allowCompanyAdmin?: boolean; allowCompanyDiscovery?: boolean; allowAssignedCompanies?: boolean; timing?: HrTiming }
 ): Promise<HrAuthorization | null> {
   try {
     const db = serviceClient()
     const token = bearerToken(req)
     if (!token) return null
-    const { data: auth, error: authError } = await db.auth.getUser(token)
+    const timed = async <T>(name: string, operation: PromiseLike<T>) => {
+      const startedAt = performance.now(); const result = await operation
+      options.timing?.add(name, performance.now() - startedAt); return result
+    }
+    const { data: auth, error: authError } = await timed('auth.getUser', db.auth.getUser(token))
     const user = auth.user
     if (authError || !user?.id) return null
 
-    const { data: profile, error: profileError } = await db
+    const { data: profile, error: profileError } = await timed('profile', db
       .from('user_profiles').select('status').eq('user_id', user.id).maybeSingle()
+    )
     if (profileError || !profile || profile.status !== 'active') return null
 
-    const { data: globalRole, error: globalError } = await db
+    const { data: globalRole, error: globalError } = await timed('globalRole', db
       .from('user_global_roles').select('role').eq('user_id', user.id).eq('role', 'super_admin').maybeSingle()
+    )
     if (globalError) return null
     const isSuperAdmin = !!globalRole
 
     let resolvedCompanyId = options.companyId ?? null
     let assignedCompanyIds: string[] = resolvedCompanyId ? [resolvedCompanyId] : []
     if (!resolvedCompanyId && options.companyCode) {
-      const { data: company, error: companyError } = await db
+      const { data: company, error: companyError } = await timed('company.lookup', db
         .from('companies').select('id').eq('code', options.companyCode.toUpperCase()).maybeSingle()
+      )
       if (companyError || !company?.id) return null
       resolvedCompanyId = company.id
       assignedCompanyIds = [company.id]
     }
     if (options.employeeId) {
-      const { data: employee, error: employeeError } = await db
+      const { data: employee, error: employeeError } = await timed('employee.scope', db
         .from('employees').select('id,company_id').eq('id', options.employeeId).maybeSingle()
+      )
       if (employeeError || !employee || !employee.company_id) return null
       if (resolvedCompanyId && resolvedCompanyId !== employee.company_id) return null
       resolvedCompanyId = employee.company_id
       assignedCompanyIds = [employee.company_id]
     }
     if (options.employeeIds?.length) {
-      const { data: employees, error: employeesError } = await db
+      const { data: employees, error: employeesError } = await timed('employee.bulkScope', db
         .from('employees').select('id,company_id').in('id', options.employeeIds)
+      )
       if (employeesError || !employees || employees.length !== options.employeeIds.length) return null
       const companies = new Set(employees.map(employee => employee.company_id))
       if (companies.size !== 1) return null
@@ -75,9 +85,10 @@ export async function authorizeHrRequest(
     }
 
     if (!isSuperAdmin && !resolvedCompanyId && options.allowAssignedCompanies && options.action === 'read') {
-      const { data: roles, error: rolesError } = await db
+      const { data: roles, error: rolesError } = await timed('assignedCompanies', db
         .from('user_company_roles').select('company_id')
         .eq('user_id', user.id).in('role', ['hr_admin', 'company_admin'])
+      )
       if (rolesError || !roles?.length) return null
       assignedCompanyIds = Array.from(new Set(roles.map(role => role.company_id)))
     }
@@ -85,9 +96,10 @@ export async function authorizeHrRequest(
     if (!isSuperAdmin && !(assignedCompanyIds.length > 0 && options.allowAssignedCompanies && options.action === 'read') && !(options.allowCompanyDiscovery && options.action === 'read' && !resolvedCompanyId && !options.employeeId)) {
       if (!resolvedCompanyId) return null
       const roles = options.allowCompanyAdmin === false ? ['hr_admin'] : ['hr_admin', 'company_admin']
-      const { data: role, error: roleError } = await db
+      const { data: role, error: roleError } = await timed('permission', db
         .from('user_company_roles').select('role')
         .eq('user_id', user.id).eq('company_id', resolvedCompanyId).in('role', roles).maybeSingle()
+      )
       if (roleError || !role) return null
     }
 
