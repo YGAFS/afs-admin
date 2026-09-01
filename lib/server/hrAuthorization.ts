@@ -26,7 +26,7 @@ function bearerToken(req: NextRequest) {
 
 export async function authorizeHrRequest(
   req: NextRequest,
-  options: { action: HrAction; companyId?: string | null; companyCode?: string | null; employeeId?: string | null; employeeIds?: string[]; allowCompanyAdmin?: boolean; allowCompanyDiscovery?: boolean; allowAssignedCompanies?: boolean; timing?: HrTiming }
+  options: { action: HrAction; companyId?: string | null; companyCode?: string | null; employeeId?: string | null; employeeIds?: string[]; allowCompanyAdmin?: boolean; allowCompanyDiscovery?: boolean; allowAssignedCompanies?: boolean; allowJwtFastPath?: boolean; timing?: HrTiming }
 ): Promise<HrAuthorization | null> {
   try {
     const db = serviceClient()
@@ -36,6 +36,60 @@ export async function authorizeHrRequest(
       const startedAt = performance.now(); const result = await operation
       options.timing?.add(name, performance.now() - startedAt); return result
     }
+    if (options.allowJwtFastPath && (options.companyId || options.companyCode || options.employeeId || options.employeeIds?.length)) {
+      const { data: claimsData, error: claimsError } = await timed('auth.getClaims', db.auth.getClaims(token))
+      const claims = claimsData?.claims as Record<string, unknown> | undefined
+      const metadata = claims?.app_metadata as Record<string, unknown> | undefined
+      const hrRole = metadata?.hr_role
+      const active = metadata?.hr_active === true
+      const companyIds = Array.isArray(metadata?.hr_company_ids)
+        ? metadata!.hr_company_ids.filter((id): id is string => typeof id === 'string')
+        : []
+      const isFastAdmin = !claimsError && typeof claims?.sub === 'string'
+        && claims?.role === 'authenticated' && claims?.is_anonymous !== true && active
+        && (hrRole === 'super_admin' || hrRole === 'hr_admin' || (hrRole === 'company_admin' && options.allowCompanyAdmin !== false))
+      if (isFastAdmin) {
+        const isSuperAdmin = hrRole === 'super_admin'
+        const user = { id: claims.sub } as User
+        let resolvedCompanyId = options.companyId ?? null
+        if (!resolvedCompanyId && options.companyCode) {
+          const { data: company, error: companyError } = await timed('company.lookup', db
+            .from('companies').select('id').eq('code', options.companyCode.toUpperCase()).maybeSingle()
+          )
+          if (companyError || !company?.id) return null
+          resolvedCompanyId = company.id
+        }
+        if (resolvedCompanyId && !isSuperAdmin && !companyIds.includes(resolvedCompanyId)) return null
+        if (options.employeeId && !isSuperAdmin) {
+          const { data: employee, error: employeeError } = await timed('employee.scope', db
+            .from('employees').select('company_id').eq('id', options.employeeId).maybeSingle()
+          )
+          if (employeeError || !employee?.company_id || !companyIds.includes(employee.company_id)) return null
+          if (resolvedCompanyId && resolvedCompanyId !== employee.company_id) return null
+          resolvedCompanyId = employee.company_id
+        }
+        if (options.employeeIds?.length && !isSuperAdmin) {
+          const { data: employees, error: employeesError } = await timed('employee.bulkScope', db
+            .from('employees').select('company_id').in('id', options.employeeIds)
+          )
+          if (employeesError || !employees || employees.length !== options.employeeIds.length) return null
+          const targetCompanies = new Set(employees.map(employee => employee.company_id))
+          if (targetCompanies.size !== 1 || !companyIds.includes(employees[0].company_id)) return null
+          if (resolvedCompanyId && resolvedCompanyId !== employees[0].company_id) return null
+          resolvedCompanyId = employees[0].company_id
+        }
+        if (!resolvedCompanyId && !isSuperAdmin) return null
+        return {
+          user,
+          db,
+          isSuperAdmin,
+          companyId: resolvedCompanyId,
+          companyIds: isSuperAdmin ? companyIds : companyIds,
+          employeeId: options.employeeId ?? null,
+        }
+      }
+    }
+
     const { data: auth, error: authError } = await timed('auth.getUser', db.auth.getUser(token))
     const user = auth.user
     if (authError || !user?.id) return null

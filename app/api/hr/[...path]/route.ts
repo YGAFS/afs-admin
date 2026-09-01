@@ -34,7 +34,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const companyId = uuid(req.nextUrl.searchParams.get('companyId'))
   const companyCode = req.nextUrl.searchParams.get('companyCode')
   const employeeId = uuid(req.nextUrl.searchParams.get('employeeId'))
-  const auth = await authorizeHrRequest(req, { action: 'read', companyId, companyCode, employeeId, allowCompanyDiscovery: segment === 'companies', allowAssignedCompanies: segment === 'summary' || (segment === 'employees' && !companyId && !companyCode), timing })
+  const auth = await authorizeHrRequest(req, { action: 'read', companyId, companyCode, employeeId, allowCompanyDiscovery: segment === 'companies', allowAssignedCompanies: segment === 'summary' || (segment === 'employees' && !companyId && !companyCode), allowJwtFastPath: segment !== 'companies', timing })
   if (!auth) return finish(jsonError('Forbidden', 403), 'GET.total')
   if (segment === 'companies') {
     let query = auth.db.from('companies').select('*').order('name')
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const employeeIds = Array.isArray(input)
     ? input.map(row => uuid(row?.employee_id) ?? uuid(row?.employeeId)).filter((value): value is string => value !== null)
     : undefined
-  const auth = await authorizeHrRequest(req, { action: 'write', companyId, employeeId, employeeIds, timing })
+  const auth = await authorizeHrRequest(req, { action: 'write', companyId, employeeId, employeeIds, allowJwtFastPath: true, timing })
   if (!auth) return finish(jsonError('Forbidden', 403), 'POST.total')
   const table = tableBySegment[segment as keyof typeof tableBySegment]
   if (!table) return finish(jsonError('Invalid HR write target', 400), 'POST.total')
@@ -139,7 +139,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const segment = parts[0]
   const input = await body(req)
   const employeeId = uuid(parts[1]) ?? uuid(input?.employee_id)
-  const auth = await authorizeHrRequest(req, { action: 'write', employeeId, companyId: uuid(input?.company_id), timing })
+  const auth = await authorizeHrRequest(req, { action: 'write', employeeId, companyId: uuid(input?.company_id), allowJwtFastPath: true, timing })
   if (!auth) return finish(jsonError('Forbidden', 403), 'PATCH.total')
   const table = tableBySegment[segment as keyof typeof tableBySegment]
   if (!table || !employeeId) return finish(jsonError('Invalid HR update target', 400), 'PATCH.total')
@@ -154,6 +154,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(req: NextRequest, { params }: Params) {
+  const { timing, finish } = createTiming()
   const parts = (await params).path
   const segment = parts[0]
   const input = await body(req)
@@ -161,23 +162,23 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     ? input.employee_ids.filter((value: unknown): value is string => uuid(value) !== null)
     : []
   const employeeId = uuid(parts[1]) ?? uuid(input?.employee_id) ?? uuid(req.nextUrl.searchParams.get('employeeId'))
-  const auth = await authorizeHrRequest(req, { action: 'delete', employeeId, employeeIds: employeeId ? undefined : employeeIds, companyId: uuid(input?.company_id) })
-  if (!auth) return jsonError('Forbidden', 403)
+  const auth = await authorizeHrRequest(req, { action: 'delete', employeeId, employeeIds: employeeId ? undefined : employeeIds, companyId: uuid(input?.company_id), allowJwtFastPath: true, timing })
+  if (!auth) return finish(jsonError('Forbidden', 403), 'DELETE.total')
   const table = tableBySegment[segment as keyof typeof tableBySegment]
-  if (!table) return jsonError('Invalid HR delete target', 400)
+  if (!table) return finish(jsonError('Invalid HR delete target', 400), 'DELETE.total')
   let query = auth.db.from(table).delete()
   if (table === 'employees') {
-    if (!employeeId) return jsonError('Employee scope required', 400)
+    if (!employeeId) return finish(jsonError('Employee scope required', 400), 'DELETE.total')
     query = query.eq('id', employeeId)
   }
   else {
     if (employeeId) query = query.eq('employee_id', employeeId)
     else if (employeeIds.length) query = query.in('employee_id', employeeIds)
-    else return jsonError('Employee scope required', 400)
+    else return finish(jsonError('Employee scope required', 400), 'DELETE.total')
     if (input?.date) query = query.eq('date', input.date)
     if (input?.leave_code) query = query.eq('leave_code', input.leave_code)
     if (input?.flag_type) query = query.eq('flag_type', input.flag_type)
   }
-  const result = await query
-  return result.error ? jsonError(result.error.message, 400) : Response.json({ ok: true })
+  const result = await timed(timing, 'db.delete', query)
+  return finish(result.error ? jsonError(result.error.message, 400) : Response.json({ ok: true }), 'DELETE.total')
 }
