@@ -36,7 +36,8 @@ export async function authorizeHrRequest(
       const startedAt = performance.now(); const result = await operation
       options.timing?.add(name, performance.now() - startedAt); return result
     }
-    if (options.allowJwtFastPath && (options.companyId || options.companyCode || options.employeeId || options.employeeIds?.length)) {
+    const jwtFastPathEnabled = process.env.HR_ADMIN_JWT_FAST_PATH_ENABLED === 'true'
+    if (jwtFastPathEnabled && options.allowJwtFastPath && (options.companyId || options.companyCode || options.employeeId || options.employeeIds?.length)) {
       const { data: claimsData, error: claimsError } = await timed('auth.getClaims', db.auth.getClaims(token))
       const claims = claimsData?.claims as Record<string, unknown> | undefined
       const metadata = claims?.app_metadata as Record<string, unknown> | undefined
