@@ -94,6 +94,11 @@ function monthKey(year: number, month: number) {
   return `${year}-${String(month).padStart(2, '0')}`
 }
 
+function ordinalDay(day: number) {
+  const suffix = day % 100 >= 11 && day % 100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[day % 10] ?? 'th'
+  return `${day}${suffix}`
+}
+
 // ── Abnormal detection ────────────────────────────────────────────────────────
 // Returns true if current_charges is >25% above or below the trailing 3-month avg
 
@@ -144,6 +149,15 @@ interface MissingBill {
   company_id: Company
   lastBillDate: string
   expectedMonth: string
+}
+
+interface IssueDatePattern {
+  key: string
+  companyId: Company
+  label: string
+  accountNumber: string | null
+  averageDay: number
+  sampleSize: number
 }
 
 function detectMissing(bills: Bill[], today: Date): MissingBill[] {
@@ -505,11 +519,36 @@ function OverviewContent() {
   const missingBills = useMemo(() => detectMissing(filtered, today), [filtered, today])
 
   const issueDateBoard = useMemo(() => {
-    const dated = filtered
-      .filter(b => b.issue_date)
-      .sort((a, b) => a.issue_date!.localeCompare(b.issue_date!))
-    const withoutIssueDate = filtered.filter(b => !b.issue_date)
-    return { dated, withoutIssueDate }
+    const groups = new Map<string, { companyId: Company; label: string; accountNumber: string | null; days: number[] }>()
+    for (const bill of filtered) {
+      if (!bill.issue_date) continue
+      const provider = bill.provider ?? bill.utility_name
+      const key = `${bill.company_id}|${provider}|${bill.account_number ?? ''}`
+      const existing = groups.get(key)
+      const day = Number(bill.issue_date.slice(8, 10))
+      if (existing) {
+        existing.days.push(day)
+      } else {
+        groups.set(key, {
+          companyId: bill.company_id,
+          label: provider,
+          accountNumber: bill.account_number,
+          days: [day],
+        })
+      }
+    }
+
+    const companyOrder: Record<Company, number> = { afs: 0, tnt: 1, zfs: 2 }
+    const patterns: IssueDatePattern[] = [...groups.entries()].map(([key, group]) => ({
+      key,
+      companyId: group.companyId,
+      label: group.label,
+      accountNumber: group.accountNumber,
+      averageDay: Math.round(group.days.reduce((sum, day) => sum + day, 0) / group.days.length),
+      sampleSize: group.days.length,
+    })).sort((a, b) => companyOrder[a.companyId] - companyOrder[b.companyId] || a.averageDay - b.averageDay || a.label.localeCompare(b.label))
+
+    return { patterns, withoutIssueDate: filtered.filter(b => !b.issue_date).length }
   }, [filtered])
 
   // ── Top vendors by current_charges ────────────────────────────────────────
@@ -614,45 +653,49 @@ function OverviewContent() {
       </div>
 
       {/* ── Bill Issue Date board ────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-line p-5">
+      <div className="bg-white rounded-xl border border-line p-4">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="font-semibold text-ink">Bill Issue Date board</h2>
-            <p className="text-xs text-ink-muted mt-0.5">All bills sorted from earliest to latest issue date</p>
+            <h2 className="font-semibold text-ink">Monthly Bill Issue Date</h2>
+            <p className="text-xs text-ink-muted mt-0.5">Typical issue day by company and vendor</p>
           </div>
-          <span className="text-xs text-ink-muted">{issueDateBoard.dated.length} bills</span>
+          <span className="text-xs text-ink-muted">{issueDateBoard.patterns.length} vendors</span>
         </div>
-        {issueDateBoard.dated.length === 0 ? (
+        {issueDateBoard.patterns.length === 0 ? (
           <p className="text-sm text-ink-faint py-2">No Bill Issue Date data</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line-soft text-left text-xs text-ink-muted">
-                  <th className="pb-2 pr-4 font-medium">Bill Issue Date</th>
-                  <th className="pb-2 pr-4 font-medium">Company</th>
-                  <th className="pb-2 pr-4 font-medium">Vendor</th>
-                  <th className="pb-2 pr-4 font-medium">Account</th>
-                  <th className="pb-2 font-medium">Bill / Utility</th>
-                </tr>
-              </thead>
-              <tbody>
-                {issueDateBoard.dated.map(bill => (
-                  <tr key={bill.id} className="border-b border-line-soft last:border-0">
-                    <td className="py-2.5 pr-4 font-medium text-ink whitespace-nowrap">{fmtShort(bill.issue_date)}</td>
-                    <td className="py-2.5 pr-4 text-ink-muted">{bill.company_id.toUpperCase()}</td>
-                    <td className="py-2.5 pr-4 text-ink">{bill.provider ?? '—'}</td>
-                    <td className="py-2.5 pr-4 text-ink-muted">{bill.account_number ?? '—'}</td>
-                    <td className="py-2.5 text-ink-muted">{bill.utility_name}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {(['afs', 'tnt', 'zfs'] as Company[]).map(company => {
+              const companyPatterns = issueDateBoard.patterns.filter(pattern => pattern.companyId === company)
+              return (
+                <div key={company} className="rounded-lg bg-pill/60 px-3 py-2.5">
+                  <p className="text-xs font-semibold tracking-wide text-ink-muted mb-2">{company.toUpperCase()}</p>
+                  {companyPatterns.length === 0 ? (
+                    <p className="text-xs text-ink-faint">No data</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {companyPatterns.map(pattern => (
+                        <div key={pattern.key} className="flex items-baseline justify-between gap-2">
+                          <p className="min-w-0 truncate text-sm text-ink" title={pattern.accountNumber ?? undefined}>
+                            {pattern.label}
+                            {pattern.accountNumber && <span className="text-xs text-ink-faint"> · {pattern.accountNumber}</span>}
+                          </p>
+                          <p className="shrink-0 text-sm font-semibold text-ink">
+                            {ordinalDay(pattern.averageDay)}<span className="ml-1 text-[11px] font-normal text-ink-faint">/mo</span>
+                            <span className="ml-1 text-[11px] font-normal text-ink-faint">({pattern.sampleSize})</span>
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
-        {issueDateBoard.withoutIssueDate.length > 0 && (
+        {issueDateBoard.withoutIssueDate > 0 && (
           <p className="text-xs text-ink-faint mt-3">
-            {issueDateBoard.withoutIssueDate.length} bill{issueDateBoard.withoutIssueDate.length === 1 ? '' : 's'} without a Bill Issue Date are not included in the sorted list.
+            {issueDateBoard.withoutIssueDate} bill{issueDateBoard.withoutIssueDate === 1 ? '' : 's'} without a Bill Issue Date are not included.
           </p>
         )}
       </div>
