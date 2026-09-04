@@ -354,14 +354,15 @@ function StatCard({ label, value, sub, color = 'text-ink', hero = false }: {
 function OverviewContent() {
   const searchParams = useSearchParams()
   const coFilter     = searchParams.get('company') as Company | null
+  const today         = useMemo(() => new Date(), [])
 
   const [bills,     setBills]     = useState<Bill[]>([])
   const [vendors,   setVendors]   = useState<Vendor[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [loading,   setLoading]   = useState(true)
   const [trendWindow, setTrendWindow] = useState<6 | 12>(6)
+  const [utilityBillMonth, setUtilityBillMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
 
-  const today     = useMemo(() => new Date(), [])
   const thisYear  = today.getFullYear()
   const thisMon   = today.getMonth() + 1
 
@@ -559,11 +560,11 @@ function OverviewContent() {
   }, [filtered, today])
 
   const thisMonthUtilityBills = useMemo(() => {
-    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+    const selectedMonthKey = `${utilityBillMonth.getFullYear()}-${String(utilityBillMonth.getMonth() + 1).padStart(2, '0')}`
     return filtered
-      .filter(bill => bill.issue_date?.slice(0, 7) === currentMonthKey)
-      .sort((a, b) => (a.provider ?? a.utility_name).localeCompare(b.provider ?? b.utility_name))
-  }, [filtered, today])
+      .filter(bill => bill.due_date?.slice(0, 7) === selectedMonthKey)
+      .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+  }, [filtered, utilityBillMonth])
 
   // ── Top vendors by current_charges ────────────────────────────────────────
 
@@ -718,10 +719,30 @@ function OverviewContent() {
       <div className="bg-white rounded-xl border border-line p-4">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="font-semibold text-ink">This month&apos;s utility bills</h2>
-            <p className="text-xs text-ink-muted mt-0.5">Uploaded bills with SharePoint files</p>
+            <h2 className="font-semibold text-ink">Utility bills</h2>
+            <p className="text-xs text-ink-muted mt-0.5">Bills grouped by Due Date</p>
           </div>
-          <span className="text-xs text-ink-muted">{thisMonthUtilityBills.length} bills</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setUtilityBillMonth(month => new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+              className="w-7 h-7 rounded-md border border-line text-ink-muted hover:bg-pill hover:text-ink transition-colors"
+              aria-label="Previous month"
+            >
+              ‹
+            </button>
+            <span className="min-w-[112px] text-center text-xs font-medium text-ink">
+              {utilityBillMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </span>
+            <button
+              type="button"
+              onClick={() => setUtilityBillMonth(month => new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+              className="w-7 h-7 rounded-md border border-line text-ink-muted hover:bg-pill hover:text-ink transition-colors"
+              aria-label="Next month"
+            >
+              ›
+            </button>
+          </div>
         </div>
         {thisMonthUtilityBills.length === 0 ? (
           <p className="text-sm text-ink-faint py-2">No utility bills uploaded this month</p>
@@ -731,7 +752,7 @@ function OverviewContent() {
               <div key={bill.id} className="flex items-center justify-between gap-3 rounded-lg bg-pill/60 px-3 py-2.5">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-ink truncate">{bill.provider ?? bill.utility_name}</p>
-                  <p className="text-xs text-ink-muted mt-0.5">{bill.company_id.toUpperCase()} · {today.getMonth() + 1}월 · {fmtShort(bill.issue_date)}</p>
+                  <p className="text-xs text-ink-muted mt-0.5">{bill.company_id.toUpperCase()} · {utilityBillMonth.getMonth() + 1}월 · Due {fmtShort(bill.due_date)}</p>
                 </div>
                 {bill.onedrive_file_url ? (
                   <a
