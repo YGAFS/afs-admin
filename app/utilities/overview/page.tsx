@@ -158,6 +158,7 @@ interface IssueDatePattern {
   accountNumber: string | null
   averageDay: number
   sampleSize: number
+  currentCycleMissing: boolean
 }
 
 function detectMissing(bills: Bill[], today: Date): MissingBill[] {
@@ -519,7 +520,7 @@ function OverviewContent() {
   const missingBills = useMemo(() => detectMissing(filtered, today), [filtered, today])
 
   const issueDateBoard = useMemo(() => {
-    const groups = new Map<string, { companyId: Company; label: string; accountNumber: string | null; days: number[] }>()
+    const groups = new Map<string, { companyId: Company; label: string; accountNumber: string | null; days: number[]; issueDates: string[] }>()
     for (const bill of filtered) {
       if (!bill.issue_date) continue
       const provider = bill.provider ?? bill.utility_name
@@ -528,17 +529,21 @@ function OverviewContent() {
       const day = Number(bill.issue_date.slice(8, 10))
       if (existing) {
         existing.days.push(day)
+        existing.issueDates.push(bill.issue_date)
       } else {
         groups.set(key, {
           companyId: bill.company_id,
           label: provider,
           accountNumber: bill.account_number,
           days: [day],
+          issueDates: [bill.issue_date],
         })
       }
     }
 
     const companyOrder: Record<Company, number> = { afs: 0, tnt: 1, zfs: 2 }
+    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+    const daysInCurrentMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
     const patterns: IssueDatePattern[] = [...groups.entries()].map(([key, group]) => ({
       key,
       companyId: group.companyId,
@@ -546,10 +551,12 @@ function OverviewContent() {
       accountNumber: group.accountNumber,
       averageDay: Math.round(group.days.reduce((sum, day) => sum + day, 0) / group.days.length),
       sampleSize: group.days.length,
+      currentCycleMissing: today.getDate() >= Math.min(Math.round(group.days.reduce((sum, day) => sum + day, 0) / group.days.length), daysInCurrentMonth)
+        && !group.issueDates.some(date => date.slice(0, 7) === currentMonthKey),
     })).sort((a, b) => companyOrder[a.companyId] - companyOrder[b.companyId] || a.averageDay - b.averageDay || a.label.localeCompare(b.label))
 
     return { patterns, withoutIssueDate: filtered.filter(b => !b.issue_date).length }
-  }, [filtered])
+  }, [filtered, today])
 
   // ── Top vendors by current_charges ────────────────────────────────────────
 
@@ -675,12 +682,12 @@ function OverviewContent() {
                   ) : (
                     <div className="space-y-2">
                       {companyPatterns.map(pattern => (
-                        <div key={pattern.key} className="flex items-baseline justify-between gap-2">
-                          <p className="min-w-0 truncate text-sm text-ink" title={pattern.accountNumber ?? undefined}>
+                        <div key={pattern.key} className={`flex items-baseline justify-between gap-2 rounded-md -mx-1 px-1 py-0.5 ${pattern.currentCycleMissing ? 'bg-red-100' : ''}`}>
+                          <p className={`min-w-0 truncate text-sm ${pattern.currentCycleMissing ? 'font-semibold text-red-700' : 'text-ink'}`} title={pattern.accountNumber ?? undefined}>
                             {pattern.label}
-                            {pattern.accountNumber && <span className="text-xs text-ink-faint"> · {pattern.accountNumber}</span>}
+                            {pattern.accountNumber && <span className={`text-xs ${pattern.currentCycleMissing ? 'text-red-600' : 'text-ink-faint'}`}> · {pattern.accountNumber}</span>}
                           </p>
-                          <p className="shrink-0 text-sm font-semibold text-ink">
+                          <p className={`shrink-0 text-sm font-semibold ${pattern.currentCycleMissing ? 'text-red-700' : 'text-ink'}`}>
                             {ordinalDay(pattern.averageDay)}<span className="ml-1 text-[11px] font-normal text-ink-faint">/mo</span>
                             <span className="ml-1 text-[11px] font-normal text-ink-faint">({pattern.sampleSize})</span>
                           </p>
