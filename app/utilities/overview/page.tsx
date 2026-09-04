@@ -146,6 +146,18 @@ interface MissingBill {
   expectedMonth: string
 }
 
+interface InvoiceUploadAlert {
+  key: string
+  provider: string
+  accountNumber: string | null
+  companyId: Company
+  expectedDate: string
+  lastIssueDate: string
+  averageGap: number
+  sampleSize: number
+  daysLate: number
+}
+
 function detectMissing(bills: Bill[], today: Date): MissingBill[] {
   const thisYear  = today.getFullYear()
   const thisMon   = today.getMonth() + 1
@@ -198,6 +210,61 @@ function detectMissing(bills: Bill[], today: Date): MissingBill[] {
   })
 
   return missing
+}
+
+// Predict the next upload from the dates printed on previous invoices. This
+// deliberately uses issue_date (not due_date/billing_month), because those
+// fields describe a different part of the billing cycle.
+function detectInvoiceUploadAlerts(bills: Bill[], today: Date): InvoiceUploadAlert[] {
+  const groups = new Map<string, Bill[]>()
+  for (const bill of bills) {
+    if (!bill.issue_date) continue
+    const key = `${bill.provider ?? bill.utility_name}|${bill.account_number ?? ''}|${bill.company_id}`
+    groups.set(key, [...(groups.get(key) ?? []), bill])
+  }
+
+  const alerts: InvoiceUploadAlert[] = []
+  groups.forEach((group, key) => {
+    const dated = group
+      .filter(b => b.issue_date)
+      .sort((a, b) => a.issue_date!.localeCompare(b.issue_date!))
+    if (dated.length < 3) return
+
+    // Use up to the four most recent intervals. A 15–95 day range avoids
+    // treating one-off or annual bills as monthly upload expectations.
+    const recent = dated.slice(-5)
+    const gaps: number[] = []
+    for (let i = 1; i < recent.length; i++) {
+      const previous = new Date(`${recent[i - 1].issue_date}T00:00:00`)
+      const current = new Date(`${recent[i].issue_date}T00:00:00`)
+      gaps.push(Math.round((current.getTime() - previous.getTime()) / 86400000))
+    }
+    if (gaps.some(gap => gap < 15 || gap > 95)) return
+
+    const averageGap = Math.round(gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length)
+    const latest = new Date(`${dated[dated.length - 1].issue_date}T00:00:00`)
+    const expected = new Date(latest)
+    expected.setDate(expected.getDate() + averageGap)
+    if (today < expected) return
+
+    const expectedDate = expected.toISOString().slice(0, 10)
+    const provider = dated[0].provider ?? dated[0].utility_name
+    const accountNumber = dated[0].account_number
+    const companyId = dated[0].company_id
+    alerts.push({
+      key,
+      provider,
+      accountNumber,
+      companyId,
+      expectedDate,
+      lastIssueDate: dated[dated.length - 1].issue_date!,
+      averageGap,
+      sampleSize: dated.length,
+      daysLate: Math.floor((today.getTime() - expected.getTime()) / 86400000),
+    })
+  })
+
+  return alerts.sort((a, b) => b.daysLate - a.daysLate)
 }
 
 // ── Next expected billing date ────────────────────────────────────────────────
@@ -504,6 +571,11 @@ function OverviewContent() {
 
   const missingBills = useMemo(() => detectMissing(filtered, today), [filtered, today])
 
+  const invoiceUploadAlerts = useMemo(
+    () => detectInvoiceUploadAlerts(filtered, today),
+    [filtered, today]
+  )
+
   // ── Top vendors by current_charges ────────────────────────────────────────
 
   const topVendors = useMemo(() => {
@@ -603,6 +675,48 @@ function OverviewContent() {
           sub={`${stats.paidThisMonCount} bills`}
           color="text-signal-pos"
         />
+      </div>
+
+      {/* ── Invoice upload notifications ─────────────────────────────────── */}
+      <div className={`rounded-xl border p-5 ${invoiceUploadAlerts.length > 0 ? 'border-orange-200 bg-orange-50/60' : 'border-line bg-white'}`}>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className={`font-semibold ${invoiceUploadAlerts.length > 0 ? 'text-orange-900' : 'text-ink'}`}>
+              Invoice upload alerts
+            </h2>
+            <p className="text-xs text-ink-muted mt-0.5">
+              Based on historical Bill Issue Date patterns
+            </p>
+          </div>
+          <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${invoiceUploadAlerts.length > 0 ? 'bg-orange-100 text-orange-800' : 'bg-pill text-ink-muted'}`}>
+            {invoiceUploadAlerts.length} {invoiceUploadAlerts.length === 1 ? 'alert' : 'alerts'}
+          </span>
+        </div>
+        {invoiceUploadAlerts.length === 0 ? (
+          <p className="text-sm text-ink-faint py-2">No overdue invoice uploads detected.</p>
+        ) : (
+          <div className="space-y-2">
+            {invoiceUploadAlerts.map(alert => (
+              <div key={alert.key} className="flex items-center justify-between gap-4 rounded-lg bg-white border border-orange-100 px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-ink truncate">
+                    {alert.provider}
+                    {alert.accountNumber && <span className="font-normal text-ink-muted"> · {alert.accountNumber}</span>}
+                  </p>
+                  <p className="text-xs text-ink-muted mt-0.5">
+                    {alert.companyId.toUpperCase()} · Expected {fmtShort(alert.expectedDate)} · Last uploaded {fmtShort(alert.lastIssueDate)}
+                  </p>
+                  <p className="text-[11px] text-ink-faint mt-0.5">
+                    Average interval: {alert.averageGap} days ({alert.sampleSize} invoices)
+                  </p>
+                </div>
+                <span className="text-xs font-semibold text-orange-700 whitespace-nowrap">
+                  {alert.daysLate === 0 ? 'Due today' : `${alert.daysLate}d late`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Trend chart + Bill Status ──────────────────────────────────────── */}
