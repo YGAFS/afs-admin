@@ -558,6 +558,13 @@ function OverviewContent() {
     return { patterns, withoutIssueDate: filtered.filter(b => !b.issue_date).length }
   }, [filtered, today])
 
+  const thisMonthUtilityBills = useMemo(() => {
+    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+    return filtered
+      .filter(bill => bill.issue_date?.slice(0, 7) === currentMonthKey)
+      .sort((a, b) => (a.provider ?? a.utility_name).localeCompare(b.provider ?? b.utility_name))
+  }, [filtered, today])
+
   // ── Top vendors by current_charges ────────────────────────────────────────
 
   const topVendors = useMemo(() => {
@@ -659,7 +666,8 @@ function OverviewContent() {
         />
       </div>
 
-      {/* ── Bill Issue Date board ────────────────────────────────────────── */}
+      {/* ── Bill Issue Date board + this month's bills ────────────────────── */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <div className="bg-white rounded-xl border border-line p-4">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -705,6 +713,43 @@ function OverviewContent() {
             {issueDateBoard.withoutIssueDate} bill{issueDateBoard.withoutIssueDate === 1 ? '' : 's'} without a Bill Issue Date are not included.
           </p>
         )}
+      </div>
+
+      <div className="bg-white rounded-xl border border-line p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-semibold text-ink">This month&apos;s utility bills</h2>
+            <p className="text-xs text-ink-muted mt-0.5">Uploaded bills with SharePoint files</p>
+          </div>
+          <span className="text-xs text-ink-muted">{thisMonthUtilityBills.length} bills</span>
+        </div>
+        {thisMonthUtilityBills.length === 0 ? (
+          <p className="text-sm text-ink-faint py-2">No utility bills uploaded this month</p>
+        ) : (
+          <div className="space-y-2">
+            {thisMonthUtilityBills.map(bill => (
+              <div key={bill.id} className="flex items-center justify-between gap-3 rounded-lg bg-pill/60 px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-ink truncate">{bill.provider ?? bill.utility_name}</p>
+                  <p className="text-xs text-ink-muted mt-0.5">{bill.company_id.toUpperCase()} · {today.getMonth() + 1}월 · {fmtShort(bill.issue_date)}</p>
+                </div>
+                {bill.onedrive_file_url ? (
+                  <a
+                    href={bill.onedrive_file_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 rounded-md bg-white border border-line px-2.5 py-1.5 text-xs font-medium text-signal-pos hover:bg-green-50 transition-colors"
+                  >
+                    Open SharePoint ↗
+                  </a>
+                ) : (
+                  <span className="shrink-0 text-xs text-ink-faint">No file link</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       </div>
 
       {/* ── Trend chart + Bill Status ──────────────────────────────────────── */}
