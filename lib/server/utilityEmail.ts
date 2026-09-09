@@ -16,8 +16,9 @@ export async function requireUtilityUser(token: string): Promise<{ user: User; d
   const result = await client.auth.getUser(token)
   if (result.error || !result.data.user?.id) return null
   const role = await client.from('utility_user_roles').select('role').eq('user_id', result.data.user.id).maybeSingle()
-  if (role.error || !['admin', 'ap'].includes(role.data?.role)) return null
-  return { user: result.data.user, db: client, role: role.data.role as 'admin' | 'ap' }
+  const roleValue = role.data?.role
+  if (role.error || !['admin', 'ap'].includes(roleValue ?? '')) return null
+  return { user: result.data.user, db: client, role: roleValue as 'admin' | 'ap' }
 }
 
 function config() {
