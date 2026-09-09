@@ -1880,12 +1880,12 @@ function NotificationBell({
           {notifications.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-ink-faint">No new bill updates.</div>
           ) : (
-            <div className="max-h-80 overflow-y-auto divide-y divide-line-soft">
-              {notifications.slice(0, 30).map(notification => {
+            <div className="h-[18rem] overflow-y-auto overscroll-contain divide-y divide-line-soft">
+              {notifications.map(notification => {
                 const bill = bills.find(b => b.id === notification.billId)
                 if (!bill) return null
                 return (
-                  <div key={notification.id} className={`px-4 py-3 ${notification.read ? 'bg-white' : 'bg-blue-50/50'}`}>
+                  <div key={notification.id} className={`min-h-[6rem] px-4 py-3 flex flex-col justify-center ${notification.read ? 'bg-white' : 'bg-blue-50/50'}`}>
                     <button onClick={() => { onOpen(notification); setOpen(false) }} className="w-full text-left">
                       <div className="flex items-start gap-2">
                         {!notification.read && <span className="mt-1.5 w-2 h-2 rounded-full bg-blue-600 shrink-0" />}
