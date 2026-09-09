@@ -43,7 +43,7 @@ function UtilityEmailPanel() {
 
   useEffect(() => { load() }, [])
 
-  async function send(billId?: string) {
+  async function send(billId?: string, forceRoot = false) {
     const prior = billId ? notifications.find(item => item.bill_id === billId) : undefined
     if (billId && prior && !window.confirm(`${prior.bill_name} 빌을 다시 발송할까요?\n가장 최근 이메일에 이어 붙습니다.`)) return
     const session = (await supabase.auth.getSession()).data.session
@@ -52,7 +52,7 @@ function UtilityEmailPanel() {
     const action = billId && prior ? 'retry' : billId ? 'notify' : 'root'
     const response = await fetch('/api/utility/email-thread', {
       method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, billId, version: billId ? `manual-resend:${Date.now()}` : undefined }),
+      body: JSON.stringify({ action, billId, force: forceRoot, version: billId ? `manual-resend:${Date.now()}` : undefined }),
     })
     const text = await response.text()
     let data: { error?: string } = {}
@@ -69,7 +69,7 @@ function UtilityEmailPanel() {
           <h2 className="font-semibold text-ink">Monthly email thread</h2>
           <p className="mt-1 text-xs text-ink-muted">September bills · {thread ? 'Root email sent' : 'Not sent yet'}</p>
         </div>
-        {!thread && <button onClick={() => send()} disabled={busy} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">{busy ? 'Sending…' : 'Send first email'}</button>}
+        <button onClick={() => { if (!thread || window.confirm('전체 Utility Bill 목록이 포함된 최초 안내 메일을 재발송할까요?\n기존 스레드의 가장 최근 이메일에 이어 붙습니다.')) send(undefined, !!thread) }} disabled={busy} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">{busy ? 'Sending…' : thread ? 'Resend first email' : 'Send first email'}</button>
       </div>
       {thread && <div className="mt-4 rounded-lg bg-pill px-3 py-2 text-xs text-ink-muted"><span className="font-semibold text-ink">{thread.subject}</span> · 최초 이메일 발송 완료</div>}
       {thread && <details className="mt-5" open>
@@ -80,20 +80,7 @@ function UtilityEmailPanel() {
           {!sent.length && <div className="text-ink-faint">추가 빌 알림 없음</div>}
         </div>
       </details>}
-      <div className="mt-6 border-t border-line-soft pt-4">
-        <h3 className="text-sm font-semibold text-ink">이번 달 빌 재발송</h3>
-        <p className="mt-1 text-xs text-ink-muted">테스트나 실수로 매일 다시 보낼 수 있습니다. 발송 전 확인창이 표시됩니다.</p>
-        <div className="mt-3 divide-y divide-line-soft rounded-lg border border-line-soft">
-          {bills.map(bill => {
-            const prior = notifications.find(item => item.bill_id === bill.id)
-            return <div key={bill.id} className="flex items-center justify-between gap-3 px-3 py-3">
-              <span className="text-sm text-ink">{bill.provider ?? bill.utility_name}</span>
-              <button onClick={() => send(bill.id)} disabled={busy || !thread} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">{prior ? 'Resend' : 'Send'}</button>
-            </div>
-          })}
-          {!bills.length && <div className="px-3 py-4 text-sm text-ink-faint">이번 달 빌이 없습니다.</div>}
-        </div>
-      </div>
+      <div className="mt-6 border-t border-line-soft pt-4"><p className="text-xs text-ink-muted">The email contains the complete list of utility bills registered for the current month.</p></div>
       {message && <p className="mt-4 text-xs text-ink-muted">{message}</p>}
     </section>
   )

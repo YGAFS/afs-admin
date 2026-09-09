@@ -55,6 +55,17 @@ function monthDate(year: number, month: number) { return `${year}-${String(month
 function subject(year: number, month: number) { return `[Utility Bills] ${new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` }
 function dashboardUrl() { return process.env.NEXT_PUBLIC_SITE_URL ?? 'https://hr.afstransco.com/utilities/overview' }
 
+async function monthlyBillBody(client: SupabaseClient, year: number, month: number, title: string) {
+  const bills = await client.from('utility_bills').select('provider,utility_name,amount,currency,due_date').eq('billing_year', year).eq('billing_month', month).order('provider')
+  if (bills.error) throw bills.error
+  const rows = (bills.data ?? []).map(bill => {
+    const name = bill.provider ?? bill.utility_name
+    const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
+    return `<li><strong>${name}</strong> — ${amount}, due ${bill.due_date ?? '—'}</li>`
+  }).join('')
+  return `<p>${title} tracking is now available.</p><p>Please review the current utility bills, due dates, and payment status on the <a href="${dashboardUrl()}">Utility Dashboard</a>.</p>${rows ? `<ul>${rows}</ul>` : '<p>No bills have been registered yet.</p>'}<p>Updates to individual bills will be posted in this email thread.</p>`
+}
+
 export async function ensureMonthlyThread(client: SupabaseClient, year: number, month: number) {
   const { sender, recipients } = config(); const billingMonth = monthDate(year, month); const title = subject(year, month)
   const existing = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
@@ -73,7 +84,8 @@ export async function ensureMonthlyThread(client: SupabaseClient, year: number, 
   } catch (error) {
     console.warn('[utility-email-thread] root recovery lookup failed', error)
   }
-  const created = await graph(`/users/${encodeURIComponent(sender)}/messages`, { method: 'POST', body: JSON.stringify({ subject: title, body: { contentType: 'HTML', content: `<p>${title} tracking is now available.</p><p>Please review bills, due dates, and payment status on the <a href="${dashboardUrl()}">Utility Dashboard</a>.</p><p>Updates to individual bills will be posted in this email thread.</p>` }, toRecipients: recipients.map(address => ({ emailAddress: { address } })) }) }) as GraphMessage
+  const content = await monthlyBillBody(client, year, month, title)
+  const created = await graph(`/users/${encodeURIComponent(sender)}/messages`, { method: 'POST', body: JSON.stringify({ subject: title, body: { contentType: 'HTML', content }, toRecipients: recipients.map(address => ({ emailAddress: { address } })) }) }) as GraphMessage
   const inserted = await client.from('utility_email_threads').insert({ billing_month: billingMonth, sender_email: sender, root_message_id: created.id, conversation_id: created.conversationId ?? null, subject: title, recipients }).select('*').single()
   if (inserted.error) {
     const raced = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
@@ -82,6 +94,21 @@ export async function ensureMonthlyThread(client: SupabaseClient, year: number, 
   }
   await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(created.id)}/send`, { method: 'POST' })
   return inserted.data
+}
+
+export async function resendMonthlyThread(client: SupabaseClient, year: number, month: number) {
+  const { sender } = config(); const billingMonth = monthDate(year, month); const title = subject(year, month)
+  const thread = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
+  if (thread.error) throw thread.error
+  if (!thread.data) return ensureMonthlyThread(client, year, month)
+  const latest = await client.from('utility_email_notifications').select('graph_message_id').eq('thread_id', thread.data.id).eq('status', 'sent').not('graph_message_id', 'is', null).order('sent_at', { ascending: false }).limit(1).maybeSingle()
+  if (latest.error) throw latest.error
+  const replyTo = latest.data?.graph_message_id ?? thread.data.root_message_id
+  const content = await monthlyBillBody(client, year, month, title)
+  const draft = await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(replyTo)}/createReplyAll`, { method: 'POST', body: JSON.stringify({}) }) as GraphMessage
+  await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content } }) })
+  await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}/send`, { method: 'POST' })
+  return { ...thread.data, resent: true }
 }
 
 export async function notifyBill(client: SupabaseClient, billId: string, version?: string) {
