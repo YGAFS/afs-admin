@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const auth = await requireUtilityUser(bearer(req)); if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (auth.role !== 'admin') return NextResponse.json({ error: 'Only utility admins can send team notifications' }, { status: 403 })
   const body = await req.json().catch(() => null) as { action?: string; billId?: string; version?: string } | null
   try {
     if (body?.action === 'root') { const now = new Date(); return NextResponse.json({ thread: await ensureMonthlyThread(auth.db, now.getFullYear(), now.getMonth() + 1) }) }
