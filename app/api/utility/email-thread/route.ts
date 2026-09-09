@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ensureMonthlyThread, notifyBill, requireUtilityUser } from '@/lib/server/utilityEmail'
+import { ensureMonthlyThread, notifyBill, requireUtilityIngestor, requireUtilityUser } from '@/lib/server/utilityEmail'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,12 +15,16 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireUtilityUser(bearer(req)); if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  if (auth.role !== 'admin') return NextResponse.json({ error: 'Only utility admins can send team notifications' }, { status: 403 })
+  const token = bearer(req)
+  const auth = await requireUtilityUser(token)
+  const ingestor = auth ? null : requireUtilityIngestor(token)
+  const db = auth?.db ?? ingestor?.db
+  if (!db) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!ingestor && auth?.role !== 'admin') return NextResponse.json({ error: 'Only utility admins can send team notifications' }, { status: 403 })
   const body = await req.json().catch(() => null) as { action?: string; billId?: string; version?: string } | null
   try {
-    if (body?.action === 'root') { const now = new Date(); return NextResponse.json({ thread: await ensureMonthlyThread(auth.db, now.getFullYear(), now.getMonth() + 1) }) }
-    if ((body?.action === 'notify' || body?.action === 'retry') && typeof body.billId === 'string') return NextResponse.json(await notifyBill(auth.db, body.billId, body.version))
+    if (body?.action === 'root') { const now = new Date(); return NextResponse.json({ thread: await ensureMonthlyThread(db, now.getFullYear(), now.getMonth() + 1) }) }
+    if ((body?.action === 'notify' || body?.action === 'retry') && typeof body.billId === 'string') return NextResponse.json(await notifyBill(db, body.billId, body.version))
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Email operation failed' }, { status: 500 })

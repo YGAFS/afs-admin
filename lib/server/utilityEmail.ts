@@ -10,6 +10,12 @@ function db() {
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } })
 }
 
+export function requireUtilityIngestor(token: string): { db: SupabaseClient } | null {
+  const expected = process.env.CRON_SECRET?.trim()
+  if (!expected || !token || token !== expected) return null
+  return { db: db() }
+}
+
 export async function requireUtilityUser(token: string): Promise<{ user: User; db: SupabaseClient; role: 'admin' | 'ap' } | null> {
   if (!token) return null
   const client = db()

@@ -64,6 +64,8 @@ class Settings:
     graph_drive_id: str = ""
     graph_drive_root_local: Path | None = None
     graph_drive_root_remote_prefix: str = ""
+    utility_email_notify_url: str = ""
+    utility_email_notify_secret: str = ""
 
     @property
     def graph_enabled(self) -> bool:
@@ -123,6 +125,8 @@ def load_settings(*, dry_run_override: bool | None = None) -> Settings:
         graph_drive_id=_env("GRAPH_DRIVE_ID", "") or "",
         graph_drive_root_local=drive_root_local,
         graph_drive_root_remote_prefix=(_env("GRAPH_DRIVE_ROOT_REMOTE_PREFIX", "") or "").strip("/"),
+        utility_email_notify_url=(_env("UTILITY_EMAIL_NOTIFY_URL", "") or "").strip(),
+        utility_email_notify_secret=(_env("UTILITY_EMAIL_NOTIFY_SECRET", "") or "").strip(),
     )
 
     for d in (settings.processing_dir, settings.review_dir, settings.failed_dir, settings.logs_dir):

@@ -9,6 +9,8 @@ import hashlib
 import json
 import shutil
 import time
+import urllib.error
+import urllib.request
 from dataclasses import asdict
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -320,6 +322,9 @@ class Pipeline:
             if bill_id and dest is not None:
                 self._attach_onedrive_link(bill_id, dest)
 
+            if bill_id:
+                self._notify_email_thread(bill_id)
+
             self._write_import_record(
                 original_filename=original_filename, normalized_filename=filename,
                 file_hash=file_hash, source_path=str(path), archived_path=str(dest) if dest else None,
@@ -340,6 +345,39 @@ class Pipeline:
                 warnings=validation.warnings, error_message=None, utility_bill_id=None,
             )
             return PipelineResult("duplicate", "duplicate", dest)
+
+    def _notify_email_thread(self, bill_id: str) -> None:
+        """Best-effort notification after a successful bill registration.
+
+        The bill is already committed before this call. Email delivery must
+        never turn a successfully imported bill into a failed import; the
+        API records the durable email notification status for retry.
+        """
+        url = self.settings.utility_email_notify_url
+        secret = self.settings.utility_email_notify_secret
+        if self.settings.dry_run or not url or not secret:
+            return
+        payload = json.dumps({
+            "action": "notify",
+            "billId": bill_id,
+            "version": f"ingested:{bill_id}",
+        }).encode("utf-8")
+        request = urllib.request.Request(
+            url,
+            data=payload,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {secret}",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                if response.status < 200 or response.status >= 300:
+                    raise RuntimeError(f"email notification API returned HTTP {response.status}")
+            log.info("email thread notification queued for bill %s", bill_id)
+        except (OSError, urllib.error.URLError, RuntimeError) as exc:
+            log.warning("bill %s registered, but email thread notification failed: %s", bill_id, exc)
 
         # needs_review
         filename = build_filename(
