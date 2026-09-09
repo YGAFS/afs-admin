@@ -101,14 +101,12 @@ export async function resendMonthlyThread(client: SupabaseClient, year: number, 
   const thread = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
   if (thread.error) throw thread.error
   if (!thread.data) return ensureMonthlyThread(client, year, month)
-  const latest = await client.from('utility_email_notifications').select('graph_message_id').eq('thread_id', thread.data.id).eq('status', 'sent').not('graph_message_id', 'is', null).order('sent_at', { ascending: false }).limit(1).maybeSingle()
-  if (latest.error) throw latest.error
-  const replyTo = latest.data?.graph_message_id ?? thread.data.root_message_id
   const content = await monthlyBillBody(client, year, month, title)
-  const draft = await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(replyTo)}/createReplyAll`, { method: 'POST', body: JSON.stringify({}) }) as GraphMessage
-  await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content } }) })
+  const draft = await graph(`/users/${encodeURIComponent(sender)}/messages`, { method: 'POST', body: JSON.stringify({ subject: title, body: { contentType: 'HTML', content }, toRecipients: thread.data.recipients.map((address: string) => ({ emailAddress: { address } })) }) }) as GraphMessage
+  const updated = await client.from('utility_email_threads').update({ root_message_id: draft.id, conversation_id: draft.conversationId ?? null, subject: title, recipients: thread.data.recipients }).eq('id', thread.data.id).select('*').single()
+  if (updated.error) throw updated.error
   await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}/send`, { method: 'POST' })
-  return { ...thread.data, resent: true }
+  return { ...updated.data, resent: true }
 }
 
 export async function notifyBill(client: SupabaseClient, billId: string, version?: string) {
@@ -123,10 +121,7 @@ export async function notifyBill(client: SupabaseClient, billId: string, version
   const notification = queued.data
   try {
     await client.from('utility_email_notifications').update({ status: 'sending', attempt_count: 1 }).eq('id', notification.id)
-    const latest = await client.from('utility_email_notifications').select('graph_message_id').eq('thread_id', thread.id).eq('status', 'sent').not('graph_message_id', 'is', null).order('sent_at', { ascending: false }).limit(1).maybeSingle()
-    if (latest.error) throw latest.error
-    const replyTo = latest.data?.graph_message_id ?? thread.root_message_id
-    const draft = await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(replyTo)}/createReplyAll`, { method: 'POST', body: JSON.stringify({}) }) as GraphMessage
+    const draft = await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(thread.root_message_id)}/createReplyAll`, { method: 'POST', body: JSON.stringify({}) }) as GraphMessage
     const label = bill.provider ?? bill.utility_name
     const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
     await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: `<p><strong>${label}</strong> bill has been updated.</p><p>Amount: ${amount}<br>Due: ${bill.due_date ?? '—'}</p><p>Please review it on the <a href="${dashboardUrl()}">Utility Dashboard</a>.</p>` } }) })
