@@ -14,6 +14,7 @@ from app.extractors.grandbridge import GrandbridgeExtractor
 from app.extractors.orkin import OrkinExtractor
 from app.extractors.rogers import RogersExtractor
 from app.extractors.telus import TelusExtractor
+from app.extractors.us_bank import USBankExtractor
 
 KNOWN_EXTRACTORS: list[BillExtractor] = [
     TelusExtractor(),
@@ -24,6 +25,7 @@ KNOWN_EXTRACTORS: list[BillExtractor] = [
     FontanaWaterExtractor(),
     BurrtecExtractor(),
     OrkinExtractor(),
+    USBankExtractor(),
 ]
 
 GENERIC_EXTRACTOR: BillExtractor = GenericExtractor()
