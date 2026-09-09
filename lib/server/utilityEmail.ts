@@ -12,7 +12,7 @@ function db() {
 }
 
 export function requireUtilityIngestor(token: string): { db: SupabaseClient } | null {
-  const expected = process.env.CRON_SECRET?.trim()
+  const expected = (process.env.UTILITY_EMAIL_NOTIFY_SECRET ?? process.env.CRON_SECRET)?.trim()
   if (!expected || !token || token !== expected) return null
   return { db: db() }
 }
