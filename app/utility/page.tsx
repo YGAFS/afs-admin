@@ -24,6 +24,8 @@ type Role = 'admin' | 'ap'
 type MainTab = 'dashboard' | 'all' | 'analytics'
 type StatusFilter = 'all' | 'open' | 'overdue' | 'overdue_partial' | 'due_today' | 'upcoming' | 'partially_paid' | 'paid' | 'carried_forward' | 'waived' | 'void'
 type BillNotification = { id: string; billId: string; kind: 'new' | 'updated'; version: string; createdAt: string; read: boolean }
+type UtilityEmailThread = { id: string; billing_month: string; sender_email: string; subject: string; created_at: string }
+type UtilityEmailFailure = { id: string; bill_id: string; error_message: string | null; attempt_count: number; created_at: string }
 
 interface PaymentMethod {
   id: string
@@ -319,6 +321,10 @@ export default function UtilityPage() {
   const [expandedVendor, setExpandedVendor] = useState<string | null>(null)
   const [focusedBillId, setFocusedBillId] = useState<string | null>(null)
   const [notifications, setNotifications] = useState<BillNotification[]>([])
+  const [emailThread, setEmailThread] = useState<UtilityEmailThread | null>(null)
+  const [emailFailures, setEmailFailures] = useState<UtilityEmailFailure[]>([])
+  const [emailBusy, setEmailBusy] = useState(false)
+  const [emailMessage, setEmailMessage] = useState<string | null>(null)
 
   const [showModal,     setShowModal]     = useState(false)
   const [editBill,      setEditBill]      = useState<Partial<Bill>>(emptyBill)
@@ -375,6 +381,39 @@ export default function UtilityPage() {
     })))
   }, [user?.id])
 
+  const refreshEmailThread = useCallback(async () => {
+    const session = (await supabase.auth.getSession()).data.session
+    if (!session?.access_token) return
+    const response = await fetch('/api/utility/email-thread', { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' })
+    if (!response.ok) return
+    const data = await response.json() as { thread: UtilityEmailThread | null; failed: UtilityEmailFailure[] }
+    setEmailThread(data.thread); setEmailFailures(data.failed ?? [])
+  }, [])
+
+  async function callEmailThread(body: { action: 'root' | 'notify' | 'retry'; billId?: string; version?: string }) {
+    const session = (await supabase.auth.getSession()).data.session
+    if (!session?.access_token) throw new Error('Please sign in again before sending email')
+    const response = await fetch('/api/utility/email-thread', { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const data = await response.json().catch(() => ({})) as { error?: string }
+    if (!response.ok) throw new Error(data.error ?? 'Email operation failed')
+    await refreshEmailThread()
+    return data
+  }
+
+  async function notifyTeam(billId: string) {
+    setEmailBusy(true); setEmailMessage(null)
+    try { await callEmailThread({ action: 'notify', billId }); setEmailMessage('Team notification sent.') }
+    catch (error) { setEmailMessage(error instanceof Error ? error.message : 'Team notification failed.') }
+    finally { setEmailBusy(false) }
+  }
+
+  async function retryEmail(billId: string) {
+    setEmailBusy(true); setEmailMessage(null)
+    try { await callEmailThread({ action: 'retry', billId }); setEmailMessage('Notification sent.') }
+    catch (error) { setEmailMessage(error instanceof Error ? error.message : 'Retry failed.') }
+    finally { setEmailBusy(false) }
+  }
+
   const refreshCredits = useCallback(async () => {
     const { data } = await supabase.from('utility_credits').select('*').order('credit_date', { ascending: false })
     setCredits((data as Credit[]) ?? [])
@@ -403,7 +442,7 @@ export default function UtilityPage() {
     setLoading(false)
   }, [user?.id])
 
-  useEffect(() => { load(); refreshNotifications() }, [load, refreshNotifications])
+  useEffect(() => { load(); refreshNotifications(); refreshEmailThread() }, [load, refreshNotifications, refreshEmailThread])
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
@@ -603,7 +642,7 @@ export default function UtilityPage() {
     setNoteEdit(null)
   }
 
-  async function saveBill() {
+  async function saveBill(notify = false) {
     if (!editBill.utility_name?.trim()) return
     setSaving(true)
     // billing_month/billing_year identify which month's bill this is, and
@@ -635,10 +674,12 @@ export default function UtilityPage() {
       onedrive_file_url: editBill.onedrive_file_url || null,
       notes:             editBill.notes || null,
     }
+    let savedBillId = editingId
     if (editingId) {
       await supabase.from('utility_bills').update(payload).eq('id', editingId)
     } else {
-      await supabase.from('utility_bills').insert({ ...payload, is_paid: false })
+      const inserted = await supabase.from('utility_bills').insert({ ...payload, is_paid: false }).select('id').single()
+      savedBillId = inserted.data?.id ?? null
     }
     setSaving(false)
     setShowModal(false)
@@ -646,6 +687,7 @@ export default function UtilityPage() {
     setEditBill(emptyBill)
     refreshBills()
     refreshNotifications()
+    if (notify && savedBillId) await notifyTeam(savedBillId)
   }
 
   async function deleteBill(id: string) {
@@ -767,6 +809,26 @@ export default function UtilityPage() {
               className="px-3 py-1.5 text-sm text-white bg-ink rounded-lg hover:bg-ink/90 transition-colors"
             >
               + Add Bill
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-white px-4 py-2.5 text-xs">
+        <div className="text-ink-muted">
+          <span className="font-semibold text-ink">Monthly Email Thread:</span>{' '}
+          {emailThread ? <span className="text-signal-pos">Active · {emailThread.subject}</span> : <span className="text-ink-faint">Not created yet</span>}
+          {emailMessage && <span className="ml-3 text-ink-muted">{emailMessage}</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {emailFailures.slice(0, 1).map(failure => (
+            <button key={failure.id} onClick={() => retryEmail(failure.bill_id)} disabled={emailBusy} className="text-signal-neg hover:underline disabled:opacity-50" title={failure.error_message ?? 'Retry failed notification'}>
+              Failed notification · Retry
+            </button>
+          ))}
+          {!emailThread && role === 'admin' && (
+            <button onClick={() => { setEmailBusy(true); callEmailThread({ action: 'root' }).then(() => setEmailMessage('Monthly email thread created.')).catch(error => setEmailMessage(error instanceof Error ? error.message : 'Unable to create thread.')).finally(() => setEmailBusy(false)) }} disabled={emailBusy} className="text-blue-600 hover:underline disabled:opacity-50">
+              Create monthly thread
             </button>
           )}
         </div>
@@ -1339,11 +1401,18 @@ export default function UtilityPage() {
                 Cancel
               </button>
               <button
-                onClick={saveBill}
+                onClick={() => saveBill()}
                 disabled={saving || !editBill.utility_name?.trim()}
                 className="px-4 py-2 text-sm text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors"
               >
                 {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Bill'}
+              </button>
+              <button
+                onClick={() => saveBill(true)}
+                disabled={saving || emailBusy || !editBill.utility_name?.trim()}
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-line transition-colors"
+              >
+                {emailBusy ? 'Sending…' : 'Save & Notify Team'}
               </button>
             </div>
           </div>

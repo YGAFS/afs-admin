@@ -1,0 +1,27 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { ensureMonthlyThread, notifyBill, requireUtilityUser } from '@/lib/server/utilityEmail'
+
+export const dynamic = 'force-dynamic'
+
+function bearer(req: NextRequest) { const value = req.headers.get('authorization') ?? ''; return value.startsWith('Bearer ') ? value.slice(7) : '' }
+
+export async function GET(req: NextRequest) {
+  const auth = await requireUtilityUser(bearer(req)); if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const now = new Date(); const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const thread = await auth.db.from('utility_email_threads').select('id,billing_month,sender_email,subject,created_at').eq('billing_month', month).order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (thread.error) return NextResponse.json({ error: thread.error.message }, { status: 500 })
+  const failed = thread.data ? await auth.db.from('utility_email_notifications').select('id,bill_id,status,error_message,attempt_count,created_at,sent_at').eq('thread_id', thread.data.id).eq('status', 'failed').order('created_at', { ascending: false }).limit(10) : { data: [] }
+  return NextResponse.json({ thread: thread.data, failed: failed.data ?? [] })
+}
+
+export async function POST(req: NextRequest) {
+  const auth = await requireUtilityUser(bearer(req)); if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const body = await req.json().catch(() => null) as { action?: string; billId?: string; version?: string } | null
+  try {
+    if (body?.action === 'root') { const now = new Date(); return NextResponse.json({ thread: await ensureMonthlyThread(auth.db, now.getFullYear(), now.getMonth() + 1) }) }
+    if ((body?.action === 'notify' || body?.action === 'retry') && typeof body.billId === 'string') return NextResponse.json(await notifyBill(auth.db, body.billId, body.version))
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Email operation failed' }, { status: 500 })
+  }
+}

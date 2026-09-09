@@ -1,0 +1,89 @@
+import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js'
+
+type GraphMessage = { id: string; conversationId?: string | null }
+type Bill = { id: string; provider: string | null; utility_name: string; amount: number | null; currency: string; due_date: string | null; billing_month: number | null; billing_year: number | null; updated_at?: string | null }
+
+function db() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) throw new Error('Supabase server configuration is missing')
+  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } })
+}
+
+export async function requireUtilityUser(token: string): Promise<{ user: User; db: SupabaseClient } | null> {
+  if (!token) return null
+  const client = db()
+  const result = await client.auth.getUser(token)
+  if (result.error || !result.data.user?.id) return null
+  const role = await client.from('utility_user_roles').select('role').eq('user_id', result.data.user.id).maybeSingle()
+  if (role.error || !['admin', 'ap'].includes(role.data?.role)) return null
+  return { user: result.data.user, db: client }
+}
+
+function config() {
+  const sender = process.env.UTILITY_EMAIL_SENDER?.trim()
+  const recipients = (process.env.UTILITY_EMAIL_RECIPIENTS ?? '').split(',').map(v => v.trim()).filter(Boolean)
+  if (!sender || recipients.length === 0) throw new Error('UTILITY_EMAIL_SENDER and UTILITY_EMAIL_RECIPIENTS are not configured')
+  if (!process.env.MS_GRAPH_TENANT_ID || !process.env.MS_GRAPH_CLIENT_ID || !process.env.MS_GRAPH_CLIENT_SECRET) throw new Error('Microsoft Graph mail credentials are not configured')
+  return { sender, recipients }
+}
+
+async function graphToken() {
+  const tenant = process.env.MS_GRAPH_TENANT_ID!
+  const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: process.env.MS_GRAPH_CLIENT_ID!, client_secret: process.env.MS_GRAPH_CLIENT_SECRET!, scope: 'https://graph.microsoft.com/.default' })
+  const res = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body, cache: 'no-store' })
+  if (!res.ok) throw new Error(`Graph token error ${res.status}`)
+  return (await res.json()).access_token as string
+}
+
+async function graph(path: string, init: RequestInit = {}) {
+  const token = await graphToken()
+  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'IdType="ImmutableId"', ...(init.headers ?? {}) }, cache: 'no-store' })
+  if (!res.ok) throw new Error(`Graph ${res.status}: ${await res.text()}`)
+  return res.status === 204 ? null : res.json()
+}
+
+function monthDate(year: number, month: number) { return `${year}-${String(month).padStart(2, '0')}-01` }
+function subject(year: number, month: number) { return `[Utility Bills] ${new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` }
+function dashboardUrl() { return process.env.NEXT_PUBLIC_SITE_URL ?? 'https://hr.afstransco.com/utilities/overview' }
+
+export async function ensureMonthlyThread(client: SupabaseClient, year: number, month: number) {
+  const { sender, recipients } = config(); const billingMonth = monthDate(year, month); const title = subject(year, month)
+  const existing = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
+  if (existing.error) throw existing.error
+  if (existing.data) return existing.data
+  const created = await graph(`/users/${encodeURIComponent(sender)}/messages`, { method: 'POST', body: JSON.stringify({ subject: title, body: { contentType: 'HTML', content: `<p>${title} tracking is now available.</p><p>Please review bills, due dates, and payment status on the <a href="${dashboardUrl()}">Utility Dashboard</a>.</p><p>Updates to individual bills will be posted in this email thread.</p>` }, toRecipients: recipients.map(address => ({ emailAddress: { address } })) }) }) as GraphMessage
+  await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(created.id)}/send`, { method: 'POST' })
+  const inserted = await client.from('utility_email_threads').insert({ billing_month: billingMonth, sender_email: sender, root_message_id: created.id, conversation_id: created.conversationId ?? null, subject: title, recipients }).select('*').single()
+  if (inserted.error) {
+    const raced = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
+    if (raced.data) return raced.data
+    throw inserted.error
+  }
+  return inserted.data
+}
+
+export async function notifyBill(client: SupabaseClient, billId: string, version?: string) {
+  const { sender } = config(); const billResult = await client.from('utility_bills').select('id,provider,utility_name,amount,currency,due_date,billing_month,billing_year,updated_at').eq('id', billId).single()
+  if (billResult.error || !billResult.data) throw new Error('Bill not found')
+  const bill = billResult.data as Bill; const now = new Date(); const year = bill.billing_year ?? now.getFullYear(); const month = bill.billing_month ?? now.getMonth() + 1
+  const thread = await ensureMonthlyThread(client, year, month)
+  const key = `bill:${bill.id}:updated:${version ?? bill.updated_at ?? `${bill.amount}|${bill.due_date}`}`
+  const queued = await client.from('utility_email_notifications').insert({ bill_id: bill.id, thread_id: thread.id, notification_type: 'bill_updated', idempotency_key: key, status: 'queued' }).select('*').single()
+  if (queued.error && queued.error.code !== '23505') throw queued.error
+  if (queued.error?.code === '23505') return { status: 'sent', duplicate: true }
+  const notification = queued.data
+  try {
+    await client.from('utility_email_notifications').update({ status: 'sending', attempt_count: 1 }).eq('id', notification.id)
+    const draft = await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(thread.root_message_id)}/createReplyAll`, { method: 'POST', body: JSON.stringify({}) }) as GraphMessage
+    const label = bill.provider ?? bill.utility_name
+    const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
+    await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: `<p><strong>${label}</strong> bill has been updated.</p><p>Amount: ${amount}<br>Due: ${bill.due_date ?? '—'}</p><p>Please review it on the <a href="${dashboardUrl()}">Utility Dashboard</a>.</p>` } }) })
+    await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}/send`, { method: 'POST' })
+    await client.from('utility_email_notifications').update({ status: 'sent', graph_message_id: draft.id, sent_at: new Date().toISOString(), error_message: null }).eq('id', notification.id)
+    return { status: 'sent' }
+  } catch (error) {
+    await client.from('utility_email_notifications').update({ status: 'failed', error_message: error instanceof Error ? error.message : 'Unknown error' }).eq('id', notification.id)
+    throw error
+  }
+}
