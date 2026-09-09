@@ -31,7 +31,7 @@ const NAV: NavItem[] = [
   { href: '/licenses', key: 'nav.licenses', icon: FileIcon },
   { href: '/assets', key: 'nav.assets', icon: FolderIcon },
   { href: '/supplies', key: 'nav.supplies', icon: CupIcon },
-  { href: '/admin', key: 'nav.admin', icon: GearIcon },
+  { href: '/admin', key: 'nav.admin', icon: PersonIcon },
 ]
 
 const UTILITY_NAV: UtilityNavItem[] = [
@@ -40,7 +40,7 @@ const UTILITY_NAV: UtilityNavItem[] = [
   { href: '/utilities/vendors', label: 'Vendors', icon: BuildingIcon },
   { href: '/utilities/calendar', label: 'Calendar', icon: CalendarIcon },
   { href: '/utilities/reports', label: 'Reports', icon: ChartIcon },
-  { href: '/utilities/settings', label: 'Settings', icon: GearIcon },
+  { href: '/admin', label: 'Admin', icon: PersonIcon },
 ]
 
 function HomeIcon() {
@@ -95,6 +95,14 @@ function GearIcon() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
       <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+    </svg>
+  )
+}
+
+function PersonIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M10 2a4 4 0 100 8 4 4 0 000-8zM3 18a7 7 0 0114 0H3z" clipRule="evenodd" />
     </svg>
   )
 }

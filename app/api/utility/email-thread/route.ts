@@ -7,6 +7,7 @@ function bearer(req: NextRequest) { const value = req.headers.get('authorization
 
 export async function GET(req: NextRequest) {
   const auth = await requireUtilityUser(bearer(req)); if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (auth.user.email?.trim().toLowerCase() !== 'admin@afstransco.com') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const now = new Date(); const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
   const thread = await auth.db.from('utility_email_threads').select('id,billing_month,sender_email,subject,created_at').eq('billing_month', month).order('created_at', { ascending: false }).limit(1).maybeSingle()
   if (thread.error) return NextResponse.json({ error: thread.error.message }, { status: 500 })
@@ -26,6 +27,7 @@ export async function POST(req: NextRequest) {
   const ingestor = auth ? null : requireUtilityIngestor(token)
   const db = auth?.db ?? ingestor?.db
   if (!db) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (auth && auth.user.email?.trim().toLowerCase() !== 'admin@afstransco.com') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   if (!ingestor && auth?.role !== 'admin') return NextResponse.json({ error: 'Only utility admins can send team notifications' }, { status: 403 })
   const body = await req.json().catch(() => null) as { action?: string; billId?: string; version?: string } | null
   try {

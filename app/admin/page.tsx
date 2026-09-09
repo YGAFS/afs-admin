@@ -24,7 +24,8 @@ const SECTIONS: { key: string; label: string }[] = [
 
 export default function AdminPage() {
   const { locale, setLocale } = useLocale()
-  const { isSuperAdmin } = useAuth()
+  const { user, isSuperAdmin, loading } = useAuth()
+  const isAdminOwner = user?.email?.trim().toLowerCase() === 'admin@afstransco.com'
 
   const languages: { code: Locale; label: string; flag: string }[] = [
     { code: 'en', label: t('settings.lang.en', locale), flag: '🇺🇸' },
@@ -36,7 +37,13 @@ export default function AdminPage() {
       <h1 className="text-xl font-bold text-gray-800 mb-1">{t('settings.title', locale)}</h1>
       <p className="text-sm text-gray-400 mb-6">{t('nav.admin', locale)}</p>
 
-      {isSuperAdmin && (
+      {!loading && !isAdminOwner && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+          This Admin page is restricted to admin@afstransco.com.
+        </div>
+      )}
+
+      {isAdminOwner && isSuperAdmin && (
         <div className="bg-white rounded-xl shadow border border-gray-100 p-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-0.5">{t('settings.language', locale)}</h2>
           <p className="text-xs text-gray-400 mb-4">{t('settings.language.desc', locale)}</p>
@@ -60,13 +67,81 @@ export default function AdminPage() {
         </div>
       )}
 
-      {isSuperAdmin && (
+      {isAdminOwner && isSuperAdmin && (
         <div className="mt-6">
           <UserAccessPanel />
         </div>
       )}
-      {isSuperAdmin && <Link href="/admin/pto-policy" className="mt-6 block rounded-xl border border-line-soft bg-white p-5 text-sm font-semibold text-ink shadow-sm hover:bg-pill">Manage company PTO policies <span className="text-ink-muted">→</span></Link>}
+      {isAdminOwner && isSuperAdmin && <Link href="/admin/pto-policy" className="mt-6 block rounded-xl border border-line-soft bg-white p-5 text-sm font-semibold text-ink shadow-sm hover:bg-pill">Manage company PTO policies <span className="text-ink-muted">→</span></Link>}
+      {isAdminOwner && isSuperAdmin && <UtilityEmailAdminPanel />}
     </div>
+  )
+}
+
+type AdminEmailNotification = { id: string; bill_id: string; bill_name: string; status: 'queued' | 'sending' | 'sent' | 'failed'; created_at: string; sent_at: string | null }
+type AdminEmailThread = { id: string; subject: string; sender_email: string; created_at: string }
+
+function UtilityEmailAdminPanel() {
+  const [thread, setThread] = useState<AdminEmailThread | null>(null)
+  const [notifications, setNotifications] = useState<AdminEmailNotification[]>([])
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+
+  async function load() {
+    const session = (await supabase.auth.getSession()).data.session
+    if (!session?.access_token) return
+    const response = await fetch('/api/utility/email-thread', { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' })
+    if (!response.ok) return
+    const data = await response.json() as { thread: AdminEmailThread | null; notifications?: AdminEmailNotification[] }
+    setThread(data.thread); setNotifications(data.notifications ?? [])
+  }
+
+  useEffect(() => { load() }, [])
+
+  async function call(action: 'root' | 'retry', billId?: string) {
+    const session = (await supabase.auth.getSession()).data.session
+    if (!session?.access_token) { setMessage('Please sign in again.'); return }
+    setBusy(true); setMessage('')
+    const response = await fetch('/api/utility/email-thread', {
+      method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, billId, version: action === 'retry' ? `manual-retry:${Date.now()}` : undefined }),
+    })
+    const text = await response.text()
+    let data: { error?: string } = {}
+    try { data = text ? JSON.parse(text) as { error?: string } : {} } catch { data = { error: text } }
+    setMessage(response.ok ? (action === 'root' ? 'Monthly root email sent.' : 'Email resent.') : (data.error ?? `Request failed (${response.status})`))
+    await load(); setBusy(false)
+  }
+
+  const sent = notifications.filter(notification => notification.status === 'sent')
+  return (
+    <section className="mt-6 rounded-xl border border-line-soft bg-white p-6 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-semibold text-ink">Utility email thread</h2>
+          <p className="mt-1 text-xs text-ink-muted">Monthly root email, resend controls, and delivery history.</p>
+        </div>
+        {!thread && <button onClick={() => call('root')} disabled={busy} className="rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white hover:bg-ink/90 disabled:opacity-50">{busy ? 'Sending…' : 'Send monthly root'}</button>}
+      </div>
+      {thread ? (
+        <>
+          <div className="mt-4 rounded-lg bg-pill px-3 py-2 text-xs text-ink-muted"><span className="font-semibold text-ink">Root sent:</span> {thread.subject}</div>
+          <details className="mt-4">
+            <summary className="cursor-pointer text-sm font-medium text-ink">Sent in this thread: {sent.length + 1} emails</summary>
+            <div className="mt-2 space-y-2 border-l-2 border-line pl-3 text-sm">
+              <div className="text-ink-muted">Monthly root email</div>
+              {sent.length ? sent.map(notification => (
+                <div key={notification.id} className="flex items-center justify-between gap-3">
+                  <span className="text-ink">{notification.bill_name}</span>
+                  <button onClick={() => { if (window.confirm(`${notification.bill_name} 빌을 다시 발송할까요?`)) call('retry', notification.bill_id) }} disabled={busy} className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">Resend</button>
+                </div>
+              )) : <div className="text-ink-faint">No bill notifications yet.</div>}
+            </div>
+          </details>
+        </>
+      ) : <p className="mt-4 text-xs text-ink-faint">No monthly thread has been sent yet.</p>}
+      {message && <p className="mt-3 text-xs text-ink-muted">{message}</p>}
+    </section>
   )
 }
 

@@ -822,43 +822,6 @@ export default function UtilityPage() {
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-white px-4 py-2.5 text-xs">
-        <div className="text-ink-muted">
-          <span className="font-semibold text-ink">Monthly Email Thread:</span>{' '}
-          {emailThread ? <span className="text-signal-pos">최초 이메일 발송 완료 · {emailThread.subject}</span> : <span className="text-ink-faint">Not created yet</span>}
-          {emailMessage && <span className="ml-3 text-ink-muted">{emailMessage}</span>}
-          {emailThread && (
-            <details className="mt-2 text-ink-muted">
-              <summary className="cursor-pointer select-none hover:text-ink">
-                이메일 스레드 발송 현황: {emailNotifications.filter(notification => notification.status === 'sent').length + 1}개
-              </summary>
-              <div className="mt-2 rounded-lg bg-pill px-3 py-2">
-                <div className="font-medium text-ink">최초 월간 알림</div>
-                {emailNotifications.filter(notification => notification.status === 'sent').length > 0 ? (
-                  <ul className="mt-1 list-disc pl-4">
-                    {emailNotifications.filter(notification => notification.status === 'sent').map(notification => (
-                      <li key={notification.id}>{notification.bill_name}</li>
-                    ))}
-                  </ul>
-                ) : <div className="mt-1 text-ink-faint">추가 빌 알림 없음</div>}
-              </div>
-            </details>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {emailFailures.slice(0, 1).map(failure => (
-            <button key={failure.id} onClick={() => retryEmail(failure.bill_id)} disabled={emailBusy} className="text-signal-neg hover:underline disabled:opacity-50" title={failure.error_message ?? 'Retry failed notification'}>
-              Failed notification · Retry
-            </button>
-          ))}
-          {!emailThread && role === 'admin' && (
-            <button onClick={() => { setEmailBusy(true); callEmailThread({ action: 'root' }).then(() => setEmailMessage('Monthly email thread created.')).catch(error => setEmailMessage(error instanceof Error ? error.message : 'Unable to create thread.')).finally(() => setEmailBusy(false)) }} disabled={emailBusy} className="text-blue-600 hover:underline disabled:opacity-50">
-              Create monthly thread
-            </button>
-          )}
-        </div>
-      </div>
-
       {/* ── DASHBOARD TAB ──────────────────────────────────────────────────── */}
       {mainTab === 'dashboard' && (
         <DashboardTab
@@ -1431,13 +1394,6 @@ export default function UtilityPage() {
                 className="px-4 py-2 text-sm text-white bg-ink rounded-lg hover:bg-ink/90 disabled:bg-line transition-colors"
               >
                 {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Add Bill'}
-              </button>
-              <button
-                onClick={() => saveBill(true)}
-                disabled={saving || emailBusy || !editBill.utility_name?.trim()}
-                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-line transition-colors"
-              >
-                {emailBusy ? 'Sending…' : 'Save & Notify Team'}
               </button>
             </div>
           </div>
