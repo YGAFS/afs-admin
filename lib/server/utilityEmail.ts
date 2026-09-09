@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient, type User } from '@supabase/supabase
 
 type GraphMessage = { id: string; conversationId?: string | null }
 type GraphMessageList = { value?: GraphMessage[] }
+export type UtilityEmailRecipientGroup = { id: string; label: string; recipients: string[] }
 type LocationRef = { name?: string | null; city?: string | null }
 type Bill = { id: string; provider: string | null; utility_name: string; amount: number | null; currency: string; due_date: string | null; billing_month: number | null; billing_year: number | null; account_number?: string | null; company_id?: string | null; onedrive_file_url?: string | null; utility_locations?: LocationRef | LocationRef[] | null; updated_at?: string | null }
 
@@ -29,12 +30,37 @@ export async function requireUtilityUser(token: string): Promise<{ user: User; d
   return { user: result.data.user, db: client, role: roleValue as 'admin' | 'ap' }
 }
 
-function config() {
+function recipientGroups(): UtilityEmailRecipientGroup[] {
+  const fallback = (process.env.UTILITY_EMAIL_RECIPIENTS ?? '').split(',').map(v => v.trim()).filter(Boolean)
+  const raw = process.env.UTILITY_EMAIL_RECIPIENT_GROUPS?.trim()
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (Array.isArray(parsed)) {
+        const groups = parsed.map((group, index) => {
+          const value = group as { id?: unknown; label?: unknown; recipients?: unknown }
+          const recipients = Array.isArray(value.recipients) ? value.recipients.map(String).map(v => v.trim()).filter(Boolean) : []
+          return { id: String(value.id ?? `group-${index + 1}`), label: String(value.label ?? value.id ?? `Group ${index + 1}`), recipients }
+        }).filter(group => group.recipients.length > 0)
+        if (groups.length) return groups
+      }
+    } catch (error) {
+      console.warn('[utility-email-thread] invalid UTILITY_EMAIL_RECIPIENT_GROUPS JSON', error)
+    }
+  }
+  return fallback.length ? [{ id: 'default', label: 'Default recipients', recipients: fallback }] : []
+}
+
+export function getUtilityEmailRecipientGroups() { return recipientGroups().map(({ id, label }) => ({ id, label })) }
+
+function config(groupId?: string) {
   const sender = process.env.UTILITY_EMAIL_SENDER?.trim()
-  const recipients = (process.env.UTILITY_EMAIL_RECIPIENTS ?? '').split(',').map(v => v.trim()).filter(Boolean)
+  const groups = recipientGroups()
+  const group = groups.find(value => value.id === groupId) ?? groups[0]
+  const recipients = group?.recipients ?? []
   if (!sender || recipients.length === 0) throw new Error('UTILITY_EMAIL_SENDER and UTILITY_EMAIL_RECIPIENTS are not configured')
   if (!process.env.MS_GRAPH_TENANT_ID || !process.env.MS_GRAPH_CLIENT_ID || !process.env.MS_GRAPH_CLIENT_SECRET) throw new Error('Microsoft Graph mail credentials are not configured')
-  return { sender, recipients }
+  return { sender, recipients, groupId: group?.id ?? 'default' }
 }
 
 async function graphToken() {
@@ -76,14 +102,14 @@ async function monthlyBillBody(client: SupabaseClient, year: number, month: numb
   const rows = (bills.data ?? []).map(bill => {
     const name = bill.provider ?? bill.utility_name
     const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
-    const download = bill.onedrive_file_url ? `<a href="${escapeHtml(bill.onedrive_file_url)}" style="color:#2563eb;font-weight:bold">Download</a>` : '—'
+    const download = bill.onedrive_file_url ? `<a href="${escapeHtml(bill.onedrive_file_url)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:bold;padding:8px 12px;border-radius:6px">Download</a>` : '—'
     return `<tr><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb"><strong>${escapeHtml(name)}</strong><br><span style="font-size:12px;color:#6b7280">${escapeHtml(companyLabel(bill.company_id))} · ${escapeHtml(locationLabel(bill.utility_locations))} · Account ${escapeHtml(accountLabel(bill.account_number))}</span></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right"><strong>${escapeHtml(amount)}</strong></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right">Due <strong>${escapeHtml(bill.due_date)}</strong></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${download}</td></tr>`
   }).join('')
   return `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:760px;margin:0 auto;line-height:1.5"><h2 style="text-align:center;margin:0 0 18px;color:#111827">${escapeHtml(title)}</h2><p style="text-align:center">Utility bill tracking is now available.</p><p style="text-align:center">Please review current bills, due dates, and payment status below.</p>${rows ? `<table style="width:100%;border-collapse:collapse;margin:22px 0"><thead><tr style="background:#f3f4f6"><th style="padding:10px 12px;text-align:left">Utility / account</th><th style="padding:10px 12px;text-align:right">Amount</th><th style="padding:10px 12px;text-align:right">Due date</th><th style="padding:10px 12px;text-align:right">File</th></tr></thead><tbody>${rows}</tbody></table>` : '<p style="text-align:center">No bills have been registered yet.</p>'}<p style="text-align:center;margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Dashboard</a></p><p style="text-align:center;color:#4b5563">Updates to individual bills will be posted in this email thread.</p></div>`
 }
 
-export async function ensureMonthlyThread(client: SupabaseClient, year: number, month: number) {
-  const { sender, recipients } = config(); const billingMonth = monthDate(year, month); const title = subject(year, month)
+export async function ensureMonthlyThread(client: SupabaseClient, year: number, month: number, groupId?: string) {
+  const { sender, recipients } = config(groupId); const billingMonth = monthDate(year, month); const title = subject(year, month)
   const existing = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
   if (existing.error) throw existing.error
   if (existing.data) return existing.data
@@ -116,24 +142,24 @@ export async function ensureMonthlyThread(client: SupabaseClient, year: number, 
   return inserted.data
 }
 
-export async function resendMonthlyThread(client: SupabaseClient, year: number, month: number) {
-  const { sender } = config(); const billingMonth = monthDate(year, month); const title = subject(year, month)
+export async function resendMonthlyThread(client: SupabaseClient, year: number, month: number, groupId?: string) {
+  const { sender, recipients } = config(groupId); const billingMonth = monthDate(year, month); const title = subject(year, month)
   const thread = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
   if (thread.error) throw thread.error
   if (!thread.data) return ensureMonthlyThread(client, year, month)
   const content = await monthlyBillBody(client, year, month, title)
-  const draft = await graph(`/users/${encodeURIComponent(sender)}/messages`, { method: 'POST', body: JSON.stringify({ subject: title, body: { contentType: 'HTML', content }, toRecipients: thread.data.recipients.map((address: string) => ({ emailAddress: { address } })) }) }) as GraphMessage
-  const updated = await client.from('utility_email_threads').update({ root_message_id: draft.id, conversation_id: draft.conversationId ?? null, subject: title, recipients: thread.data.recipients }).eq('id', thread.data.id).select('*').single()
+  const draft = await graph(`/users/${encodeURIComponent(sender)}/messages`, { method: 'POST', body: JSON.stringify({ subject: title, body: { contentType: 'HTML', content }, toRecipients: recipients.map((address: string) => ({ emailAddress: { address } })) }) }) as GraphMessage
+  const updated = await client.from('utility_email_threads').update({ root_message_id: draft.id, conversation_id: draft.conversationId ?? null, subject: title, recipients }).eq('id', thread.data.id).select('*').single()
   if (updated.error) throw updated.error
   await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}/send`, { method: 'POST' })
   return { ...updated.data, resent: true }
 }
 
-export async function notifyBill(client: SupabaseClient, billId: string, version?: string) {
-  const { sender } = config(); const billResult = await client.from('utility_bills').select('id,provider,utility_name,amount,currency,due_date,billing_month,billing_year,account_number,company_id,onedrive_file_url,utility_locations(name,city),updated_at').eq('id', billId).single()
+export async function notifyBill(client: SupabaseClient, billId: string, version?: string, groupId?: string) {
+  const { sender } = config(groupId); const billResult = await client.from('utility_bills').select('id,provider,utility_name,amount,currency,due_date,billing_month,billing_year,account_number,company_id,onedrive_file_url,utility_locations(name,city),updated_at').eq('id', billId).single()
   if (billResult.error || !billResult.data) throw new Error('Bill not found')
   const bill = billResult.data as Bill; const now = new Date(); const year = now.getUTCFullYear(); const month = now.getUTCMonth() + 1
-  const thread = await ensureMonthlyThread(client, year, month)
+  const thread = await ensureMonthlyThread(client, year, month, groupId)
   if (!thread) throw new Error('No bills are registered for this month')
   const key = `bill:${bill.id}:updated:${version ?? bill.updated_at ?? `${bill.amount}|${bill.due_date}`}`
   const queued = await client.from('utility_email_notifications').insert({ bill_id: bill.id, thread_id: thread.id, notification_type: 'bill_updated', idempotency_key: key, status: 'queued' }).select('*').single()
@@ -145,7 +171,7 @@ export async function notifyBill(client: SupabaseClient, billId: string, version
     const draft = await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(thread.root_message_id)}/createReplyAll`, { method: 'POST', body: JSON.stringify({}) }) as GraphMessage
     const label = bill.provider ?? bill.utility_name
     const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
-    const download = bill.onedrive_file_url ? `<p style="margin:18px 0"><a href="${escapeHtml(bill.onedrive_file_url)}" style="color:#2563eb;font-weight:bold">Download bill file</a></p>` : ''
+    const download = bill.onedrive_file_url ? `<p style="margin:18px 0"><a href="${escapeHtml(bill.onedrive_file_url)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:bold;padding:10px 16px;border-radius:6px">Download bill file</a></p>` : ''
     const details = `<div style="margin:18px auto;text-align:left;max-width:560px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:14px 18px"><p style="margin:4px 0"><strong>Utility:</strong> ${escapeHtml(label)}</p><p style="margin:4px 0"><strong>Company:</strong> ${escapeHtml(companyLabel(bill.company_id))}</p><p style="margin:4px 0"><strong>Location:</strong> ${escapeHtml(locationLabel(bill.utility_locations))}</p><p style="margin:4px 0"><strong>Account:</strong> ${escapeHtml(accountLabel(bill.account_number))}</p><p style="margin:4px 0"><strong>Amount:</strong> ${escapeHtml(amount)}</p><p style="margin:4px 0"><strong>Due date:</strong> ${escapeHtml(bill.due_date)}</p></div>`
     await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:680px;margin:0 auto;text-align:center;line-height:1.5"><h2 style="margin:0 0 18px;color:#111827"><strong>${escapeHtml(label)}</strong> bill updated</h2>${details}<p style="margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Dashboard</a></p>${download}</div>` } }) })
     await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}/send`, { method: 'POST' })

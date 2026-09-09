@@ -355,7 +355,7 @@ class Pipeline:
         """
         url = self.settings.utility_email_notify_url
         secret = self.settings.utility_email_notify_secret
-        if self.settings.dry_run or not url or not secret:
+        if not self.settings.utility_email_auto_notify_enabled or self.settings.dry_run or not url or not secret:
             return
         payload = json.dumps({
             "action": "notify",

@@ -10,6 +10,7 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://lo
 type Thread = { id: string; subject: string; sender_email: string; created_at: string }
 type Notification = { id: string; bill_id: string; bill_name: string; status: 'queued' | 'sending' | 'sent' | 'failed'; created_at: string; sent_at: string | null }
 type Bill = { id: string; provider: string | null; utility_name: string; account_number?: string | null; company_id?: string | null; location_id?: string | null; created_at?: string; utility_locations?: { name?: string | null; city?: string | null } | { name?: string | null; city?: string | null }[] | null }
+type RecipientGroup = { id: string; label: string }
 
 const COMPANY_LABEL: Record<string, string> = { afs: 'AFS', tnt: 'TNT', zfs: 'ZFS' }
 
@@ -31,6 +32,8 @@ function UtilityEmailPanel() {
   const [thread, setThread] = useState<Thread | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [bills, setBills] = useState<Bill[]>([])
+  const [recipientGroups, setRecipientGroups] = useState<RecipientGroup[]>([])
+  const [selectedGroup, setSelectedGroup] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -40,9 +43,11 @@ function UtilityEmailPanel() {
     const response = await fetch('/api/utility/email-thread', { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' })
     const responseText = await response.text()
     if (!response.ok) { setMessage(`Unable to load email status (${response.status}).`); return }
-    let data: { thread: Thread | null; notifications?: Notification[]; bills?: Bill[] }
+    let data: { thread: Thread | null; notifications?: Notification[]; bills?: Bill[]; recipientGroups?: RecipientGroup[] }
     try { data = JSON.parse(responseText) as typeof data } catch { setMessage('Email status could not be read. Please refresh once.'); return }
-    setThread(data.thread); setNotifications(data.notifications ?? []); setBills(data.bills ?? [])
+    const groups = data.recipientGroups ?? []
+    setThread(data.thread); setNotifications(data.notifications ?? []); setBills(data.bills ?? []); setRecipientGroups(groups)
+    setSelectedGroup(current => groups.some(group => group.id === current) ? current : (groups[0]?.id ?? ''))
   }
 
   useEffect(() => { load() }, [])
@@ -56,7 +61,7 @@ function UtilityEmailPanel() {
     const action = billId && prior ? 'retry' : billId ? 'notify' : 'root'
     const response = await fetch('/api/utility/email-thread', {
       method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, billId, force: forceRoot, version: billId ? `manual-resend:${Date.now()}` : undefined }),
+      body: JSON.stringify({ action, billId, force: forceRoot, recipientGroupId: selectedGroup || undefined, version: billId ? `manual-resend:${Date.now()}` : undefined }),
     })
     const text = await response.text()
     let data: { error?: string } = {}
@@ -74,6 +79,14 @@ function UtilityEmailPanel() {
           <p className="mt-1 text-xs text-ink-muted">September bills · {thread ? 'Root email sent' : 'Not sent yet'}</p>
         </div>
         <button onClick={() => { if (!thread || window.confirm('경고: 전체 Utility Bill 목록이 포함된 새 메일을 다시 발송합니다.\n기존 메일에는 이어붙지 않습니다. 계속할까요?')) send(undefined, !!thread) }} disabled={busy} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">{busy ? 'Sending…' : thread ? 'Resend first email' : 'Send first email'}</button>
+      </div>
+      <div className="mt-5 border-b border-line-soft pb-4">
+        <div className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Send to</div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {recipientGroups.map(group => <button key={group.id} type="button" onClick={() => setSelectedGroup(group.id)} className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${selectedGroup === group.id ? 'border-ink bg-ink text-white' : 'border-line bg-white text-ink-muted hover:border-ink-muted hover:text-ink'}`}>{group.label}</button>)}
+          {!recipientGroups.length && <span className="text-sm text-ink-faint">No recipient groups configured.</span>}
+        </div>
+        <p className="mt-2 text-xs text-ink-muted">The selected group is used for this manual send. Add more groups in <code>UTILITY_EMAIL_RECIPIENT_GROUPS</code>.</p>
       </div>
       {thread && <div className="mt-4 rounded-lg bg-pill px-3 py-2 text-xs text-ink-muted"><span className="font-semibold text-ink">{thread.subject}</span> · 최초 이메일 발송 완료</div>}
       {thread && <details className="mt-5" open>
