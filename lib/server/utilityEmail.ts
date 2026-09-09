@@ -53,7 +53,7 @@ async function graph(path: string, init: RequestInit = {}) {
 
 function monthDate(year: number, month: number) { return `${year}-${String(month).padStart(2, '0')}-01` }
 function subject(year: number, month: number) { return `[Utility Bills] ${new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` }
-function dashboardUrl() { return process.env.NEXT_PUBLIC_SITE_URL ?? 'https://hr.afstransco.com/utilities/overview' }
+function dashboardUrl() { return 'https://hr.afstransco.com/utilities/bills' }
 
 async function monthlyBillBody(client: SupabaseClient, year: number, month: number, title: string) {
   const bills = await client.from('utility_bills').select('provider,utility_name,amount,currency,due_date').eq('billing_year', year).eq('billing_month', month).order('provider')
@@ -61,9 +61,9 @@ async function monthlyBillBody(client: SupabaseClient, year: number, month: numb
   const rows = (bills.data ?? []).map(bill => {
     const name = bill.provider ?? bill.utility_name
     const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
-    return `<li><strong>${name}</strong> — ${amount}, due ${bill.due_date ?? '—'}</li>`
+    return `<tr><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb"><strong>${name}</strong></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right"><strong>${amount}</strong></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right">Due <strong>${bill.due_date ?? '—'}</strong></td></tr>`
   }).join('')
-  return `<p>${title} tracking is now available.</p><p>Please review the current utility bills, due dates, and payment status on the <a href="${dashboardUrl()}">Utility Dashboard</a>.</p>${rows ? `<ul>${rows}</ul>` : '<p>No bills have been registered yet.</p>'}<p>Updates to individual bills will be posted in this email thread.</p>`
+  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:680px;margin:0 auto;line-height:1.5"><h2 style="text-align:center;margin:0 0 18px;color:#111827">${title}</h2><p style="text-align:center">Utility bill tracking is now available.</p><p style="text-align:center">Please review current bills, due dates, and payment status below.</p>${rows ? `<table style="width:100%;border-collapse:collapse;margin:22px 0"><thead><tr style="background:#f3f4f6"><th style="padding:10px 12px;text-align:left">Utility</th><th style="padding:10px 12px;text-align:right">Amount</th><th style="padding:10px 12px;text-align:right">Due date</th></tr></thead><tbody>${rows}</tbody></table>` : '<p style="text-align:center">No bills have been registered yet.</p>'}<p style="text-align:center;margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Bills</a></p><p style="text-align:center;color:#4b5563">Updates to individual bills will be posted in this email thread.</p></div>`
 }
 
 export async function ensureMonthlyThread(client: SupabaseClient, year: number, month: number) {
@@ -124,7 +124,7 @@ export async function notifyBill(client: SupabaseClient, billId: string, version
     const draft = await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(thread.root_message_id)}/createReplyAll`, { method: 'POST', body: JSON.stringify({}) }) as GraphMessage
     const label = bill.provider ?? bill.utility_name
     const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
-    await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: `<p><strong>${label}</strong> bill has been updated.</p><p>Amount: ${amount}<br>Due: ${bill.due_date ?? '—'}</p><p>Please review it on the <a href="${dashboardUrl()}">Utility Dashboard</a>.</p>` } }) })
+    await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:680px;margin:0 auto;text-align:center;line-height:1.5"><h2 style="margin:0 0 18px;color:#111827"><strong>${label}</strong> bill updated</h2><p>Amount: <strong>${amount}</strong><br>Due: <strong>${bill.due_date ?? '—'}</strong></p><p style="margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Bills</a></p></div>` } }) })
     await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}/send`, { method: 'POST' })
     await client.from('utility_email_notifications').update({ status: 'sent', graph_message_id: draft.id, sent_at: new Date().toISOString(), error_message: null }).eq('id', notification.id)
     return { status: 'sent' }
