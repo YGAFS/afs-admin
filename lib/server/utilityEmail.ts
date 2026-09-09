@@ -82,7 +82,10 @@ export async function notifyBill(client: SupabaseClient, billId: string, version
   const notification = queued.data
   try {
     await client.from('utility_email_notifications').update({ status: 'sending', attempt_count: 1 }).eq('id', notification.id)
-    const draft = await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(thread.root_message_id)}/createReplyAll`, { method: 'POST', body: JSON.stringify({}) }) as GraphMessage
+    const latest = await client.from('utility_email_notifications').select('graph_message_id').eq('thread_id', thread.id).eq('status', 'sent').not('graph_message_id', 'is', null).order('sent_at', { ascending: false }).limit(1).maybeSingle()
+    if (latest.error) throw latest.error
+    const replyTo = latest.data?.graph_message_id ?? thread.root_message_id
+    const draft = await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(replyTo)}/createReplyAll`, { method: 'POST', body: JSON.stringify({}) }) as GraphMessage
     const label = bill.provider ?? bill.utility_name
     const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
     await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: `<p><strong>${label}</strong> bill has been updated.</p><p>Amount: ${amount}<br>Due: ${bill.due_date ?? '—'}</p><p>Please review it on the <a href="${dashboardUrl()}">Utility Dashboard</a>.</p>` } }) })

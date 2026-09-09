@@ -26,6 +26,7 @@ type StatusFilter = 'all' | 'open' | 'overdue' | 'overdue_partial' | 'due_today'
 type BillNotification = { id: string; billId: string; kind: 'new' | 'updated'; version: string; createdAt: string; read: boolean }
 type UtilityEmailThread = { id: string; billing_month: string; sender_email: string; subject: string; created_at: string }
 type UtilityEmailFailure = { id: string; bill_id: string; error_message: string | null; attempt_count: number; created_at: string }
+type UtilityEmailNotification = { id: string; bill_id: string; bill_name: string; status: 'queued' | 'sending' | 'sent' | 'failed'; created_at: string; sent_at: string | null }
 
 interface PaymentMethod {
   id: string
@@ -323,6 +324,7 @@ export default function UtilityPage() {
   const [notifications, setNotifications] = useState<BillNotification[]>([])
   const [emailThread, setEmailThread] = useState<UtilityEmailThread | null>(null)
   const [emailFailures, setEmailFailures] = useState<UtilityEmailFailure[]>([])
+  const [emailNotifications, setEmailNotifications] = useState<UtilityEmailNotification[]>([])
   const [emailBusy, setEmailBusy] = useState(false)
   const [emailMessage, setEmailMessage] = useState<string | null>(null)
 
@@ -386,8 +388,8 @@ export default function UtilityPage() {
     if (!session?.access_token) return
     const response = await fetch('/api/utility/email-thread', { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' })
     if (!response.ok) return
-    const data = await response.json() as { thread: UtilityEmailThread | null; failed: UtilityEmailFailure[] }
-    setEmailThread(data.thread); setEmailFailures(data.failed ?? [])
+    const data = await response.json() as { thread: UtilityEmailThread | null; failed: UtilityEmailFailure[]; notifications?: UtilityEmailNotification[] }
+    setEmailThread(data.thread); setEmailFailures(data.failed ?? []); setEmailNotifications(data.notifications ?? [])
   }, [])
 
   async function callEmailThread(body: { action: 'root' | 'notify' | 'retry'; billId?: string; version?: string }) {
@@ -401,6 +403,8 @@ export default function UtilityPage() {
   }
 
   async function notifyTeam(billId: string) {
+    const prior = emailNotifications.find(notification => notification.bill_id === billId && notification.status === 'sent')
+    if (prior && !window.confirm(`${prior.bill_name} 빌은 이미 이달 스레드로 발송되었습니다.\n\n같은 빌을 다시 발송할까요?\n가장 최근 이메일에 이어 붙습니다.`)) return
     setEmailBusy(true); setEmailMessage(null)
     try { await callEmailThread({ action: 'notify', billId }); setEmailMessage('Team notification sent.') }
     catch (error) { setEmailMessage(error instanceof Error ? error.message : 'Team notification failed.') }
@@ -817,8 +821,25 @@ export default function UtilityPage() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-white px-4 py-2.5 text-xs">
         <div className="text-ink-muted">
           <span className="font-semibold text-ink">Monthly Email Thread:</span>{' '}
-          {emailThread ? <span className="text-signal-pos">Active · {emailThread.subject}</span> : <span className="text-ink-faint">Not created yet</span>}
+          {emailThread ? <span className="text-signal-pos">최초 이메일 발송 완료 · {emailThread.subject}</span> : <span className="text-ink-faint">Not created yet</span>}
           {emailMessage && <span className="ml-3 text-ink-muted">{emailMessage}</span>}
+          {emailThread && (
+            <details className="mt-2 text-ink-muted">
+              <summary className="cursor-pointer select-none hover:text-ink">
+                이메일 스레드 발송 현황: {emailNotifications.filter(notification => notification.status === 'sent').length + 1}개
+              </summary>
+              <div className="mt-2 rounded-lg bg-pill px-3 py-2">
+                <div className="font-medium text-ink">최초 월간 알림</div>
+                {emailNotifications.filter(notification => notification.status === 'sent').length > 0 ? (
+                  <ul className="mt-1 list-disc pl-4">
+                    {emailNotifications.filter(notification => notification.status === 'sent').map(notification => (
+                      <li key={notification.id}>{notification.bill_name}</li>
+                    ))}
+                  </ul>
+                ) : <div className="mt-1 text-ink-faint">추가 빌 알림 없음</div>}
+              </div>
+            </details>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {emailFailures.slice(0, 1).map(failure => (
