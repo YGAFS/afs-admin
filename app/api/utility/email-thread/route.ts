@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const now = new Date(); const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
-  const monthlyBills = await auth.db.from('utility_bills').select('id,provider,utility_name,created_at').gte('created_at', start.toISOString()).lt('created_at', end.toISOString()).order('created_at', { ascending: false })
+  const monthlyBills = await auth.db.from('utility_bills').select('id,provider,utility_name,account_number,company_id,location_id,created_at,utility_locations(name,city)').gte('created_at', start.toISOString()).lt('created_at', end.toISOString()).order('created_at', { ascending: false })
   const thread = await auth.db.from('utility_email_threads').select('id,billing_month,sender_email,subject,created_at').eq('billing_month', month).order('created_at', { ascending: false }).limit(1).maybeSingle()
   if (thread.error) return NextResponse.json({ error: thread.error.message }, { status: 500 })
   if (!thread.data) return NextResponse.json({ thread: null, failed: [], notifications: [], bills: monthlyBills.data ?? [] })

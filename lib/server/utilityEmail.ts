@@ -2,7 +2,8 @@ import { createClient, type SupabaseClient, type User } from '@supabase/supabase
 
 type GraphMessage = { id: string; conversationId?: string | null }
 type GraphMessageList = { value?: GraphMessage[] }
-type Bill = { id: string; provider: string | null; utility_name: string; amount: number | null; currency: string; due_date: string | null; billing_month: number | null; billing_year: number | null; updated_at?: string | null }
+type LocationRef = { name?: string | null; city?: string | null }
+type Bill = { id: string; provider: string | null; utility_name: string; amount: number | null; currency: string; due_date: string | null; billing_month: number | null; billing_year: number | null; account_number?: string | null; company_id?: string | null; onedrive_file_url?: string | null; utility_locations?: LocationRef | LocationRef[] | null; updated_at?: string | null }
 
 function db() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -54,6 +55,11 @@ async function graph(path: string, init: RequestInit = {}) {
 function monthDate(year: number, month: number) { return `${year}-${String(month).padStart(2, '0')}-01` }
 function subject(year: number, month: number) { return `[Utility Bills] ${new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` }
 function dashboardUrl() { return 'https://hr.afstransco.com/utilities/bills' }
+function escapeHtml(value: unknown) {
+  return String(value ?? '—').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] ?? char))
+}
+function companyLabel(companyId: string | null | undefined) { return ({ afs: 'AFS Transco', tnt: 'TNT Express Lines', zfs: 'ZFS Trans Co' }[companyId ?? ''] ?? companyId ?? '—') }
+function locationLabel(location: Bill['utility_locations']) { const value = Array.isArray(location) ? location[0] : location; return value?.name ?? value?.city ?? '—' }
 function monthRange(year: number, month: number) {
   const start = new Date(Date.UTC(year, month - 1, 1))
   const end = new Date(Date.UTC(year, month, 1))
@@ -64,14 +70,15 @@ async function monthlyBillBody(client: SupabaseClient, year: number, month: numb
   // Email months are registration months. billing_month remains the bill's
   // issue/statement month and is used by the dashboard, not notification routing.
   const range = monthRange(year, month)
-  const bills = await client.from('utility_bills').select('provider,utility_name,amount,currency,due_date').gte('created_at', range.start).lt('created_at', range.end).order('provider')
+  const bills = await client.from('utility_bills').select('provider,utility_name,amount,currency,due_date,account_number,company_id,onedrive_file_url,utility_locations(name,city)').gte('created_at', range.start).lt('created_at', range.end).order('provider')
   if (bills.error) throw bills.error
   const rows = (bills.data ?? []).map(bill => {
     const name = bill.provider ?? bill.utility_name
     const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
-    return `<tr><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb"><strong>${name}</strong></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right"><strong>${amount}</strong></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right">Due <strong>${bill.due_date ?? '—'}</strong></td></tr>`
+    const download = bill.onedrive_file_url ? `<a href="${escapeHtml(bill.onedrive_file_url)}" style="color:#2563eb;font-weight:bold">Download</a>` : '—'
+    return `<tr><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb"><strong>${escapeHtml(name)}</strong><br><span style="font-size:12px;color:#6b7280">${escapeHtml(companyLabel(bill.company_id))} · ${escapeHtml(locationLabel(bill.utility_locations))} · Account ${escapeHtml(bill.account_number)}</span></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right"><strong>${escapeHtml(amount)}</strong></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right">Due <strong>${escapeHtml(bill.due_date)}</strong></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${download}</td></tr>`
   }).join('')
-  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:680px;margin:0 auto;line-height:1.5"><h2 style="text-align:center;margin:0 0 18px;color:#111827">${title}</h2><p style="text-align:center">Utility bill tracking is now available.</p><p style="text-align:center">Please review current bills, due dates, and payment status below.</p>${rows ? `<table style="width:100%;border-collapse:collapse;margin:22px 0"><thead><tr style="background:#f3f4f6"><th style="padding:10px 12px;text-align:left">Utility</th><th style="padding:10px 12px;text-align:right">Amount</th><th style="padding:10px 12px;text-align:right">Due date</th></tr></thead><tbody>${rows}</tbody></table>` : '<p style="text-align:center">No bills have been registered yet.</p>'}<p style="text-align:center;margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Bills</a></p><p style="text-align:center;color:#4b5563">Updates to individual bills will be posted in this email thread.</p></div>`
+  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:760px;margin:0 auto;line-height:1.5"><h2 style="text-align:center;margin:0 0 18px;color:#111827">${escapeHtml(title)}</h2><p style="text-align:center">Utility bill tracking is now available.</p><p style="text-align:center">Please review current bills, due dates, and payment status below.</p>${rows ? `<table style="width:100%;border-collapse:collapse;margin:22px 0"><thead><tr style="background:#f3f4f6"><th style="padding:10px 12px;text-align:left">Utility / account</th><th style="padding:10px 12px;text-align:right">Amount</th><th style="padding:10px 12px;text-align:right">Due date</th><th style="padding:10px 12px;text-align:right">File</th></tr></thead><tbody>${rows}</tbody></table>` : '<p style="text-align:center">No bills have been registered yet.</p>'}<p style="text-align:center;margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Dashboard</a></p><p style="text-align:center;color:#4b5563">Updates to individual bills will be posted in this email thread.</p></div>`
 }
 
 export async function ensureMonthlyThread(client: SupabaseClient, year: number, month: number) {
@@ -122,7 +129,7 @@ export async function resendMonthlyThread(client: SupabaseClient, year: number, 
 }
 
 export async function notifyBill(client: SupabaseClient, billId: string, version?: string) {
-  const { sender } = config(); const billResult = await client.from('utility_bills').select('id,provider,utility_name,amount,currency,due_date,billing_month,billing_year,updated_at').eq('id', billId).single()
+  const { sender } = config(); const billResult = await client.from('utility_bills').select('id,provider,utility_name,amount,currency,due_date,billing_month,billing_year,account_number,company_id,onedrive_file_url,utility_locations(name,city),updated_at').eq('id', billId).single()
   if (billResult.error || !billResult.data) throw new Error('Bill not found')
   const bill = billResult.data as Bill; const now = new Date(); const year = now.getUTCFullYear(); const month = now.getUTCMonth() + 1
   const thread = await ensureMonthlyThread(client, year, month)
@@ -137,7 +144,9 @@ export async function notifyBill(client: SupabaseClient, billId: string, version
     const draft = await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(thread.root_message_id)}/createReplyAll`, { method: 'POST', body: JSON.stringify({}) }) as GraphMessage
     const label = bill.provider ?? bill.utility_name
     const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
-    await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:680px;margin:0 auto;text-align:center;line-height:1.5"><h2 style="margin:0 0 18px;color:#111827"><strong>${label}</strong> bill updated</h2><p>Amount: <strong>${amount}</strong><br>Due: <strong>${bill.due_date ?? '—'}</strong></p><p style="margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Bills</a></p></div>` } }) })
+    const download = bill.onedrive_file_url ? `<p style="margin:18px 0"><a href="${escapeHtml(bill.onedrive_file_url)}" style="color:#2563eb;font-weight:bold">Download bill file</a></p>` : ''
+    const details = `<div style="margin:18px auto;text-align:left;max-width:560px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:14px 18px"><p style="margin:4px 0"><strong>Utility:</strong> ${escapeHtml(label)}</p><p style="margin:4px 0"><strong>Company:</strong> ${escapeHtml(companyLabel(bill.company_id))}</p><p style="margin:4px 0"><strong>Location:</strong> ${escapeHtml(locationLabel(bill.utility_locations))}</p><p style="margin:4px 0"><strong>Account:</strong> ${escapeHtml(bill.account_number)}</p><p style="margin:4px 0"><strong>Amount:</strong> ${escapeHtml(amount)}</p><p style="margin:4px 0"><strong>Due date:</strong> ${escapeHtml(bill.due_date)}</p></div>`
+    await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:680px;margin:0 auto;text-align:center;line-height:1.5"><h2 style="margin:0 0 18px;color:#111827"><strong>${escapeHtml(label)}</strong> bill updated</h2>${details}<p style="margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Dashboard</a></p>${download}</div>` } }) })
     await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}/send`, { method: 'POST' })
     await client.from('utility_email_notifications').update({ status: 'sent', graph_message_id: draft.id, sent_at: new Date().toISOString(), error_message: null }).eq('id', notification.id)
     return { status: 'sent' }
