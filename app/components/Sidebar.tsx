@@ -31,7 +31,7 @@ const NAV: NavItem[] = [
   { href: '/licenses', key: 'nav.licenses', icon: FileIcon },
   { href: '/assets', key: 'nav.assets', icon: FolderIcon },
   { href: '/supplies', key: 'nav.supplies', icon: CupIcon },
-  { href: '/admin', key: 'nav.admin', icon: PersonIcon },
+  { href: '/admin', key: 'nav.admin', icon: GearIcon },
 ]
 
 const UTILITY_NAV: UtilityNavItem[] = [
@@ -40,7 +40,7 @@ const UTILITY_NAV: UtilityNavItem[] = [
   { href: '/utilities/vendors', label: 'Vendors', icon: BuildingIcon },
   { href: '/utilities/calendar', label: 'Calendar', icon: CalendarIcon },
   { href: '/utilities/reports', label: 'Reports', icon: ChartIcon },
-  { href: '/admin', label: 'Admin', icon: PersonIcon },
+  { href: '/utilities/admin', label: 'Admin', icon: PersonIcon },
 ]
 
 function HomeIcon() {

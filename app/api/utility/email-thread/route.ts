@@ -9,16 +9,18 @@ export async function GET(req: NextRequest) {
   const auth = await requireUtilityUser(bearer(req)); if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   if (auth.user.email?.trim().toLowerCase() !== 'admin@afstransco.com') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const now = new Date(); const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const monthlyDate = new Date(`${month}T00:00:00Z`)
+  const monthlyBills = await auth.db.from('utility_bills').select('id,provider,utility_name').eq('billing_year', monthlyDate.getUTCFullYear()).eq('billing_month', monthlyDate.getUTCMonth() + 1).order('provider')
   const thread = await auth.db.from('utility_email_threads').select('id,billing_month,sender_email,subject,created_at').eq('billing_month', month).order('created_at', { ascending: false }).limit(1).maybeSingle()
   if (thread.error) return NextResponse.json({ error: thread.error.message }, { status: 500 })
-  if (!thread.data) return NextResponse.json({ thread: null, failed: [], notifications: [] })
+  if (!thread.data) return NextResponse.json({ thread: null, failed: [], notifications: [], bills: monthlyBills.data ?? [] })
   const notifications = await auth.db.from('utility_email_notifications').select('id,bill_id,status,error_message,attempt_count,created_at,sent_at,graph_message_id').eq('thread_id', thread.data.id).order('created_at', { ascending: false }).limit(100)
   if (notifications.error) return NextResponse.json({ error: notifications.error.message }, { status: 500 })
   const billIds = [...new Set((notifications.data ?? []).map(row => row.bill_id))]
   const bills = billIds.length ? await auth.db.from('utility_bills').select('id,provider,utility_name').in('id', billIds) : { data: [] }
   const names = new Map((bills.data ?? []).map(bill => [bill.id, bill.provider ?? bill.utility_name]))
   const enriched = (notifications.data ?? []).map(row => ({ ...row, bill_name: names.get(row.bill_id) ?? 'Unknown bill' }))
-  return NextResponse.json({ thread: thread.data, failed: enriched.filter(row => row.status === 'failed'), notifications: enriched })
+  return NextResponse.json({ thread: thread.data, failed: enriched.filter(row => row.status === 'failed'), notifications: enriched, bills: monthlyBills.data ?? [] })
 }
 
 export async function POST(req: NextRequest) {

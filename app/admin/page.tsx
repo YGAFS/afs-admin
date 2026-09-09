@@ -73,7 +73,6 @@ export default function AdminPage() {
         </div>
       )}
       {isAdminOwner && isSuperAdmin && <Link href="/admin/pto-policy" className="mt-6 block rounded-xl border border-line-soft bg-white p-5 text-sm font-semibold text-ink shadow-sm hover:bg-pill">Manage company PTO policies <span className="text-ink-muted">→</span></Link>}
-      {isAdminOwner && isSuperAdmin && <UtilityEmailAdminPanel />}
     </div>
   )
 }
