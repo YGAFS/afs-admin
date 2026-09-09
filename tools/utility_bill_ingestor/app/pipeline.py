@@ -402,13 +402,22 @@ class Pipeline:
         was already successfully registered and archived above."""
         if self.settings.dry_run or not self.graph.enabled:
             return
-        try:
-            link = self.graph.create_sharing_link(archived_path)
-        except Exception as exc:  # noqa: BLE001 - deliberately broad, see docstring
-            log.warning("unexpected error creating OneDrive link for %s: %s", archived_path, exc)
-            return
+        link = None
+        for attempt in range(1, 4):
+            try:
+                link = self.graph.create_sharing_link(archived_path)
+            except Exception as exc:  # noqa: BLE001 - deliberately broad, see docstring
+                log.warning("unexpected error creating OneDrive link for %s (attempt %d/3): %s", archived_path, attempt, exc)
+            if link:
+                break
+            if attempt < 3:
+                # OneDrive can take a few seconds to expose a newly archived
+                # file through Graph even though the local sync move is done.
+                time.sleep(attempt * 2)
         if link:
             self.repo.update_bill(bill_id, {"onedrive_file_url": link})
+        else:
+            log.warning("OneDrive link unavailable after 3 attempts for %s; backfill can retry later", archived_path)
 
     def _archive_dir(self, classification) -> Path:
         company_upper = (classification.company_id or "UNKNOWN").upper()
