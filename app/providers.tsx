@@ -146,6 +146,19 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         setAllowedSections(sections === null ? [...ROOT_SECTION_KEYS] : sections)
         return
       }
+      // Utility users are authorized by the utility-specific role table. They
+      // still need the top-level section grant here so the shared layout can
+      // render /utilities instead of attempting to navigate to /undefined.
+      const { data: utilityRole, error: utilityRoleError } = await sb
+        .from('utility_user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .maybeSingle()
+      if (utilityRoleError) return
+      if (utilityRole?.role === 'admin' || utilityRole?.role === 'ap') {
+        setAllowedSections(['utilities'])
+        return
+      }
       // Explicit legacy ADMIN_EMAILS compatibility for the administrator with no row.
       if (ADMIN_EMAILS.includes(normalizedEmail)) {
         setIsSuperAdmin(true)

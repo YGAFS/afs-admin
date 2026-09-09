@@ -19,7 +19,9 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
       return
     }
     if (!loading && user && !isLogin && !isPortal && allowedSections && !allowedSections.includes(section)) {
-      router.replace(`/${allowedSections[0]}`)
+      const fallbackSection = allowedSections[0]
+      if (fallbackSection) router.replace(`/${fallbackSection}`)
+      else router.replace('/login')
     }
   }, [user, loading, isLogin, allowedSections, section, router])
 
