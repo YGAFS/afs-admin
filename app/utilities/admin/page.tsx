@@ -41,14 +41,18 @@ function UtilityEmailPanel() {
     const session = (await supabase.auth.getSession()).data.session
     if (!session?.access_token) return
     const query = selectedGroup ? `?recipientGroupId=${encodeURIComponent(selectedGroup)}` : ''
-    const response = await fetch(`/api/utility/email-thread${query}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' })
-    const responseText = await response.text()
-    if (!response.ok) { setMessage(`Unable to load email status (${response.status}).`); return }
-    let data: { thread: Thread | null; notifications?: Notification[]; bills?: Bill[]; recipientGroups?: RecipientGroup[] }
-    try { data = JSON.parse(responseText) as typeof data } catch { setMessage('Email status could not be read. Please refresh once.'); return }
-    const groups = data.recipientGroups ?? []
-    setThread(data.thread); setNotifications(data.notifications ?? []); setBills(data.bills ?? []); setRecipientGroups(groups)
-    setSelectedGroup(current => groups.some(group => group.id === current) ? current : (groups[0]?.id ?? ''))
+    try {
+      const response = await fetch(`/api/utility/email-thread${query}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' })
+      const responseText = await response.text()
+      if (!response.ok) { setMessage(`Unable to load email status (${response.status}).`); return }
+      let data: { thread: Thread | null; notifications?: Notification[]; bills?: Bill[]; recipientGroups?: RecipientGroup[] }
+      try { data = JSON.parse(responseText) as typeof data } catch { setMessage('Email status could not be read. Please refresh once.'); return }
+      const groups = data.recipientGroups ?? []
+      setThread(data.thread); setNotifications(data.notifications ?? []); setBills(data.bills ?? []); setRecipientGroups(groups)
+      setSelectedGroup(current => groups.some(group => group.id === current) ? current : (groups[0]?.id ?? ''))
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to load email status.')
+    }
   }
 
   useEffect(() => { load() }, [])
@@ -61,15 +65,21 @@ function UtilityEmailPanel() {
     if (!session?.access_token) { setMessage('Please sign in again.'); return }
     setBusy(true); setMessage('')
     const action = billId && prior ? 'retry' : billId ? 'notify' : 'root'
-    const response = await fetch('/api/utility/email-thread', {
-      method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, billId, force: forceRoot, recipientGroupId: selectedGroup || undefined, version: billId ? `manual-resend:${Date.now()}` : undefined }),
-    })
-    const text = await response.text()
-    let data: { error?: string } = {}
-    try { data = text ? JSON.parse(text) as { error?: string } : {} } catch { data = { error: text } }
-    setMessage(response.ok ? (action === 'root' ? (forceRoot ? '전체 Utility Bill 메일을 새 메일로 재발송했습니다.' : '이번 달 최초 이메일이 발송되었습니다.') : '재발송되었습니다.') : (data.error ?? `Request failed (${response.status})`))
-    await load(); setBusy(false)
+    try {
+      const response = await fetch('/api/utility/email-thread', {
+        method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, billId, force: forceRoot, recipientGroupId: selectedGroup || undefined, version: billId ? `manual-resend:${Date.now()}` : undefined }),
+      })
+      const text = await response.text()
+      let data: { error?: string } = {}
+      try { data = text ? JSON.parse(text) as { error?: string } : {} } catch { data = { error: text } }
+      setMessage(response.ok ? (action === 'root' ? (forceRoot ? '전체 Utility Bill 메일을 새 메일로 재발송했습니다.' : '이번 달 최초 이메일이 발송되었습니다.') : '재발송되었습니다.') : (data.error ?? `Request failed (${response.status})`))
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Email operation failed.')
+    } finally {
+      await load()
+      setBusy(false)
+    }
   }
 
   const sent = notifications.filter(item => item.status === 'sent')

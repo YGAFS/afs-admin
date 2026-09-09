@@ -75,7 +75,11 @@ async function graph(path: string, init: RequestInit = {}) {
   const token = await graphToken()
   const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'IdType="ImmutableId"', ...(init.headers ?? {}) }, cache: 'no-store' })
   if (!res.ok) throw new Error(`Graph ${res.status}: ${await res.text()}`)
-  return res.status === 204 ? null : res.json()
+  if (res.status === 204) return null
+  const responseText = await res.text()
+  if (!responseText.trim()) return {}
+  try { return JSON.parse(responseText) }
+  catch { throw new Error(`Graph ${res.status}: invalid JSON response`) }
 }
 
 function monthDate(year: number, month: number) { return `${year}-${String(month).padStart(2, '0')}-01` }
@@ -117,21 +121,25 @@ export async function ensureMonthlyThread(client: SupabaseClient, year: number, 
   const registered = await client.from('utility_bills').select('id', { count: 'exact', head: true }).gte('created_at', range.start).lt('created_at', range.end)
   if (registered.error) throw registered.error
   if (!registered.count) return null
-  // Recover a root that was sent before the DB insert completed (for example
-  // after a transient function error). This prevents a second monthly root.
-  try {
-    const filter = encodeURIComponent(`subject eq '${title.replace(/'/g, "''")}'`)
-    const sent = await graph(`/users/${encodeURIComponent(sender)}/mailFolders/sentitems/messages?$filter=${filter}&$orderby=sentDateTime desc&$top=1&$select=id,conversationId,subject`) as GraphMessageList
-    const prior = sent.value?.[0]
-    if (prior?.id) {
-      const recovered = await client.from('utility_email_threads').insert({ billing_month: billingMonth, sender_email: sender, recipient_group_id: selectedGroupId, root_message_id: prior.id, conversation_id: prior.conversationId ?? null, subject: title, recipients }).select('*').single()
-      if (!recovered.error) return recovered.data
+  // Only the legacy default anchor may be recovered by subject. Searching by
+  // subject alone cannot distinguish TEST GDE 1 from TEST GDE 2, so never use
+  // that recovery path for a configured recipient group.
+  if (selectedGroupId === 'default') {
+    try {
+      const filter = encodeURIComponent(`subject eq '${title.replace(/'/g, "''")}'`)
+      const sent = await graph(`/users/${encodeURIComponent(sender)}/mailFolders/sentitems/messages?$filter=${filter}&$top=10&$select=id,conversationId,subject`) as GraphMessageList
+      const prior = sent.value?.[0]
+      if (prior?.id) {
+        const recovered = await client.from('utility_email_threads').insert({ billing_month: billingMonth, sender_email: sender, recipient_group_id: selectedGroupId, root_message_id: prior.id, conversation_id: prior.conversationId ?? null, subject: title, recipients }).select('*').single()
+        if (!recovered.error) return recovered.data
+      }
+    } catch (error) {
+      console.warn('[utility-email-thread] root recovery lookup failed', error)
     }
-  } catch (error) {
-    console.warn('[utility-email-thread] root recovery lookup failed', error)
   }
   const content = await monthlyBillBody(client, year, month, title)
   const created = await graph(`/users/${encodeURIComponent(sender)}/messages`, { method: 'POST', body: JSON.stringify({ subject: title, body: { contentType: 'HTML', content }, toRecipients: recipients.map(address => ({ emailAddress: { address } })) }) }) as GraphMessage
+  if (!created?.id) throw new Error('Graph did not return a draft message id')
   const inserted = await client.from('utility_email_threads').insert({ billing_month: billingMonth, sender_email: sender, recipient_group_id: selectedGroupId, root_message_id: created.id, conversation_id: created.conversationId ?? null, subject: title, recipients }).select('*').single()
   if (inserted.error) {
     const raced = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).eq('recipient_group_id', selectedGroupId).maybeSingle()
