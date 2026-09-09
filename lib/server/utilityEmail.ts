@@ -54,9 +54,17 @@ async function graph(path: string, init: RequestInit = {}) {
 function monthDate(year: number, month: number) { return `${year}-${String(month).padStart(2, '0')}-01` }
 function subject(year: number, month: number) { return `[Utility Bills] ${new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` }
 function dashboardUrl() { return 'https://hr.afstransco.com/utilities/bills' }
+function monthRange(year: number, month: number) {
+  const start = new Date(Date.UTC(year, month - 1, 1))
+  const end = new Date(Date.UTC(year, month, 1))
+  return { start: start.toISOString(), end: end.toISOString() }
+}
 
 async function monthlyBillBody(client: SupabaseClient, year: number, month: number, title: string) {
-  const bills = await client.from('utility_bills').select('provider,utility_name,amount,currency,due_date').eq('billing_year', year).eq('billing_month', month).order('provider')
+  // Email months are registration months. billing_month remains the bill's
+  // issue/statement month and is used by the dashboard, not notification routing.
+  const range = monthRange(year, month)
+  const bills = await client.from('utility_bills').select('provider,utility_name,amount,currency,due_date').gte('created_at', range.start).lt('created_at', range.end).order('provider')
   if (bills.error) throw bills.error
   const rows = (bills.data ?? []).map(bill => {
     const name = bill.provider ?? bill.utility_name
@@ -71,6 +79,10 @@ export async function ensureMonthlyThread(client: SupabaseClient, year: number, 
   const existing = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
   if (existing.error) throw existing.error
   if (existing.data) return existing.data
+  const range = monthRange(year, month)
+  const registered = await client.from('utility_bills').select('id', { count: 'exact', head: true }).gte('created_at', range.start).lt('created_at', range.end)
+  if (registered.error) throw registered.error
+  if (!registered.count) return null
   // Recover a root that was sent before the DB insert completed (for example
   // after a transient function error). This prevents a second monthly root.
   try {
@@ -112,8 +124,9 @@ export async function resendMonthlyThread(client: SupabaseClient, year: number, 
 export async function notifyBill(client: SupabaseClient, billId: string, version?: string) {
   const { sender } = config(); const billResult = await client.from('utility_bills').select('id,provider,utility_name,amount,currency,due_date,billing_month,billing_year,updated_at').eq('id', billId).single()
   if (billResult.error || !billResult.data) throw new Error('Bill not found')
-  const bill = billResult.data as Bill; const now = new Date(); const year = bill.billing_year ?? now.getFullYear(); const month = bill.billing_month ?? now.getMonth() + 1
+  const bill = billResult.data as Bill; const now = new Date(); const year = now.getUTCFullYear(); const month = now.getUTCMonth() + 1
   const thread = await ensureMonthlyThread(client, year, month)
+  if (!thread) throw new Error('No bills are registered for this month')
   const key = `bill:${bill.id}:updated:${version ?? bill.updated_at ?? `${bill.amount}|${bill.due_date}`}`
   const queued = await client.from('utility_email_notifications').insert({ bill_id: bill.id, thread_id: thread.id, notification_type: 'bill_updated', idempotency_key: key, status: 'queued' }).select('*').single()
   if (queued.error && queued.error.code !== '23505') throw queued.error

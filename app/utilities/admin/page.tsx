@@ -9,7 +9,7 @@ import { useAuth } from '@/app/providers'
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder')
 type Thread = { id: string; subject: string; sender_email: string; created_at: string }
 type Notification = { id: string; bill_id: string; bill_name: string; status: 'queued' | 'sending' | 'sent' | 'failed'; created_at: string; sent_at: string | null }
-type Bill = { id: string; provider: string | null; utility_name: string }
+type Bill = { id: string; provider: string | null; utility_name: string; created_at?: string }
 
 export default function UtilityAdminPage() {
   const { user, loading } = useAuth()
@@ -59,7 +59,7 @@ function UtilityEmailPanel() {
     const text = await response.text()
     let data: { error?: string } = {}
     try { data = text ? JSON.parse(text) as { error?: string } : {} } catch { data = { error: text } }
-    setMessage(response.ok ? (action === 'root' ? '이번 달 최초 이메일이 발송되었습니다.' : '재발송되었습니다.') : (data.error ?? `Request failed (${response.status})`))
+    setMessage(response.ok ? (action === 'root' ? (forceRoot ? '전체 Utility Bill 메일을 새 메일로 재발송했습니다.' : '이번 달 최초 이메일이 발송되었습니다.') : '재발송되었습니다.') : (data.error ?? `Request failed (${response.status})`))
     await load(); setBusy(false)
   }
 
