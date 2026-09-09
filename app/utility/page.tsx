@@ -396,7 +396,11 @@ export default function UtilityPage() {
     const session = (await supabase.auth.getSession()).data.session
     if (!session?.access_token) throw new Error('Please sign in again before sending email')
     const response = await fetch('/api/utility/email-thread', { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    const data = await response.json().catch(() => ({})) as { error?: string }
+    const responseText = await response.text()
+    let data: { error?: string } = {}
+    if (responseText) {
+      try { data = JSON.parse(responseText) as { error?: string } } catch { data = { error: responseText } }
+    }
     if (!response.ok) throw new Error(data.error ?? 'Email operation failed')
     await refreshEmailThread()
     return data

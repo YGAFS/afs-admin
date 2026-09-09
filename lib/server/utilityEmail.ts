@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js'
 
 type GraphMessage = { id: string; conversationId?: string | null }
+type GraphMessageList = { value?: GraphMessage[] }
 type Bill = { id: string; provider: string | null; utility_name: string; amount: number | null; currency: string; due_date: string | null; billing_month: number | null; billing_year: number | null; updated_at?: string | null }
 
 function db() {
@@ -59,14 +60,27 @@ export async function ensureMonthlyThread(client: SupabaseClient, year: number, 
   const existing = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
   if (existing.error) throw existing.error
   if (existing.data) return existing.data
+  // Recover a root that was sent before the DB insert completed (for example
+  // after a transient function error). This prevents a second monthly root.
+  try {
+    const filter = encodeURIComponent(`subject eq '${title.replace(/'/g, "''")}'`)
+    const sent = await graph(`/users/${encodeURIComponent(sender)}/mailFolders/sentitems/messages?$filter=${filter}&$orderby=sentDateTime desc&$top=1&$select=id,conversationId,subject`) as GraphMessageList
+    const prior = sent.value?.[0]
+    if (prior?.id) {
+      const recovered = await client.from('utility_email_threads').insert({ billing_month: billingMonth, sender_email: sender, root_message_id: prior.id, conversation_id: prior.conversationId ?? null, subject: title, recipients }).select('*').single()
+      if (!recovered.error) return recovered.data
+    }
+  } catch (error) {
+    console.warn('[utility-email-thread] root recovery lookup failed', error)
+  }
   const created = await graph(`/users/${encodeURIComponent(sender)}/messages`, { method: 'POST', body: JSON.stringify({ subject: title, body: { contentType: 'HTML', content: `<p>${title} tracking is now available.</p><p>Please review bills, due dates, and payment status on the <a href="${dashboardUrl()}">Utility Dashboard</a>.</p><p>Updates to individual bills will be posted in this email thread.</p>` }, toRecipients: recipients.map(address => ({ emailAddress: { address } })) }) }) as GraphMessage
-  await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(created.id)}/send`, { method: 'POST' })
   const inserted = await client.from('utility_email_threads').insert({ billing_month: billingMonth, sender_email: sender, root_message_id: created.id, conversation_id: created.conversationId ?? null, subject: title, recipients }).select('*').single()
   if (inserted.error) {
     const raced = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
     if (raced.data) return raced.data
     throw inserted.error
   }
+  await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(created.id)}/send`, { method: 'POST' })
   return inserted.data
 }
 

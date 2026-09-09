@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
     if ((body?.action === 'notify' || body?.action === 'retry') && typeof body.billId === 'string') return NextResponse.json(await notifyBill(db, body.billId, body.version))
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {
+    console.error('[utility-email-thread]', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Email operation failed' }, { status: 500 })
   }
 }
