@@ -91,7 +91,7 @@ function UtilityEmailPanel() {
           {bills.map(bill => {
             const prior = notifications.find(item => item.bill_id === bill.id)
             return <div key={bill.id} className="flex items-center justify-between gap-3 px-3 py-3">
-              <div className="min-w-0"><div className="text-sm font-medium text-ink">{bill.provider ?? bill.utility_name}</div><div className="mt-0.5 text-xs text-ink-muted">{COMPANY_LABEL[bill.company_id ?? ''] ?? bill.company_id ?? '—'} · {Array.isArray(bill.utility_locations) ? (bill.utility_locations[0]?.name ?? bill.utility_locations[0]?.city) : (bill.utility_locations?.name ?? bill.utility_locations?.city) ?? 'No location'} · Account {bill.account_number ?? '—'}</div></div>
+              <div className="min-w-0"><div className="text-sm font-medium text-ink">{bill.provider ?? bill.utility_name}</div><div className="mt-0.5 text-xs text-ink-muted">{COMPANY_LABEL[bill.company_id ?? ''] ?? bill.company_id ?? '—'} · {Array.isArray(bill.utility_locations) ? (bill.utility_locations[0]?.name ?? bill.utility_locations[0]?.city) : (bill.utility_locations?.name ?? bill.utility_locations?.city) ?? 'No location'} · Account {bill.account_number?.trim() ? `****${bill.account_number.trim().slice(-4)}` : '—'}</div></div>
               <button onClick={() => send(bill.id)} disabled={busy || !thread} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">{prior ? 'Resend' : 'Send'}</button>
             </div>
           })}
