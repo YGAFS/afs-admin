@@ -94,7 +94,7 @@ grandbridge_tnt:
     - Grand Bridge
   accounts: []
 
-# TNT has two Rogers accounts at two different sites. Originally one shared
+# Rogers has multiple accounts at different sites. Originally one shared
 # utility_vendors row ("Rogers"), which merged both sites' bills/averages
 # into a single line in the Vendors UI -- split into two separate DB vendor
 # rows 2026-08-13 ("Cambridge Rogers" / "Biscayne Rogers", db_name below
@@ -161,7 +161,9 @@ rogers_tnt_pickering:
 rogers_tnt_biscayne:
   db_name: "Biscayne Rogers"
   archive_folder: "Rogers"
-  company_id: tnt
+  # Biscayne Rogers is now managed under AFS because the remaining/final bill
+  # is paid with the AFS card and the service is being closed.
+  company_id: afs
   site_code: BISCAYNE
   utility_name: "Internet (Wifi)"
   aliases:

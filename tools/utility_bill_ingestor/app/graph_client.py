@@ -130,6 +130,15 @@ class GraphClient:
             resp.raise_for_status()
         except requests.RequestException as exc:
             detail = getattr(exc.response, "text", "") if getattr(exc, "response", None) is not None else ""
+            # SharePoint shortcut folders can be visible locally before the
+            # same path is addressable through the drive's root:/ API. When
+            # that happens, search the drive for the exact filename and use
+            # the item's webUrl. This still gives the web app a real,
+            # downloadable OneDrive link without guessing a remote path.
+            if getattr(exc.response, "status_code", None) == 404:
+                fallback = self._search_file_web_url(local_path.name, headers)
+                if fallback:
+                    return fallback
             log.warning("Graph createLink failed for %s: %s %s", local_path, exc, detail)
             return None
 
@@ -140,3 +149,29 @@ class GraphClient:
             return None
 
         return link_url
+
+    def _search_file_web_url(self, filename: str, headers: dict[str, str]) -> str | None:
+        """Find an exact filename when the local sync path is not addressable.
+
+        Graph's search endpoint returns the item's canonical webUrl, which is
+        preferable to constructing a URL from a locally renamed SharePoint
+        shortcut path.
+        """
+        encoded_name = urllib.parse.quote(filename, safe="")
+        url = f"{GRAPH_BASE}/drives/{self.settings.graph_drive_id}/root/search(q='{encoded_name}')"
+        try:
+            resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+            resp.raise_for_status()
+            items = resp.json().get("value", [])
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            log.warning("Graph search failed for %s: %s", filename, exc)
+            return None
+
+        exact = [item for item in items if item.get("name") == filename and item.get("webUrl")]
+        if len(exact) == 1:
+            return exact[0]["webUrl"]
+        if len(exact) > 1:
+            log.warning("Graph search found multiple exact matches for %s; leaving link empty", filename)
+        else:
+            log.warning("Graph search found no exact match for %s", filename)
+        return None
