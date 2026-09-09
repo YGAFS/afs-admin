@@ -1849,6 +1849,25 @@ function monthYearLabel(b: Bill) {
   return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 }
 
+function BillFileIcon({ bill }: { bill: Bill }) {
+  if (!bill.onedrive_file_url) return null
+  return (
+    <a
+      href={bill.onedrive_file_url}
+      target="_blank"
+      rel="noreferrer"
+      onClick={e => e.stopPropagation()}
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+      title="Open or download the bill file"
+      aria-label={`Open file for ${monthYearLabel(bill)}`}
+    >
+      <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+        <path d="M10 2.75v9.5m0 0 3.25-3.25M10 12.25 6.75 9M4.25 15.5v1.25h11.5V15.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </a>
+  )
+}
+
 function BillExpandPanel({
   bill, role, onUpdateStatus, onCarryForward, onPartialPayment, onEdit,
   deleteConfirm, setDeleteConfirm, onDelete,
@@ -1915,12 +1934,8 @@ function BillExpandPanel({
       </div>
       <div className="col-span-2 flex items-center justify-between pt-1">
         <StatusDropdown bill={bill} onUpdate={onUpdateStatus} onCarryForward={onCarryForward} onPartialPayment={onPartialPayment} />
-        {(role === 'admin' || bill.onedrive_file_url) && (
+        {role === 'admin' && (
           <div className="flex items-center gap-2">
-            {bill.onedrive_file_url && (
-              <a href={bill.onedrive_file_url} target="_blank" rel="noreferrer"
-                className="text-xs text-blue-600 font-medium hover:underline transition-colors" title="Open or download the bill file">Download</a>
-            )}
             {role === 'admin' && <button onClick={() => onEdit(bill)} className="text-xs text-ink-faint hover:text-ink transition-colors" title="Edit">Edit</button>}
             {role === 'admin' && (deleteConfirm === bill.id ? (
               <span className="flex items-center gap-1 text-sm">
@@ -2196,6 +2211,7 @@ function DashboardTab({
                                       className="flex items-center justify-between gap-2 cursor-pointer"
                                     >
                                       <span className="flex items-center gap-2 min-w-0">
+                                        <BillFileIcon bill={b} />
                                         {v.hasMultipleAccounts && (
                                           <span className="text-xs text-ink-faint font-mono truncate">{b.account_number ?? '—'}</span>
                                         )}
