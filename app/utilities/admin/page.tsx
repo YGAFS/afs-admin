@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useAuth } from '@/app/providers'
 
@@ -36,27 +36,34 @@ function UtilityEmailPanel() {
   const [selectedGroup, setSelectedGroup] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const loadSequence = useRef(0)
 
-  async function load() {
+  async function load(groupId = selectedGroup) {
     const session = (await supabase.auth.getSession()).data.session
     if (!session?.access_token) return
-    const query = selectedGroup ? `?recipientGroupId=${encodeURIComponent(selectedGroup)}` : ''
+    const sequence = ++loadSequence.current
+    const query = groupId ? `?recipientGroupId=${encodeURIComponent(groupId)}` : ''
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 30000)
     try {
-      const response = await fetch(`/api/utility/email-thread${query}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' })
+      const response = await fetch(`/api/utility/email-thread${query}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store', signal: controller.signal })
       const responseText = await response.text()
       if (!response.ok) { setMessage(`Unable to load email status (${response.status}).`); return }
       let data: { thread: Thread | null; notifications?: Notification[]; bills?: Bill[]; recipientGroups?: RecipientGroup[] }
       try { data = JSON.parse(responseText) as typeof data } catch { setMessage('Email status could not be read. Please refresh once.'); return }
+      if (sequence !== loadSequence.current) return
       const groups = data.recipientGroups ?? []
       setThread(data.thread); setNotifications(data.notifications ?? []); setBills(data.bills ?? []); setRecipientGroups(groups)
       setSelectedGroup(current => groups.some(group => group.id === current) ? current : (groups[0]?.id ?? ''))
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to load email status.')
+      if (sequence === loadSequence.current) setMessage(error instanceof DOMException && error.name === 'AbortError' ? 'Email status request timed out. Please retry.' : error instanceof Error ? error.message : 'Unable to load email status.')
+    } finally {
+      window.clearTimeout(timeout)
     }
   }
 
-  useEffect(() => { load() }, [])
-  useEffect(() => { if (selectedGroup) load() }, [selectedGroup])
+  useEffect(() => { void load('') }, [])
+  useEffect(() => { if (selectedGroup) void load(selectedGroup) }, [selectedGroup])
 
   async function send(billId?: string, forceRoot = false) {
     const prior = billId ? notifications.find(item => item.bill_id === billId) : undefined
@@ -77,8 +84,8 @@ function UtilityEmailPanel() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Email operation failed.')
     } finally {
-      await load()
       setBusy(false)
+      void load(selectedGroup)
     }
   }
 

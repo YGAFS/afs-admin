@@ -66,14 +66,23 @@ function config(groupId?: string) {
 async function graphToken() {
   const tenant = process.env.MS_GRAPH_TENANT_ID!
   const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: process.env.MS_GRAPH_CLIENT_ID!, client_secret: process.env.MS_GRAPH_CLIENT_SECRET!, scope: 'https://graph.microsoft.com/.default' })
-  const res = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body, cache: 'no-store' })
+  const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 20000)
+  let res: Response
+  try { res = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body, cache: 'no-store', signal: controller.signal }) } finally { clearTimeout(timeout) }
   if (!res.ok) throw new Error(`Graph token error ${res.status}`)
-  return (await res.json()).access_token as string
+  const responseText = await res.text()
+  try {
+    const parsed = JSON.parse(responseText) as { access_token?: string }
+    if (!parsed.access_token) throw new Error('missing access token')
+    return parsed.access_token
+  } catch { throw new Error('Graph token response was invalid') }
 }
 
 async function graph(path: string, init: RequestInit = {}) {
   const token = await graphToken()
-  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'IdType="ImmutableId"', ...(init.headers ?? {}) }, cache: 'no-store' })
+  const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 20000)
+  let res: Response
+  try { res = await fetch(`https://graph.microsoft.com/v1.0${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Prefer: 'IdType="ImmutableId"', ...(init.headers ?? {}) }, cache: 'no-store', signal: controller.signal }) } finally { clearTimeout(timeout) }
   if (!res.ok) throw new Error(`Graph ${res.status}: ${await res.text()}`)
   if (res.status === 204) return null
   const responseText = await res.text()
@@ -154,9 +163,10 @@ export async function resendMonthlyThread(client: SupabaseClient, year: number, 
   const { sender, recipients, groupId: selectedGroupId } = config(groupId); const billingMonth = monthDate(year, month); const title = subject(year, month)
   const thread = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).eq('recipient_group_id', selectedGroupId).maybeSingle()
   if (thread.error) throw thread.error
-  if (!thread.data) return ensureMonthlyThread(client, year, month)
+  if (!thread.data) return ensureMonthlyThread(client, year, month, groupId)
   const content = await monthlyBillBody(client, year, month, title)
   const draft = await graph(`/users/${encodeURIComponent(sender)}/messages`, { method: 'POST', body: JSON.stringify({ subject: title, body: { contentType: 'HTML', content }, toRecipients: recipients.map((address: string) => ({ emailAddress: { address } })) }) }) as GraphMessage
+  if (!draft?.id) throw new Error('Graph did not return a resend draft message id')
   const updated = await client.from('utility_email_threads').update({ root_message_id: draft.id, conversation_id: draft.conversationId ?? null, subject: title, recipients }).eq('id', thread.data.id).select('*').single()
   if (updated.error) throw updated.error
   await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}/send`, { method: 'POST' })
