@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
   const monthlyBills = await auth.db.from('utility_bills').select('id,provider,utility_name,account_number,company_id,location_id,created_at,utility_locations(name,city)').gte('created_at', start.toISOString()).lt('created_at', end.toISOString()).order('created_at', { ascending: false })
-  const thread = await auth.db.from('utility_email_threads').select('id,billing_month,sender_email,subject,created_at').eq('billing_month', month).order('created_at', { ascending: false }).limit(1).maybeSingle()
+  const groupId = req.nextUrl.searchParams.get('recipientGroupId') ?? 'default'
+  const thread = await auth.db.from('utility_email_threads').select('id,billing_month,sender_email,recipient_group_id,subject,created_at').eq('billing_month', month).eq('recipient_group_id', groupId).order('created_at', { ascending: false }).limit(1).maybeSingle()
   if (thread.error) return NextResponse.json({ error: thread.error.message }, { status: 500 })
   if (!thread.data) return NextResponse.json({ thread: null, failed: [], notifications: [], bills: monthlyBills.data ?? [], recipientGroups: getUtilityEmailRecipientGroups() })
   const notifications = await auth.db.from('utility_email_notifications').select('id,bill_id,status,error_message,attempt_count,created_at,sent_at,graph_message_id').eq('thread_id', thread.data.id).order('created_at', { ascending: false }).limit(100)

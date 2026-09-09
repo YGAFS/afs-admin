@@ -109,8 +109,8 @@ async function monthlyBillBody(client: SupabaseClient, year: number, month: numb
 }
 
 export async function ensureMonthlyThread(client: SupabaseClient, year: number, month: number, groupId?: string) {
-  const { sender, recipients } = config(groupId); const billingMonth = monthDate(year, month); const title = subject(year, month)
-  const existing = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
+  const { sender, recipients, groupId: selectedGroupId } = config(groupId); const billingMonth = monthDate(year, month); const title = subject(year, month)
+  const existing = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).eq('recipient_group_id', selectedGroupId).maybeSingle()
   if (existing.error) throw existing.error
   if (existing.data) return existing.data
   const range = monthRange(year, month)
@@ -124,7 +124,7 @@ export async function ensureMonthlyThread(client: SupabaseClient, year: number, 
     const sent = await graph(`/users/${encodeURIComponent(sender)}/mailFolders/sentitems/messages?$filter=${filter}&$orderby=sentDateTime desc&$top=1&$select=id,conversationId,subject`) as GraphMessageList
     const prior = sent.value?.[0]
     if (prior?.id) {
-      const recovered = await client.from('utility_email_threads').insert({ billing_month: billingMonth, sender_email: sender, root_message_id: prior.id, conversation_id: prior.conversationId ?? null, subject: title, recipients }).select('*').single()
+      const recovered = await client.from('utility_email_threads').insert({ billing_month: billingMonth, sender_email: sender, recipient_group_id: selectedGroupId, root_message_id: prior.id, conversation_id: prior.conversationId ?? null, subject: title, recipients }).select('*').single()
       if (!recovered.error) return recovered.data
     }
   } catch (error) {
@@ -132,9 +132,9 @@ export async function ensureMonthlyThread(client: SupabaseClient, year: number, 
   }
   const content = await monthlyBillBody(client, year, month, title)
   const created = await graph(`/users/${encodeURIComponent(sender)}/messages`, { method: 'POST', body: JSON.stringify({ subject: title, body: { contentType: 'HTML', content }, toRecipients: recipients.map(address => ({ emailAddress: { address } })) }) }) as GraphMessage
-  const inserted = await client.from('utility_email_threads').insert({ billing_month: billingMonth, sender_email: sender, root_message_id: created.id, conversation_id: created.conversationId ?? null, subject: title, recipients }).select('*').single()
+  const inserted = await client.from('utility_email_threads').insert({ billing_month: billingMonth, sender_email: sender, recipient_group_id: selectedGroupId, root_message_id: created.id, conversation_id: created.conversationId ?? null, subject: title, recipients }).select('*').single()
   if (inserted.error) {
-    const raced = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
+    const raced = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).eq('recipient_group_id', selectedGroupId).maybeSingle()
     if (raced.data) return raced.data
     throw inserted.error
   }
@@ -143,8 +143,8 @@ export async function ensureMonthlyThread(client: SupabaseClient, year: number, 
 }
 
 export async function resendMonthlyThread(client: SupabaseClient, year: number, month: number, groupId?: string) {
-  const { sender, recipients } = config(groupId); const billingMonth = monthDate(year, month); const title = subject(year, month)
-  const thread = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).maybeSingle()
+  const { sender, recipients, groupId: selectedGroupId } = config(groupId); const billingMonth = monthDate(year, month); const title = subject(year, month)
+  const thread = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).eq('recipient_group_id', selectedGroupId).maybeSingle()
   if (thread.error) throw thread.error
   if (!thread.data) return ensureMonthlyThread(client, year, month)
   const content = await monthlyBillBody(client, year, month, title)

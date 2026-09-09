@@ -40,7 +40,8 @@ function UtilityEmailPanel() {
   async function load() {
     const session = (await supabase.auth.getSession()).data.session
     if (!session?.access_token) return
-    const response = await fetch('/api/utility/email-thread', { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' })
+    const query = selectedGroup ? `?recipientGroupId=${encodeURIComponent(selectedGroup)}` : ''
+    const response = await fetch(`/api/utility/email-thread${query}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' })
     const responseText = await response.text()
     if (!response.ok) { setMessage(`Unable to load email status (${response.status}).`); return }
     let data: { thread: Thread | null; notifications?: Notification[]; bills?: Bill[]; recipientGroups?: RecipientGroup[] }
@@ -51,6 +52,7 @@ function UtilityEmailPanel() {
   }
 
   useEffect(() => { load() }, [])
+  useEffect(() => { if (selectedGroup) load() }, [selectedGroup])
 
   async function send(billId?: string, forceRoot = false) {
     const prior = billId ? notifications.find(item => item.bill_id === billId) : undefined
