@@ -12,6 +12,7 @@ BRANCH INFORMATION
 COMMERCIAL, CA
 SERVICE ADDRESS FONTANA
 07/17/2026
+301056615
 PC Standard - Semi-Monthly - PC
 Standard
 $227.86
@@ -48,6 +49,7 @@ def test_zero_total_due_is_treated_as_already_paid():
     # passing $0.00 through would fail the balance-sum validation on every bill.
     assert result.total_due is None
     assert result.account_number == "39816689"
+    assert result.bill_number == "301056615"
     assert result.issue_date == date(2026, 7, 17)
 
 

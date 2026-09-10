@@ -20,6 +20,10 @@ class OrkinExtractor:
         service_raw = search(
             r"SERVICE ADDRESS .*?\n(\d{2}/\d{2}/\d{4})", text, re.DOTALL
         ).group(1)
+        # The service date is followed by Orkin's invoice number. Persisting
+        # that number is important because Orkin can issue multiple service
+        # bills for the same account in the same month at the same amount.
+        invoice_match = re.search(rf"{re.escape(service_raw)}\s+(\d+)", text)
 
         row = search(
             r"PC Standard - Semi-Monthly - PC\s+\S.*?"
@@ -49,6 +53,7 @@ class OrkinExtractor:
         return ParsedBill(
             vendor_name="Orkin",
             account_number=account,
+            bill_number=invoice_match.group(1) if invoice_match else None,
             issue_date=issue_date,
             due_date=due_date,
             billing_month=issue_date.month,
