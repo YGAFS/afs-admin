@@ -15,6 +15,7 @@ from supabase import Client, create_client
 
 from app.config import Settings
 from app.logging_config import get_logger
+from app.normalizer import normalize_account_number
 
 log = get_logger()
 
@@ -156,10 +157,17 @@ class Repository:
             .ilike("provider", provider)
             .eq("bill_number", bill_number)
         )
+        # Account numbers may be stored with provider-specific separators
+        # (e.g. 5-0781-2423 vs 507812423), so normalize after fetching the
+        # small bill-number candidate set instead of relying on exact SQL
+        # equality.
+        res = q.execute()
+        rows = [row for row in (res.data or []) if isinstance(row, dict)]
         if account_number:
-            q = q.eq("account_number", account_number)
-        res = q.limit(1).execute()
-        return _first_row(res.data)
+            wanted = normalize_account_number(account_number)
+            rows = [row for row in rows if row.get("account_number") and
+                    normalize_account_number(str(row["account_number"])) == wanted]
+        return rows[0] if rows else None
 
     def find_bill_by_period(
         self, provider: str, account_number: str | None, billing_year: int, billing_month: int
@@ -173,10 +181,13 @@ class Repository:
             .eq("billing_year", billing_year)
             .eq("billing_month", billing_month)
         )
+        res = q.execute()
+        rows = [row for row in (res.data or []) if isinstance(row, dict)]
         if account_number:
-            q = q.eq("account_number", account_number)
-        res = q.limit(1).execute()
-        return _first_row(res.data)
+            wanted = normalize_account_number(account_number)
+            rows = [row for row in rows if row.get("account_number") and
+                    normalize_account_number(str(row["account_number"])) == wanted]
+        return rows[0] if rows else None
 
     # ── Writes ────────────────────────────────────────────────────────
 

@@ -94,9 +94,13 @@ def to_iso(d: date) -> str:
 
 
 def normalize_account_number(raw: str) -> str:
-    """Collapse internal whitespace (accounts are sometimes printed with
-    spaces between digit groups, e.g. '604 0393 200'); keep dashes/letters."""
-    return re.sub(r"\s+", "", raw.strip())
+    """Normalize account numbers for matching across PDFs and the dashboard.
+
+    Providers commonly format the same account differently, for example
+    ``5-0781-2423`` versus ``507812423``. Keep letters intact, but ignore
+    whitespace and separators used to group the account number.
+    """
+    return re.sub(r"[\s-]+", "", raw.strip()).casefold()
 
 
 def search(pattern: str, text: str, flags: int = 0) -> re.Match[str]:

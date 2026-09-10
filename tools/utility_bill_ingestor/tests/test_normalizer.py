@@ -73,4 +73,5 @@ def test_parse_date_invalid():
 
 def test_normalize_account_number_strips_internal_spaces():
     assert normalize_account_number("604 0393 200") == "6040393200"
-    assert normalize_account_number(" 5-0781-2423 ") == "5-0781-2423"
+    assert normalize_account_number(" 5-0781-2423 ") == "507812423"
+    assert normalize_account_number("507812423") == "507812423"

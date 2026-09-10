@@ -98,6 +98,39 @@ function fmtDate(d: string | null) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function normalizeAccountNumber(value: string | null | undefined) {
+  return (value ?? '').replace(/[\s-]+/g, '').toLowerCase()
+}
+
+async function syncBillsForAccount({
+  companyId, provider, accountNumber, serviceAccountId, isAutoPay,
+}: {
+  companyId: Company
+  provider: string
+  accountNumber: string
+  serviceAccountId: string
+  isAutoPay: boolean
+}) {
+  const { data, error } = await supabase
+    .from('utility_bills')
+    .select('id, account_number')
+    .eq('company_id', companyId)
+    .ilike('provider', provider)
+  if (error) return error
+
+  const wanted = normalizeAccountNumber(accountNumber)
+  const ids = (data ?? [])
+    .filter(row => normalizeAccountNumber(row.account_number) === wanted)
+    .map(row => row.id as string)
+  if (!ids.length) return null
+
+  const { error: updateError } = await supabase
+    .from('utility_bills')
+    .update({ is_auto_pay: isAutoPay, service_account_id: serviceAccountId })
+    .in('id', ids)
+  return updateError
+}
+
 function sortLocations(arr: Location[]) {
   return [...arr].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
 }
@@ -206,7 +239,7 @@ function VendorDetailPanel({
     setSavingAcct(true)
     setAcctError(null)
     const accountNumber = acctForm.account_number.trim()
-    const { error } = await supabase.from('utility_service_accounts').insert({
+    const { data: createdAccount, error } = await supabase.from('utility_service_accounts').insert({
       vendor_id: vendor.id,
       account_number: accountNumber,
       service_label: acctForm.service_label || null,
@@ -214,7 +247,7 @@ function VendorDetailPanel({
       billing_portal_url: acctForm.billing_portal_url || null,
       notes: acctForm.notes || null,
       is_auto_pay: acctForm.is_auto_pay,
-    })
+    }).select('id').single()
     if (error) {
       setAcctError(error.message)
       setSavingAcct(false)
@@ -223,9 +256,11 @@ function VendorDetailPanel({
     // Same reasoning as toggleAccountAutoPay: a brand-new account can be
     // added with Auto-pay already checked, and existing bills for that
     // account number won't pick that up on their own.
-    if (acctForm.is_auto_pay) {
-      const { error: billsError } = await supabase.from('utility_bills').update({ is_auto_pay: true })
-        .eq('company_id', vendor.company_id).eq('account_number', accountNumber)
+    if (acctForm.is_auto_pay && createdAccount) {
+      const billsError = await syncBillsForAccount({
+        companyId: vendor.company_id, provider: vendor.name, accountNumber,
+        serviceAccountId: createdAccount.id, isAutoPay: true,
+      })
       if (billsError) setAcctError(billsError.message)
     }
     setSavingAcct(false)
@@ -253,8 +288,11 @@ function VendorDetailPanel({
     // every bill that already exists.
     const account = accounts.find(a => a.id === id)
     if (account) {
-      const { error: billsError } = await supabase.from('utility_bills').update({ is_auto_pay: value })
-        .eq('company_id', vendor.company_id).eq('account_number', account.account_number)
+      const billsError = await syncBillsForAccount({
+        companyId: vendor.company_id, provider: vendor.name,
+        accountNumber: account.account_number, serviceAccountId: account.id,
+        isAutoPay: value,
+      })
       if (billsError) setAcctError(billsError.message)
     }
     onRefresh()
@@ -781,9 +819,11 @@ function VendorModal({
     // Same reasoning as toggleAccountAutoPay: a brand-new account can be
     // added with Auto-pay already checked, and existing bills for that
     // account number won't pick that up on their own.
-    if (acctForm.is_auto_pay) {
-      const { error: billsError } = await supabase.from('utility_bills').update({ is_auto_pay: true })
-        .eq('company_id', form.company_id).eq('account_number', accountNumber)
+    if (acctForm.is_auto_pay && data) {
+      const billsError = await syncBillsForAccount({
+        companyId: form.company_id, provider: form.name, accountNumber,
+        serviceAccountId: data.id, isAutoPay: true,
+      })
       if (billsError) setAcctError(billsError.message)
     }
     setSavingAcct(false)
@@ -814,8 +854,11 @@ function VendorModal({
     // the Dashboard reads is_auto_pay off each bill row, not the account, so
     // existing bills need updating too or the badge silently stays stale.
     if (account) {
-      const { error: billsError } = await supabase.from('utility_bills').update({ is_auto_pay: value })
-        .eq('company_id', form.company_id).eq('account_number', account.account_number)
+      const billsError = await syncBillsForAccount({
+        companyId: form.company_id, provider: form.name,
+        accountNumber: account.account_number, serviceAccountId: account.id,
+        isAutoPay: value,
+      })
       if (billsError) setAcctError(billsError.message)
     }
   }
