@@ -371,6 +371,7 @@ export default function UtilityPage() {
       .from('utility_bill_notifications')
       .select('id,bill_id,kind,version,created_at,read_at')
       .eq('user_id', user.id)
+      .eq('kind', 'new')
       .order('created_at', { ascending: false })
     setNotifications((notificationRows ?? []).map(row => ({
       id: row.id,
