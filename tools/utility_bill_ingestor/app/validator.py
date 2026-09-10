@@ -46,6 +46,19 @@ def validate(
     if duplicate.exact_file_hash_match:
         return ValidationResult(status="duplicate", errors=errors, warnings=warnings)
 
+    # A matching provider/account/billing period with unchanged amount and due
+    # date is the same bill, even when the uploaded PDF has a different hash.
+    # Route the new file to review/duplicates instead of registering it again.
+    if duplicate.matched_bill_id and not duplicate.amount_differs and not duplicate.date_differs:
+        return ValidationResult(
+            status="duplicate",
+            errors=errors,
+            warnings=warnings + [
+                f"an existing bill (id={duplicate.matched_bill_id}) already matches "
+                f"this billing period and account — duplicate upload"
+            ],
+        )
+
     # ── Required fields ──────────────────────────────────────────────────
     if not classification.vendor_key or not classification.company_id:
         errors.append("vendor/company could not be determined")

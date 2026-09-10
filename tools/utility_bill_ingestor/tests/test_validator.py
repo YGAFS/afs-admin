@@ -116,6 +116,16 @@ def test_existing_bill_with_different_amount_never_silently_overwrites():
     assert any("already exists" in w for w in result.warnings)
 
 
+def test_existing_bill_with_same_amount_and_date_is_duplicate():
+    dup = DuplicateInfo(matched_bill_id="abc-123", matched_by="billing_period")
+    result = validate(
+        _clean_bill(), _classification(), dup,
+        is_generic=False, amount_tolerance=Decimal("0.05"),
+    )
+    assert result.status == "duplicate"
+    assert any("duplicate upload" in w for w in result.warnings)
+
+
 def test_negative_total_is_warning_not_hard_failure():
     bill = _clean_bill(total_due=Decimal("-50.00"), current_charges=Decimal("-50.00"))
     result = validate(
