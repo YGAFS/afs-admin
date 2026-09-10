@@ -42,6 +42,7 @@ function UtilityEmailPanel() {
   const [recipientGroups, setRecipientGroups] = useState<RecipientGroup[]>([])
   const [selectedGroup, setSelectedGroup] = useState('')
   const [selectedBillIds, setSelectedBillIds] = useState<string[]>([])
+  const [sendNote, setSendNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const loadSequence = useRef(0)
@@ -109,12 +110,15 @@ function UtilityEmailPanel() {
     try {
       const response = await fetch('/api/utility/email-thread', {
         method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'bulk', billIds: selected.map(bill => bill.id), recipientGroupId: selectedGroup || undefined, version: `manual-bulk:${Date.now()}` }),
+        body: JSON.stringify({ action: 'bulk', billIds: selected.map(bill => bill.id), recipientGroupId: selectedGroup || undefined, version: `manual-bulk:${Date.now()}`, message: sendNote.trim() || undefined }),
       })
       if (response.ok) sentCount = selected.length
       else failedCount = selected.length
       setMessage(`${sentCount} bill${sentCount === 1 ? '' : 's'} sent in one email${failedCount ? `, ${failedCount} failed.` : '.'}`)
-      setSelectedBillIds([])
+      if (response.ok) {
+        setSelectedBillIds([])
+        setSendNote('')
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Email operation failed.')
     } finally {
@@ -164,6 +168,10 @@ function UtilityEmailPanel() {
             {busy ? 'Sending…' : `Send selected${selectedBillIds.length ? ` (${selectedBillIds.length})` : ''}`}
           </button>
         </div>
+        <label className="mt-3 block text-xs font-semibold text-ink">
+          Message (optional)
+          <textarea value={sendNote} onChange={event => setSendNote(event.target.value)} disabled={busy || !thread} rows={3} maxLength={2000} placeholder="Add a note or announcement to include above the bill table…" className="mt-1 block w-full resize-y rounded-lg border border-line-soft bg-white px-3 py-2 text-sm font-normal text-ink outline-none focus:border-ink-muted disabled:bg-pill" />
+        </label>
         <div className="mt-3 divide-y divide-line-soft rounded-lg border border-line-soft">
           {bills.map(bill => {
             const prior = notifications.find(item => item.bill_id === bill.id)

@@ -177,7 +177,7 @@ export async function resendMonthlyThread(client: SupabaseClient, year: number, 
   return { ...updated.data, resent: true }
 }
 
-export async function notifyBills(client: SupabaseClient, billIds: string[], version?: string, groupId?: string) {
+export async function notifyBills(client: SupabaseClient, billIds: string[], version?: string, groupId?: string, message?: string) {
   const { sender } = config(groupId)
   const uniqueBillIds = Array.from(new Set(billIds))
   if (!uniqueBillIds.length) throw new Error('At least one bill is required')
@@ -196,7 +196,8 @@ export async function notifyBills(client: SupabaseClient, billIds: string[], ver
     const draft = await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(thread.root_message_id)}/createReplyAll`, { method: 'POST', body: JSON.stringify({}) }) as GraphMessage
     const details = billTable(bills)
     const heading = bills.length === 1 ? `${escapeHtml(bills[0].provider ?? bills[0].utility_name)} bill updated` : `${bills.length} utility bills updated`
-    await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:680px;margin:0 auto;text-align:center;line-height:1.5"><h2 style="margin:0 0 18px;color:#111827"><strong>${heading}</strong></h2>${details}<p style="margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Dashboard</a></p></div>` } }) })
+    const note = message?.trim() ? `<div style="margin:18px auto;text-align:left;max-width:560px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px"><p style="margin:0 0 5px"><strong>Message</strong></p><p style="margin:0;white-space:normal">${escapeHtml(message.trim()).replace(/\r?\n/g, '<br>')}</p></div>` : ''
+    await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:760px;margin:0 auto;line-height:1.5"><h2 style="text-align:center;margin:0 0 18px;color:#111827"><strong>${heading}</strong></h2>${note}${details}<p style="text-align:center;margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Dashboard</a></p></div>` } }) })
     await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}/send`, { method: 'POST' })
     await client.from('utility_email_notifications').update({ status: 'sent', graph_message_id: draft.id, sent_at: new Date().toISOString(), error_message: null }).in('id', notifications.map(item => item.id))
     return { status: 'sent', billCount: bills.length }
