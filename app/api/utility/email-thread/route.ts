@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ensureMonthlyThread, getUtilityEmailRecipientGroups, notifyBill, requireUtilityIngestor, requireUtilityUser, resendMonthlyThread } from '@/lib/server/utilityEmail'
+import { ensureMonthlyThread, getUtilityEmailRecipientGroups, notifyBill, notifyBills, requireUtilityIngestor, requireUtilityUser, resendMonthlyThread } from '@/lib/server/utilityEmail'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   if (!db) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   if (auth && auth.user.email?.trim().toLowerCase() !== 'admin@afstransco.com') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   if (!ingestor && auth?.role !== 'admin') return NextResponse.json({ error: 'Only utility admins can send team notifications' }, { status: 403 })
-  const body = await req.json().catch(() => null) as { action?: string; billId?: string; version?: string; force?: boolean; recipientGroupId?: string } | null
+  const body = await req.json().catch(() => null) as { action?: string; billId?: string; billIds?: string[]; version?: string; force?: boolean; recipientGroupId?: string } | null
   try {
     if (body?.action === 'root') {
       const now = new Date(); const year = now.getUTCFullYear(); const month = now.getUTCMonth() + 1
@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       if (!thread) return NextResponse.json({ error: 'No new bills were registered this month, so no email was sent.' }, { status: 409 })
       return NextResponse.json({ thread })
     }
+    if (body?.action === 'bulk' && Array.isArray(body.billIds) && body.billIds.every(id => typeof id === 'string')) return NextResponse.json(await notifyBills(db, body.billIds, body.version, body.recipientGroupId))
     if ((body?.action === 'notify' || body?.action === 'retry') && typeof body.billId === 'string') return NextResponse.json(await notifyBill(db, body.billId, body.version, body.recipientGroupId))
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {

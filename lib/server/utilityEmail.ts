@@ -173,30 +173,40 @@ export async function resendMonthlyThread(client: SupabaseClient, year: number, 
   return { ...updated.data, resent: true }
 }
 
-export async function notifyBill(client: SupabaseClient, billId: string, version?: string, groupId?: string) {
-  const { sender } = config(groupId); const billResult = await client.from('utility_bills').select('id,provider,utility_name,amount,currency,due_date,billing_month,billing_year,account_number,company_id,onedrive_file_url,utility_locations(name,city),updated_at').eq('id', billId).single()
-  if (billResult.error || !billResult.data) throw new Error('Bill not found')
-  const bill = billResult.data as Bill; const now = new Date(); const year = now.getUTCFullYear(); const month = now.getUTCMonth() + 1
+export async function notifyBills(client: SupabaseClient, billIds: string[], version?: string, groupId?: string) {
+  const { sender } = config(groupId)
+  const uniqueBillIds = [...new Set(billIds)]
+  if (!uniqueBillIds.length) throw new Error('At least one bill is required')
+  const billResult = await client.from('utility_bills').select('id,provider,utility_name,amount,currency,due_date,billing_month,billing_year,account_number,company_id,onedrive_file_url,utility_locations(name,city),updated_at').in('id', uniqueBillIds)
+  if (billResult.error || !billResult.data || billResult.data.length !== uniqueBillIds.length) throw new Error('One or more bills could not be found')
+  const bills = billResult.data as Bill[]
+  const now = new Date(); const year = now.getUTCFullYear(); const month = now.getUTCMonth() + 1
   const thread = await ensureMonthlyThread(client, year, month, groupId)
   if (!thread) throw new Error('No bills are registered for this month')
-  const key = `bill:${bill.id}:updated:${version ?? bill.updated_at ?? `${bill.amount}|${bill.due_date}`}`
-  const queued = await client.from('utility_email_notifications').insert({ bill_id: bill.id, thread_id: thread.id, notification_type: 'bill_updated', idempotency_key: key, status: 'queued' }).select('*').single()
-  if (queued.error && queued.error.code !== '23505') throw queued.error
-  if (queued.error?.code === '23505') return { status: 'sent', duplicate: true }
-  const notification = queued.data
+  const notificationRows = bills.map(bill => ({ bill_id: bill.id, thread_id: thread.id, notification_type: 'bill_updated', idempotency_key: `bill:${bill.id}:manual:${version ?? Date.now()}:${crypto.randomUUID()}`, status: 'queued' }))
+  const queued = await client.from('utility_email_notifications').insert(notificationRows).select('*')
+  if (queued.error || !queued.data?.length) throw queued.error ?? new Error('Unable to queue bill notifications')
+  const notifications = queued.data
   try {
-    await client.from('utility_email_notifications').update({ status: 'sending', attempt_count: 1 }).eq('id', notification.id)
+    await client.from('utility_email_notifications').update({ status: 'sending', attempt_count: 1 }).in('id', notifications.map(item => item.id))
     const draft = await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(thread.root_message_id)}/createReplyAll`, { method: 'POST', body: JSON.stringify({}) }) as GraphMessage
-    const label = bill.provider ?? bill.utility_name
-    const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
-    const download = bill.onedrive_file_url ? `<p style="margin:18px 0"><a href="${escapeHtml(bill.onedrive_file_url)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:bold;padding:10px 16px;border-radius:6px">Download bill file</a></p>` : ''
-    const details = `<div style="margin:18px auto;text-align:left;max-width:560px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:14px 18px"><p style="margin:4px 0"><strong>Utility:</strong> ${escapeHtml(label)}</p><p style="margin:4px 0"><strong>Company:</strong> ${escapeHtml(companyLabel(bill.company_id))}</p><p style="margin:4px 0"><strong>Location:</strong> ${escapeHtml(locationLabel(bill.utility_locations))}</p><p style="margin:4px 0"><strong>Account:</strong> ${escapeHtml(accountLabel(bill.account_number))}</p><p style="margin:4px 0"><strong>Amount:</strong> ${escapeHtml(amount)}</p><p style="margin:4px 0"><strong>Due date:</strong> ${escapeHtml(bill.due_date)}</p></div>`
-    await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:680px;margin:0 auto;text-align:center;line-height:1.5"><h2 style="margin:0 0 18px;color:#111827"><strong>${escapeHtml(label)}</strong> bill updated</h2>${details}<p style="margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Dashboard</a></p>${download}</div>` } }) })
+    const details = bills.map(bill => {
+      const label = bill.provider ?? bill.utility_name
+      const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
+      const download = bill.onedrive_file_url ? `<p style="margin:14px 0 4px"><a href="${escapeHtml(bill.onedrive_file_url)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:bold;padding:8px 12px;border-radius:6px">Download bill file</a></p>` : ''
+      return `<div style="margin:14px auto;text-align:left;max-width:560px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:14px 18px"><p style="margin:4px 0"><strong>Utility:</strong> ${escapeHtml(label)}</p><p style="margin:4px 0"><strong>Company:</strong> ${escapeHtml(companyLabel(bill.company_id))}</p><p style="margin:4px 0"><strong>Location:</strong> ${escapeHtml(locationLabel(bill.utility_locations))}</p><p style="margin:4px 0"><strong>Account:</strong> ${escapeHtml(accountLabel(bill.account_number))}</p><p style="margin:4px 0"><strong>Amount:</strong> ${escapeHtml(amount)}</p><p style="margin:4px 0"><strong>Due date:</strong> ${escapeHtml(bill.due_date)}</p>${download}</div>`
+    }).join('')
+    const heading = bills.length === 1 ? `${escapeHtml(bills[0].provider ?? bills[0].utility_name)} bill updated` : `${bills.length} utility bills updated`
+    await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:680px;margin:0 auto;text-align:center;line-height:1.5"><h2 style="margin:0 0 18px;color:#111827"><strong>${heading}</strong></h2>${details}<p style="margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Dashboard</a></p></div>` } }) })
     await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}/send`, { method: 'POST' })
-    await client.from('utility_email_notifications').update({ status: 'sent', graph_message_id: draft.id, sent_at: new Date().toISOString(), error_message: null }).eq('id', notification.id)
-    return { status: 'sent' }
+    await client.from('utility_email_notifications').update({ status: 'sent', graph_message_id: draft.id, sent_at: new Date().toISOString(), error_message: null }).in('id', notifications.map(item => item.id))
+    return { status: 'sent', billCount: bills.length }
   } catch (error) {
-    await client.from('utility_email_notifications').update({ status: 'failed', error_message: error instanceof Error ? error.message : 'Unknown error' }).eq('id', notification.id)
+    await client.from('utility_email_notifications').update({ status: 'failed', error_message: error instanceof Error ? error.message : 'Unknown error' }).in('id', notifications.map(item => item.id))
     throw error
   }
+}
+
+export async function notifyBill(client: SupabaseClient, billId: string, version?: string, groupId?: string) {
+  return notifyBills(client, [billId], version, groupId)
 }

@@ -8,7 +8,7 @@ import { useAuth } from '@/app/providers'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder')
 type Thread = { id: string; subject: string; sender_email: string; created_at: string }
-type Notification = { id: string; bill_id: string; bill_name: string; status: 'queued' | 'sending' | 'sent' | 'failed'; created_at: string; sent_at: string | null }
+type Notification = { id: string; bill_id: string; bill_name: string; status: 'queued' | 'sending' | 'sent' | 'failed'; created_at: string; sent_at: string | null; graph_message_id?: string | null }
 type Bill = { id: string; provider: string | null; utility_name: string; account_number?: string | null; company_id?: string | null; location_id?: string | null; created_at?: string; utility_locations?: { name?: string | null; city?: string | null } | { name?: string | null; city?: string | null }[] | null }
 type RecipientGroup = { id: string; label: string }
 
@@ -99,8 +99,7 @@ function UtilityEmailPanel() {
   }
 
   async function sendSelected() {
-    const newBills = bills.filter(bill => !notifications.some(item => item.bill_id === bill.id))
-    const selected = newBills.filter(bill => selectedBillIds.includes(bill.id))
+    const selected = bills.filter(bill => selectedBillIds.includes(bill.id))
     if (!selected.length) return
     const session = (await supabase.auth.getSession()).data.session
     if (!session?.access_token) { setMessage('Please sign in again.'); return }
@@ -108,15 +107,13 @@ function UtilityEmailPanel() {
     let sentCount = 0
     let failedCount = 0
     try {
-      for (const bill of selected) {
-        const response = await fetch('/api/utility/email-thread', {
-          method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'notify', billId: bill.id, recipientGroupId: selectedGroup || undefined, version: `manual-bulk:${Date.now()}:${bill.id}` }),
-        })
-        if (response.ok) sentCount += 1
-        else failedCount += 1
-      }
-      setMessage(`${sentCount} new bill${sentCount === 1 ? '' : 's'} sent${failedCount ? `, ${failedCount} failed.` : '.'}`)
+      const response = await fetch('/api/utility/email-thread', {
+        method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'bulk', billIds: selected.map(bill => bill.id), recipientGroupId: selectedGroup || undefined, version: `manual-bulk:${Date.now()}` }),
+      })
+      if (response.ok) sentCount = selected.length
+      else failedCount = selected.length
+      setMessage(`${sentCount} bill${sentCount === 1 ? '' : 's'} sent in one email${failedCount ? `, ${failedCount} failed.` : '.'}`)
       setSelectedBillIds([])
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Email operation failed.')
@@ -127,8 +124,8 @@ function UtilityEmailPanel() {
   }
 
   const sent = notifications.filter(item => item.status === 'sent')
-  const newBills = bills.filter(bill => !notifications.some(item => item.bill_id === bill.id))
-  const allNewSelected = newBills.length > 0 && newBills.every(bill => selectedBillIds.includes(bill.id))
+  const sentEmailIds = new Set(sent.map(item => item.graph_message_id ?? item.id))
+  const allBillsSelected = bills.length > 0 && bills.every(bill => selectedBillIds.includes(bill.id))
   return (
     <section className="mt-6 rounded-xl border border-line-soft bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -148,7 +145,7 @@ function UtilityEmailPanel() {
       </div>
       {thread && <div className="mt-4 rounded-lg bg-pill px-3 py-2 text-xs text-ink-muted"><span className="font-semibold text-ink">{thread.subject}</span> · First email sent</div>}
       {thread && <details className="mt-5" open>
-        <summary className="cursor-pointer text-sm font-semibold text-ink">Emails sent in this thread: {sent.length + 1}</summary>
+        <summary className="cursor-pointer text-sm font-semibold text-ink">Emails sent in this thread: {sentEmailIds.size + 1}</summary>
         <div className="mt-3 space-y-2 border-l-2 border-line pl-3 text-sm">
           <div className="text-ink-muted">Monthly initial notification</div>
           {sent.map(item => <div key={item.id} className="text-ink">{item.bill_name}</div>)}
@@ -157,11 +154,11 @@ function UtilityEmailPanel() {
       </details>}
       <div className="mt-6 border-t border-line-soft pt-4">
         <h3 className="text-sm font-semibold text-ink">Send this month’s bills manually</h3>
-        <p className="mt-1 text-xs text-ink-muted">Select newly added bills to send them together. Bills already sent in this thread are shown for reference.</p>
+        <p className="mt-1 text-xs text-ink-muted">Select one or more bills to send them together in a single email. Previously sent bills can be selected again for testing or follow-up.</p>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-pill px-3 py-2">
           <label className="flex items-center gap-2 text-xs font-semibold text-ink">
-            <input type="checkbox" checked={allNewSelected} disabled={!newBills.length || busy || !thread} onChange={event => setSelectedBillIds(event.target.checked ? newBills.map(bill => bill.id) : [])} />
-            Select all new bills ({newBills.length})
+            <input type="checkbox" checked={allBillsSelected} disabled={!bills.length || busy || !thread} onChange={event => setSelectedBillIds(event.target.checked ? bills.map(bill => bill.id) : [])} />
+            Select all bills ({bills.length})
           </label>
           <button type="button" onClick={() => void sendSelected()} disabled={!selectedBillIds.length || busy || !thread} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">
             {busy ? 'Sending…' : `Send selected${selectedBillIds.length ? ` (${selectedBillIds.length})` : ''}`}
@@ -173,7 +170,7 @@ function UtilityEmailPanel() {
             const isNew = !prior
             return <div key={bill.id} className="flex items-center justify-between gap-3 px-3 py-3">
               <div className="flex min-w-0 items-start gap-3">
-                <input type="checkbox" checked={selectedBillIds.includes(bill.id)} disabled={!isNew || busy || !thread} onChange={event => setSelectedBillIds(current => event.target.checked ? [...current, bill.id] : current.filter(id => id !== bill.id))} aria-label={`Select ${bill.provider ?? bill.utility_name}`} className="mt-1" />
+                <input type="checkbox" checked={selectedBillIds.includes(bill.id)} disabled={busy || !thread} onChange={event => setSelectedBillIds(current => event.target.checked ? [...current, bill.id] : current.filter(id => id !== bill.id))} aria-label={`Select ${bill.provider ?? bill.utility_name}`} className="mt-1" />
                 <div className="min-w-0"><div className="text-sm font-medium text-ink">{bill.provider ?? bill.utility_name}</div><div className="mt-0.5 text-xs text-ink-muted">{COMPANY_LABEL[bill.company_id ?? ''] ?? bill.company_id ?? '—'} · {Array.isArray(bill.utility_locations) ? (bill.utility_locations[0]?.name ?? bill.utility_locations[0]?.city) : (bill.utility_locations?.name ?? bill.utility_locations?.city) ?? 'No location'} · Account {bill.account_number?.trim() ? `****${bill.account_number.trim().slice(-4)}` : '—'}</div><div className="mt-1 text-xs text-ink-muted">Uploaded {formatDateTime(bill.created_at)} · {prior?.sent_at ? `Email sent ${formatDateTime(prior.sent_at)}` : prior ? `Email ${prior.status}` : 'Email not sent yet'}</div></div>
               </div>
               <span className={`shrink-0 text-xs font-semibold ${isNew ? 'text-blue-700' : 'text-ink-muted'}`}>{isNew ? 'New' : 'Sent'}</span>
