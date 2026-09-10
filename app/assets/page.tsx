@@ -182,13 +182,13 @@ function ManagePeopleModal({
             <p className="text-xs font-medium text-gray-500 mb-2">Add person</p>
             {error && <p className="text-red-500 text-xs mb-2">{error}</p>}
             <div className="grid grid-cols-3 gap-2 mb-2">
-              <input className={inputCls} placeholder="이름 *" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
-              <input className={inputCls} placeholder="이메일" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
-              <input className={inputCls} placeholder="소속" value={form.company} onChange={e => setForm(p => ({ ...p, company: e.target.value }))} />
+              <input className={inputCls} placeholder="Name *" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
+              <input className={inputCls} placeholder="Email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
+              <input className={inputCls} placeholder="Company" value={form.company} onChange={e => setForm(p => ({ ...p, company: e.target.value }))} />
             </div>
             <button onClick={handleAdd} disabled={saving}
               className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50">
-              {saving ? '저장 중…' : '추가'}
+              {saving ? 'Saving…' : 'Add'}
             </button>
           </div>
 
@@ -205,14 +205,14 @@ function ManagePeopleModal({
                   onClick={() => handleDelete(p.id)}
                   disabled={deleting === p.id}
                   className="text-xs text-red-400 hover:text-red-600 disabled:opacity-40 ml-3 shrink-0">
-                  삭제
+                  Delete
                 </button>
               </div>
             ))}
           </div>
         </div>
         <div className="px-5 py-3 border-t">
-          <button onClick={onClose} className="w-full py-2 text-sm border rounded-lg hover:bg-gray-50">닫기</button>
+          <button onClick={onClose} className="w-full py-2 text-sm border rounded-lg hover:bg-gray-50">Close</button>
         </div>
       </div>
     </div>

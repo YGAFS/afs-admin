@@ -138,7 +138,7 @@ export async function sendPendingMailAfterRedirect(): Promise<{ sent: boolean; e
 
     // Fallback: try silent with cached account
     const accounts = msal.getAllAccounts()
-    if (!accounts.length) return { sent: false, error: cbError ? `[CB오류] ${cbError}` : '인증 후 계정을 찾을 수 없습니다' }
+    if (!accounts.length) return { sent: false, error: cbError ? `[Callback error] ${cbError}` : 'No account was found after authentication' }
     const tokenRes = await msal.acquireTokenSilent({ scopes: MAIL_SCOPES, account: accounts[0] })
     await _postMail(tokenRes.accessToken, payload)
     return { sent: true }

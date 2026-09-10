@@ -90,7 +90,7 @@ function ContactMgr({ label, contacts, selectedId, onSelect, storageKey, onChang
                     <input value={editEmail} onChange={e => setEditEmail(e.target.value)}
                       type="email" placeholder="user@company.com"
                       className={`w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 ${editEmailInvalid ? 'border-signal-neg focus:ring-signal-neg' : 'focus:ring-ink'}`} />
-                    {editEmailInvalid && <p className="text-signal-neg text-[10px] mt-0.5">user@domain.com 형식 필요</p>}
+                    {editEmailInvalid && <p className="text-signal-neg text-[10px] mt-0.5">Enter a valid user@domain.com address</p>}
                   </div>
                   <button disabled={!editName.trim() || !validEmail(editEmail.trim())}
                     onClick={() => { save(contacts.map(x => x.id === c.id ? { id: c.id, name: editName.trim(), email: editEmail.trim() } : x)); setEditId(null) }}
@@ -107,7 +107,7 @@ function ContactMgr({ label, contacts, selectedId, onSelect, storageKey, onChang
                   <div className="min-w-0 flex-1">
                     <span className="text-xs font-medium text-ink-muted">{c.name}</span>
                     <span className={`text-xs ml-2 ${!validEmail(c.email) ? 'text-amber-600 font-medium' : 'text-ink-faint'}`}>{c.email}</span>
-                    {!validEmail(c.email) && <span className="text-[10px] text-amber-600 ml-1">← 수정 필요</span>}
+                    {!validEmail(c.email) && <span className="text-[10px] text-amber-600 ml-1">← Needs correction</span>}
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
                     <button onClick={() => { setEditId(c.id); setEditName(c.name); setEditEmail(c.email) }}
@@ -131,7 +131,7 @@ function ContactMgr({ label, contacts, selectedId, onSelect, storageKey, onChang
               <input value={newEmail} onChange={e => setNewEmail(e.target.value)}
                 placeholder="user@company.com" type="email"
                 className={`w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 ${newEmailInvalid ? 'border-signal-neg focus:ring-signal-neg' : 'focus:ring-ink'}`} />
-              {newEmailInvalid && <p className="text-signal-neg text-[10px] mt-0.5">user@domain.com 형식 필요</p>}
+              {newEmailInvalid && <p className="text-signal-neg text-[10px] mt-0.5">Enter a valid user@domain.com address</p>}
             </div>
             <button disabled={!newName.trim() || !validEmail(newEmail.trim())}
               onClick={() => {
@@ -793,12 +793,12 @@ export default function CompanyAttendancePage() {
                   {msalUser ? (
                     <span className="text-signal-pos font-medium">✓ {msalUser}</span>
                   ) : (
-                    <span className="text-ink-faint">Microsoft 계정 미연결 — 전송 시 로그인 페이지로 이동</span>
+                    <span className="text-ink-faint">Microsoft account not connected — sign-in will open when sending</span>
                   )}
                   {msalUser && (
                     <button onClick={async () => { await msalLogout(); setMsalUser(null) }}
                       className="text-ink-faint hover:text-signal-neg underline">
-                      로그아웃
+                      Sign out
                     </button>
                   )}
                 </div>
@@ -806,12 +806,12 @@ export default function CompanyAttendancePage() {
                 {/* Send result feedback */}
                 {sendResult === 'ok' && (
                   <div className="mb-3 bg-white border border-line rounded-lg px-3 py-2 text-xs text-signal-pos font-medium">
-                    이메일이 전송됐어요.
+                    Email sent successfully.
                   </div>
                 )}
                 {sendResult === 'error' && (
                   <div className="mb-3 bg-white border border-line rounded-lg px-3 py-2 text-xs text-signal-neg">
-                    <div>전송 실패: {sendError}</div>
+                    <div>Send failed: {sendError}</div>
                   </div>
                 )}
 
@@ -819,7 +819,7 @@ export default function CompanyAttendancePage() {
                   <button onClick={sendEmail}
                     disabled={emailDates.size === 0 || !toId || sending}
                     className="flex-1 bg-ink disabled:bg-line text-white rounded-lg py-2 text-sm font-medium hover:bg-ink/90 transition-colors">
-                    {sending ? '전송 중...' : 'Send Email'}
+                    {sending ? 'Sending...' : 'Send Email'}
                   </button>
                   <button onClick={() => setShowEmailModal(false)}
                     className="px-5 border border-line rounded-lg py-2 text-sm text-ink-muted hover:bg-pill">

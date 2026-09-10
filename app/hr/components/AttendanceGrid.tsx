@@ -381,7 +381,7 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
     const { data: saved, error } = await hrFetch<{ data?: Array<{ employee_id: string; date: string; leave_code: LeaveCode; hours: number | null; reported_at?: string | null }> }>('/api/hr/leave-entries', { method: 'POST', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code, hours: hours ?? null, reported_at: null, reported_to: null, reported_cc: null, reported_subject: null, reported_by: null }) })
     saveTraceMark('fetch POST/API complete')
     if (error) {
-      alert(`저장 실패: ${error.message}`)
+      alert(`Save failed: ${error.message}`)
       setLeaveMap(p => ({ ...p, [key]: previousEntries }))
       if (!existing) applyStatsDelta(empId, code, -1, dateStr)
       finishSaving()
@@ -412,7 +412,7 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
     const { error } = await hrFetch('/api/hr/leave-entries', { method: 'DELETE', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code }) })
     saveTraceMark('fetch DELETE/API complete')
     if (error) {
-      alert(`삭제 실패: ${error.message}`)
+      alert(`Delete failed: ${error.message}`)
       setLeaveMap(p => ({ ...p, [key]: previousEntries }))
       if (removedEntries.length) applyStatsDelta(empId, code, 1, dateStr)
     }
@@ -434,7 +434,7 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
     const { error } = await hrFetch('/api/hr/leave-entries', { method: 'DELETE', body: JSON.stringify({ employee_id: empId, date: dateStr }) })
     saveTraceMark('fetch DELETE/API complete')
     if (error) {
-      alert(`삭제 실패: ${error.message}`)
+      alert(`Delete failed: ${error.message}`)
       setLeaveMap(p => ({ ...p, [key]: previous }))
       previous.forEach(entry => applyStatsDelta(empId, entry.code, 1, dateStr))
     }
@@ -455,7 +455,7 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
     const dateStr = `${year}-${pad(month)}-${pad(day)}`
     const key = `${empId}_${day}`
     const { error } = await hrFetch('/api/hr/attendance-flags', { method: 'POST', body: JSON.stringify({ employee_id: empId, date: dateStr, flag_type: type, time: time || null, reason: reason.trim() || null }) })
-    if (error) { alert(`저장 실패: ${error.message}`); return }
+    if (error) { alert(`Save failed: ${error.message}`); return }
     setFlagMap(p => ({ ...p, [key]: { ...(p[key] ?? {}), [type]: { time: time || undefined, reason: reason.trim() || undefined } } }))
     setFlagModal(null)
   }

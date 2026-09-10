@@ -423,10 +423,10 @@ const translations: Record<Locale, Record<string, string>> = {
 
   ko: {
     // ── Sidebar ──────────────────────────────────────────────────────────────
-    'nav.hr':            'HR 근태 캘린더',
-    'nav.utility':       '유틸리티 빌',
-    'nav.licenses':      '구독 관리',
-    'nav.assets':        'IT 자산',
+    'nav.hr':            'HR Attendance Calendar',
+    'nav.utility':       'Utility Bills',
+    'nav.licenses':      'Subscription Management',
+    'nav.assets':        'IT Assets',
     'nav.supplies':      'Coffee Order',
     'nav.admin':         'Admin',
     'sidebar.title':     'AFS Admin',

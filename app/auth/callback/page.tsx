@@ -6,7 +6,7 @@ import { getMsal, MAIL_SCOPES } from '@/lib/msal'
 
 export default function AuthCallback() {
   const router = useRouter()
-  const [status, setStatus] = useState('인증 처리 중…')
+  const [status, setStatus] = useState('Processing authentication…')
   const [error, setError]   = useState<string | null>(null)
 
   useEffect(() => {
@@ -14,9 +14,9 @@ export default function AuthCallback() {
 
     getMsal()
       .then(async msal => {
-        setStatus('handleRedirectPromise 호출 중…')
+        setStatus('Calling handleRedirectPromise…')
         const result = await msal.handleRedirectPromise()
-        setStatus(`결과: ${result ? '토큰 있음' : 'null (응답 없음)'}`)
+        setStatus(`Result: ${result ? 'token found' : 'null (no response)'}`)
 
         // In MSAL v5, initialize() may have already consumed the redirect response.
         // handleRedirectPromise() returns null in that case, but the token is in cache.
@@ -25,17 +25,17 @@ export default function AuthCallback() {
         if (result?.accessToken) {
           // Got token directly from handleRedirectPromise
           sessionStorage.setItem('msal_ready_token', result.accessToken)
-          setStatus('토큰 저장 완료, 이동 중…')
+          setStatus('Token saved. Redirecting…')
           router.replace(returnUrl)
         } else if (account) {
           // Token was processed by initialize() — acquire silently from cache
-          setStatus(`계정 발견 (${account.username}), silent 토큰 획득 중…`)
+          setStatus(`Account found (${account.username}). Acquiring a silent token…`)
           const silent = await msal.acquireTokenSilent({ scopes: MAIL_SCOPES, account })
           sessionStorage.setItem('msal_ready_token', silent.accessToken)
-          setStatus('토큰 저장 완료, 이동 중…')
+          setStatus('Token saved. Redirecting…')
           router.replace(returnUrl)
         } else {
-          setStatus(`인증 응답 없음 — URL: ${window.location.search || window.location.hash || '(없음)'}`)
+          setStatus(`No authentication response — URL: ${window.location.search || window.location.hash || '(none)'}`)
           // Wait so user can read the status before navigating
           setTimeout(() => router.replace(returnUrl), 3000)
         }
@@ -44,7 +44,7 @@ export default function AuthCallback() {
         const msg = err instanceof Error ? err.message : String(err)
         setError(msg)
         sessionStorage.setItem('msal_cb_error', msg)
-        setStatus('오류 발생')
+        setStatus('An error occurred')
       })
   }, [router])
 

@@ -408,7 +408,7 @@ export default function UtilityPage() {
 
   async function notifyTeam(billId: string) {
     const prior = emailNotifications.find(notification => notification.bill_id === billId && notification.status === 'sent')
-    if (prior && !window.confirm(`${prior.bill_name} 빌은 이미 이달 스레드로 발송되었습니다.\n\n같은 빌을 다시 발송할까요?\n가장 최근 이메일에 이어 붙습니다.`)) return
+    if (prior && !window.confirm(`${prior.bill_name} has already been sent in this month’s thread.\n\nResend this bill?\nIt will be appended to the most recent email.`)) return
     setEmailBusy(true); setEmailMessage(null)
     try { await callEmailThread({ action: 'notify', billId }); setEmailMessage('Team notification sent.') }
     catch (error) { setEmailMessage(error instanceof Error ? error.message : 'Team notification failed.') }

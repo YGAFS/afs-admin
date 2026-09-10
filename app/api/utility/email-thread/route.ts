@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     if (body?.action === 'root') {
       const now = new Date(); const year = now.getUTCFullYear(); const month = now.getUTCMonth() + 1
       const thread = body.force ? await resendMonthlyThread(db, year, month, body.recipientGroupId) : await ensureMonthlyThread(db, year, month, body.recipientGroupId)
-      if (!thread) return NextResponse.json({ error: '이번 달 새로 등록된 빌이 없어 이메일을 발송하지 않았습니다.' }, { status: 409 })
+      if (!thread) return NextResponse.json({ error: 'No new bills were registered this month, so no email was sent.' }, { status: 409 })
       return NextResponse.json({ thread })
     }
     if ((body?.action === 'notify' || body?.action === 'retry') && typeof body.billId === 'string') return NextResponse.json(await notifyBill(db, body.billId, body.version, body.recipientGroupId))

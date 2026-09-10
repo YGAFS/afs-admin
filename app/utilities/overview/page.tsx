@@ -752,7 +752,7 @@ function OverviewContent() {
               <div key={bill.id} className="flex items-center justify-between gap-3 rounded-lg bg-pill/60 px-3 py-2.5">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-ink truncate">{bill.provider ?? bill.utility_name}</p>
-                  <p className="text-xs text-ink-muted mt-0.5">{bill.company_id.toUpperCase()} · {utilityBillMonth.getMonth() + 1}월 · Due {fmtShort(bill.due_date)}</p>
+                  <p className="text-xs text-ink-muted mt-0.5">{bill.company_id.toUpperCase()} · {utilityBillMonth.toLocaleString('en-US', { month: 'short' })} · Due {fmtShort(bill.due_date)}</p>
                 </div>
                 {bill.onedrive_file_url ? (
                   <a

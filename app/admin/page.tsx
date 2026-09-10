@@ -132,7 +132,7 @@ function UtilityEmailAdminPanel() {
               {sent.length ? sent.map(notification => (
                 <div key={notification.id} className="flex items-center justify-between gap-3">
                   <span className="text-ink">{notification.bill_name}</span>
-                  <button onClick={() => { if (window.confirm(`${notification.bill_name} 빌을 다시 발송할까요?`)) call('retry', notification.bill_id) }} disabled={busy} className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">Resend</button>
+                  <button onClick={() => { if (window.confirm(`Resend ${notification.bill_name}?`)) call('retry', notification.bill_id) }} disabled={busy} className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">Resend</button>
                 </div>
               )) : <div className="text-ink-faint">No bill notifications yet.</div>}
             </div>
