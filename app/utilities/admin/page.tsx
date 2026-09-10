@@ -14,16 +14,23 @@ type RecipientGroup = { id: string; label: string }
 
 const COMPANY_LABEL: Record<string, string> = { afs: 'AFS', tnt: 'TNT', zfs: 'ZFS' }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return '—'
+  return new Date(value).toLocaleString('en-CA', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
 export default function UtilityAdminPage() {
   const { user, loading } = useAuth()
   const allowed = user?.email?.trim().toLowerCase() === 'admin@afstransco.com'
 
   return (
-    <div className="p-6 max-w-3xl">
-      <h1 className="text-xl font-bold text-ink">Utility Admin</h1>
-      <p className="mt-1 text-sm text-ink-muted">Monthly utility email thread management.</p>
-      {!loading && !allowed && <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">This page is restricted to admin@afstransco.com.</div>}
-      {allowed && <UtilityEmailPanel />}
+    <div className="h-full min-h-0 overflow-y-auto">
+      <div className="max-w-3xl p-6">
+        <h1 className="text-xl font-bold text-ink">Utility Admin</h1>
+        <p className="mt-1 text-sm text-ink-muted">Monthly utility email thread management.</p>
+        {!loading && !allowed && <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">This page is restricted to admin@afstransco.com.</div>}
+        {allowed && <UtilityEmailPanel />}
+      </div>
     </div>
   )
 }
@@ -34,6 +41,7 @@ function UtilityEmailPanel() {
   const [bills, setBills] = useState<Bill[]>([])
   const [recipientGroups, setRecipientGroups] = useState<RecipientGroup[]>([])
   const [selectedGroup, setSelectedGroup] = useState('')
+  const [selectedBillIds, setSelectedBillIds] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const loadSequence = useRef(0)
@@ -64,6 +72,7 @@ function UtilityEmailPanel() {
 
   useEffect(() => { void load('') }, [])
   useEffect(() => { if (selectedGroup) void load(selectedGroup) }, [selectedGroup])
+  useEffect(() => { setSelectedBillIds([]) }, [selectedGroup])
 
   async function send(billId?: string, forceRoot = false) {
     const prior = billId ? notifications.find(item => item.bill_id === billId) : undefined
@@ -89,7 +98,37 @@ function UtilityEmailPanel() {
     }
   }
 
+  async function sendSelected() {
+    const newBills = bills.filter(bill => !notifications.some(item => item.bill_id === bill.id))
+    const selected = newBills.filter(bill => selectedBillIds.includes(bill.id))
+    if (!selected.length) return
+    const session = (await supabase.auth.getSession()).data.session
+    if (!session?.access_token) { setMessage('Please sign in again.'); return }
+    setBusy(true); setMessage('')
+    let sentCount = 0
+    let failedCount = 0
+    try {
+      for (const bill of selected) {
+        const response = await fetch('/api/utility/email-thread', {
+          method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'notify', billId: bill.id, recipientGroupId: selectedGroup || undefined, version: `manual-bulk:${Date.now()}:${bill.id}` }),
+        })
+        if (response.ok) sentCount += 1
+        else failedCount += 1
+      }
+      setMessage(`${sentCount} new bill${sentCount === 1 ? '' : 's'} sent${failedCount ? `, ${failedCount} failed.` : '.'}`)
+      setSelectedBillIds([])
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Email operation failed.')
+    } finally {
+      setBusy(false)
+      void load(selectedGroup)
+    }
+  }
+
   const sent = notifications.filter(item => item.status === 'sent')
+  const newBills = bills.filter(bill => !notifications.some(item => item.bill_id === bill.id))
+  const allNewSelected = newBills.length > 0 && newBills.every(bill => selectedBillIds.includes(bill.id))
   return (
     <section className="mt-6 rounded-xl border border-line-soft bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -118,13 +157,26 @@ function UtilityEmailPanel() {
       </details>}
       <div className="mt-6 border-t border-line-soft pt-4">
         <h3 className="text-sm font-semibold text-ink">Send this month’s bills manually</h3>
-        <p className="mt-1 text-xs text-ink-muted">If automatic delivery was missed, you can send bills manually by vendor. A confirmation prompt appears for bills that were already sent.</p>
+        <p className="mt-1 text-xs text-ink-muted">Select newly added bills to send them together. Bills already sent in this thread are shown for reference.</p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-pill px-3 py-2">
+          <label className="flex items-center gap-2 text-xs font-semibold text-ink">
+            <input type="checkbox" checked={allNewSelected} disabled={!newBills.length || busy || !thread} onChange={event => setSelectedBillIds(event.target.checked ? newBills.map(bill => bill.id) : [])} />
+            Select all new bills ({newBills.length})
+          </label>
+          <button type="button" onClick={() => void sendSelected()} disabled={!selectedBillIds.length || busy || !thread} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">
+            {busy ? 'Sending…' : `Send selected${selectedBillIds.length ? ` (${selectedBillIds.length})` : ''}`}
+          </button>
+        </div>
         <div className="mt-3 divide-y divide-line-soft rounded-lg border border-line-soft">
           {bills.map(bill => {
             const prior = notifications.find(item => item.bill_id === bill.id)
+            const isNew = !prior
             return <div key={bill.id} className="flex items-center justify-between gap-3 px-3 py-3">
-              <div className="min-w-0"><div className="text-sm font-medium text-ink">{bill.provider ?? bill.utility_name}</div><div className="mt-0.5 text-xs text-ink-muted">{COMPANY_LABEL[bill.company_id ?? ''] ?? bill.company_id ?? '—'} · {Array.isArray(bill.utility_locations) ? (bill.utility_locations[0]?.name ?? bill.utility_locations[0]?.city) : (bill.utility_locations?.name ?? bill.utility_locations?.city) ?? 'No location'} · Account {bill.account_number?.trim() ? `****${bill.account_number.trim().slice(-4)}` : '—'}</div></div>
-              <button onClick={() => send(bill.id)} disabled={busy || !thread} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">{prior ? 'Resend' : 'Send'}</button>
+              <div className="flex min-w-0 items-start gap-3">
+                <input type="checkbox" checked={selectedBillIds.includes(bill.id)} disabled={!isNew || busy || !thread} onChange={event => setSelectedBillIds(current => event.target.checked ? [...current, bill.id] : current.filter(id => id !== bill.id))} aria-label={`Select ${bill.provider ?? bill.utility_name}`} className="mt-1" />
+                <div className="min-w-0"><div className="text-sm font-medium text-ink">{bill.provider ?? bill.utility_name}</div><div className="mt-0.5 text-xs text-ink-muted">{COMPANY_LABEL[bill.company_id ?? ''] ?? bill.company_id ?? '—'} · {Array.isArray(bill.utility_locations) ? (bill.utility_locations[0]?.name ?? bill.utility_locations[0]?.city) : (bill.utility_locations?.name ?? bill.utility_locations?.city) ?? 'No location'} · Account {bill.account_number?.trim() ? `****${bill.account_number.trim().slice(-4)}` : '—'}</div><div className="mt-1 text-xs text-ink-muted">Uploaded {formatDateTime(bill.created_at)} · {prior?.sent_at ? `Email sent ${formatDateTime(prior.sent_at)}` : prior ? `Email ${prior.status}` : 'Email not sent yet'}</div></div>
+              </div>
+              <span className={`shrink-0 text-xs font-semibold ${isNew ? 'text-blue-700' : 'text-ink-muted'}`}>{isNew ? 'New' : 'Sent'}</span>
             </div>
           })}
           {!bills.length && <div className="px-3 py-4 text-sm text-ink-faint">No bills for this month.</div>}
