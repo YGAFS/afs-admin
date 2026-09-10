@@ -112,13 +112,17 @@ async function monthlyBillBody(client: SupabaseClient, year: number, month: numb
   const range = monthRange(year, month)
   const bills = await client.from('utility_bills').select('provider,utility_name,amount,currency,due_date,account_number,company_id,onedrive_file_url,utility_locations(name,city)').gte('created_at', range.start).lt('created_at', range.end).order('provider')
   if (bills.error) throw bills.error
-  const rows = (bills.data ?? []).map(bill => {
+  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:760px;margin:0 auto;line-height:1.5"><h2 style="text-align:center;margin:0 0 18px;color:#111827">${escapeHtml(title)}</h2><p style="text-align:center">Utility bill tracking is now available.</p><p style="text-align:center">Please review current bills, due dates, and payment status below.</p>${billTable(bills.data as Bill[]) || '<p style="text-align:center">No bills have been registered yet.</p>'}<p style="text-align:center;margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Dashboard</a></p><p style="text-align:center;color:#4b5563">Updates to individual bills will be posted in this email thread.</p></div>`
+}
+
+function billTable(bills: Bill[]) {
+  const rows = bills.map(bill => {
     const name = bill.provider ?? bill.utility_name
     const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
-    const download = bill.onedrive_file_url ? `<a href="${escapeHtml(bill.onedrive_file_url)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:bold;padding:8px 12px;border-radius:6px">Download</a>` : '—'
-    return `<tr><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb"><strong>${escapeHtml(name)}</strong><br><span style="font-size:12px;color:#6b7280">${escapeHtml(companyLabel(bill.company_id))} · ${escapeHtml(locationLabel(bill.utility_locations))} · Account ${escapeHtml(accountLabel(bill.account_number))}</span></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right"><strong>${escapeHtml(amount)}</strong></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right">Due <strong>${escapeHtml(bill.due_date)}</strong></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${download}</td></tr>`
+    const download = bill.onedrive_file_url ? `<a href="${escapeHtml(bill.onedrive_file_url)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:bold;padding:8px 12px;border-radius:6px;white-space:nowrap">Download</a>` : '—'
+    return `<tr><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb"><strong>${escapeHtml(name)}</strong><br><span style="font-size:12px;color:#6b7280">${escapeHtml(companyLabel(bill.company_id))} · ${escapeHtml(locationLabel(bill.utility_locations))} · Account ${escapeHtml(accountLabel(bill.account_number))}</span></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;white-space:nowrap"><strong>${escapeHtml(amount)}</strong></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;white-space:nowrap">Due <strong>${escapeHtml(bill.due_date)}</strong></td><td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;white-space:nowrap">${download}</td></tr>`
   }).join('')
-  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:760px;margin:0 auto;line-height:1.5"><h2 style="text-align:center;margin:0 0 18px;color:#111827">${escapeHtml(title)}</h2><p style="text-align:center">Utility bill tracking is now available.</p><p style="text-align:center">Please review current bills, due dates, and payment status below.</p>${rows ? `<table style="width:100%;border-collapse:collapse;margin:22px 0"><thead><tr style="background:#f3f4f6"><th style="padding:10px 12px;text-align:left">Utility / account</th><th style="padding:10px 12px;text-align:right">Amount</th><th style="padding:10px 12px;text-align:right">Due date</th><th style="padding:10px 12px;text-align:right">File</th></tr></thead><tbody>${rows}</tbody></table>` : '<p style="text-align:center">No bills have been registered yet.</p>'}<p style="text-align:center;margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Dashboard</a></p><p style="text-align:center;color:#4b5563">Updates to individual bills will be posted in this email thread.</p></div>`
+  return rows ? `<table style="width:100%;border-collapse:collapse;margin:22px 0"><thead><tr style="background:#f3f4f6"><th style="padding:10px 12px;text-align:left">Utility / account</th><th style="padding:10px 12px;text-align:right">Amount</th><th style="padding:10px 12px;text-align:right">Due date</th><th style="padding:10px 12px;text-align:right">File</th></tr></thead><tbody>${rows}</tbody></table>` : ''
 }
 
 export async function ensureMonthlyThread(client: SupabaseClient, year: number, month: number, groupId?: string) {
@@ -175,7 +179,7 @@ export async function resendMonthlyThread(client: SupabaseClient, year: number, 
 
 export async function notifyBills(client: SupabaseClient, billIds: string[], version?: string, groupId?: string) {
   const { sender } = config(groupId)
-  const uniqueBillIds = [...new Set(billIds)]
+  const uniqueBillIds = Array.from(new Set(billIds))
   if (!uniqueBillIds.length) throw new Error('At least one bill is required')
   const billResult = await client.from('utility_bills').select('id,provider,utility_name,amount,currency,due_date,billing_month,billing_year,account_number,company_id,onedrive_file_url,utility_locations(name,city),updated_at').in('id', uniqueBillIds)
   if (billResult.error || !billResult.data || billResult.data.length !== uniqueBillIds.length) throw new Error('One or more bills could not be found')
@@ -190,12 +194,7 @@ export async function notifyBills(client: SupabaseClient, billIds: string[], ver
   try {
     await client.from('utility_email_notifications').update({ status: 'sending', attempt_count: 1 }).in('id', notifications.map(item => item.id))
     const draft = await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(thread.root_message_id)}/createReplyAll`, { method: 'POST', body: JSON.stringify({}) }) as GraphMessage
-    const details = bills.map(bill => {
-      const label = bill.provider ?? bill.utility_name
-      const amount = bill.amount == null ? '—' : `${bill.currency === 'USD' ? 'US$' : 'CA$'}${Number(bill.amount).toFixed(2)}`
-      const download = bill.onedrive_file_url ? `<p style="margin:14px 0 4px"><a href="${escapeHtml(bill.onedrive_file_url)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:bold;padding:8px 12px;border-radius:6px">Download bill file</a></p>` : ''
-      return `<div style="margin:14px auto;text-align:left;max-width:560px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:14px 18px"><p style="margin:4px 0"><strong>Utility:</strong> ${escapeHtml(label)}</p><p style="margin:4px 0"><strong>Company:</strong> ${escapeHtml(companyLabel(bill.company_id))}</p><p style="margin:4px 0"><strong>Location:</strong> ${escapeHtml(locationLabel(bill.utility_locations))}</p><p style="margin:4px 0"><strong>Account:</strong> ${escapeHtml(accountLabel(bill.account_number))}</p><p style="margin:4px 0"><strong>Amount:</strong> ${escapeHtml(amount)}</p><p style="margin:4px 0"><strong>Due date:</strong> ${escapeHtml(bill.due_date)}</p>${download}</div>`
-    }).join('')
+    const details = billTable(bills)
     const heading = bills.length === 1 ? `${escapeHtml(bills[0].provider ?? bills[0].utility_name)} bill updated` : `${bills.length} utility bills updated`
     await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}`, { method: 'PATCH', body: JSON.stringify({ body: { contentType: 'HTML', content: `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:680px;margin:0 auto;text-align:center;line-height:1.5"><h2 style="margin:0 0 18px;color:#111827"><strong>${heading}</strong></h2>${details}<p style="margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Dashboard</a></p></div>` } }) })
     await graph(`/users/${encodeURIComponent(sender)}/messages/${encodeURIComponent(draft.id)}/send`, { method: 'POST' })
