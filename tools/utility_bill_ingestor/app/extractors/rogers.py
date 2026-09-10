@@ -47,14 +47,20 @@ class RogersExtractor:
         ).group(1)
         previous_match = re.search(r"Balance brought forward\s+([\d,]+\.\d{2})", text)
         previous = parse_money(previous_match.group(1)) if previous_match else parse_money("0.00")
+        adjustment_match = re.search(
+            r"Adjustments\s+Refer to page 2\s*>\s*(-?[\d,]+\.\d{2})",
+            text,
+            re.IGNORECASE,
+        )
+        adjustments = parse_money(adjustment_match.group(1)) if adjustment_match else parse_money("0.00")
         current = find_money_after(r"Total \(Includes taxes\)", text)
         total = find_money_after(r"Total Due", text)
 
         issue_date = parse_date_long(bill_date_raw)
         due_date = parse_date_long(due_date_raw)
 
-        if previous + current != total:
-            warnings.append(f"previous({previous}) + current({current}) != total({total})")
+        if previous + current + adjustments != total:
+            warnings.append(f"previous({previous}) + current({current}) + adjustments({adjustments}) != total({total})")
 
         return ParsedBill(
             vendor_name="Rogers",
@@ -65,6 +71,7 @@ class RogersExtractor:
             billing_year=issue_date.year,
             previous_balance=previous,
             current_charges=current,
+            adjustments=adjustments,
             total_due=total,
             currency="CAD",
             confidence=0.9,

@@ -61,3 +61,21 @@ def test_simple_layout_computes_due_date_from_payment_terms():
     assert result.due_date == date(2026, 4, 30)
     assert not any("due_date defaulted" in w for w in result.warnings)
     assert result.confidence == 0.85
+
+
+def test_business_layout_reads_account_adjustments_as_credit():
+    text = """
+    Account number 5-0781-2423
+    Bill number 3231467996
+    Bill date Sep 05, 2026
+    Required Payment Date: Sep 27, 2026
+    Balance brought forward 0.00
+    Total Due $205.04
+    Adjustments Refer to page 2 > -50.00
+    Total (Includes taxes) $255.04
+    """
+    result = RogersExtractor().extract(text)
+    assert result.current_charges == Decimal("255.04")
+    assert result.adjustments == Decimal("-50.00")
+    assert result.total_due == Decimal("205.04")
+    assert not result.warnings
