@@ -9,7 +9,7 @@ create table if not exists public.utility_bill_notifications (
   version timestamptz not null,
   created_at timestamptz not null default now(),
   read_at timestamptz,
-  unique (user_id, bill_id, kind, version)
+  unique (user_id, bill_id)
 );
 
 create index if not exists utility_bill_notifications_user_created_idx
@@ -55,15 +55,11 @@ begin
          case when tg_op = 'INSERT' then new.created_at else new.updated_at end
     from public.user_global_roles g
    where g.role = 'super_admin'
-  on conflict (user_id, bill_id, kind, version) do nothing;
-  delete from public.utility_bill_notifications n
-   where n.id in (
-     select id from (
-       select id, row_number() over (partition by user_id order by created_at desc, id desc) as row_num
-       from public.utility_bill_notifications
-     ) ranked
-     where ranked.row_num > 3
-   );
+  on conflict (user_id, bill_id) do update
+    set kind = excluded.kind,
+        version = excluded.version,
+        created_at = excluded.version,
+        read_at = null;
   return new;
 end;
 $$;
@@ -90,4 +86,4 @@ select u.user_id, b.id, 'new', coalesce(b.created_at, b.updated_at, now())
   from utility_users u
   cross join ranked_bills b
  where b.row_num <= 3
-on conflict (user_id, bill_id, kind, version) do nothing;
+on conflict (user_id, bill_id) do nothing;

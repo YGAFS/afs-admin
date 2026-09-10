@@ -372,7 +372,6 @@ export default function UtilityPage() {
       .select('id,bill_id,kind,version,created_at,read_at')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(100)
     setNotifications((notificationRows ?? []).map(row => ({
       id: row.id,
       billId: row.bill_id,
@@ -472,10 +471,10 @@ export default function UtilityPage() {
     setNotifications(next)
   }
 
-  async function markNotificationRead(id: string) {
+  async function markNotificationRead(billId: string) {
     const now = new Date().toISOString()
-    const { error } = await supabase.from('utility_bill_notifications').update({ read_at: now }).eq('id', id).eq('user_id', user?.id ?? '')
-    if (!error) saveNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n))
+    const { error } = await supabase.from('utility_bill_notifications').update({ read_at: now }).eq('bill_id', billId).eq('user_id', user?.id ?? '')
+    if (!error) saveNotifications(notifications.map(n => n.billId === billId ? { ...n, read: true } : n))
   }
 
   async function markAllNotificationsRead() {
@@ -483,14 +482,14 @@ export default function UtilityPage() {
     if (!error) saveNotifications(notifications.map(n => ({ ...n, read: true })))
   }
 
-  async function deleteNotification(id: string) {
-    const { error } = await supabase.from('utility_bill_notifications').delete().eq('id', id).eq('user_id', user?.id ?? '')
-    if (!error) setNotifications(current => current.filter(n => n.id !== id))
+  async function deleteNotification(billId: string) {
+    const { error } = await supabase.from('utility_bill_notifications').delete().eq('bill_id', billId).eq('user_id', user?.id ?? '')
+    if (!error) setNotifications(current => current.filter(n => n.billId !== billId))
   }
 
   function openNotification(notification: BillNotification) {
     const bill = bills.find(b => b.id === notification.billId)
-    markNotificationRead(notification.id)
+    markNotificationRead(notification.billId)
     if (!bill) return
     setMainTab('dashboard')
     setCoFilter('all')
@@ -1827,15 +1826,33 @@ function NotificationBell({
   notifications: BillNotification[]
   bills: Bill[]
   onOpen: (notification: BillNotification) => void
-  onMarkRead: (id: string) => void
+  onMarkRead: (billId: string) => void
   onMarkAllRead: () => void
-  onDelete: (id: string) => void
+  onDelete: (billId: string) => void
 }) {
   const [open, setOpen] = useState(false)
-  const unread = notifications.filter(n => !n.read).length
+  const bellRef = useRef<HTMLDivElement>(null)
+  const visibleNotifications = useMemo(() => {
+    const seenBills = new Set<string>()
+    return notifications.filter(notification => {
+      if (seenBills.has(notification.billId)) return false
+      seenBills.add(notification.billId)
+      return true
+    })
+  }, [notifications])
+  const unread = visibleNotifications.filter(notification => !notification.read).length
+
+  useEffect(() => {
+    if (!open) return
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (bellRef.current && !bellRef.current.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick)
+  }, [open])
 
   return (
-    <div className="fixed top-4 right-6 z-50">
+    <div ref={bellRef} className="fixed top-4 right-6 z-50">
       <button
         onClick={() => setOpen(v => !v)}
         className="relative w-9 h-9 flex items-center justify-center text-ink-muted bg-white border border-line rounded-lg shadow-sm hover:bg-pill hover:text-ink transition-colors"
@@ -1858,11 +1875,11 @@ function NotificationBell({
             <span className="font-semibold text-sm text-ink">Bill notifications</span>
             <button onClick={onMarkAllRead} disabled={unread === 0} className="text-xs text-blue-600 disabled:text-ink-faint hover:underline">Mark all read</button>
           </div>
-          {notifications.length === 0 ? (
+          {visibleNotifications.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-ink-faint">No new bill updates.</div>
           ) : (
             <div className="h-[18rem] overflow-y-auto overscroll-contain divide-y divide-line-soft">
-              {notifications.map(notification => {
+              {visibleNotifications.map(notification => {
                 const bill = bills.find(b => b.id === notification.billId)
                 if (!bill) return null
                 return (
@@ -1877,9 +1894,9 @@ function NotificationBell({
                       </div>
                     </button>
                     {!notification.read ? (
-                      <button onClick={() => onMarkRead(notification.id)} className="ml-4 mt-1 text-[11px] text-blue-600 hover:underline">Mark read</button>
+                      <button onClick={() => onMarkRead(notification.billId)} className="ml-4 mt-1 text-[11px] text-blue-600 hover:underline">Mark read</button>
                     ) : (
-                      <button onClick={() => onDelete(notification.id)} className="ml-4 mt-1 text-[11px] text-ink-faint hover:text-signal-neg hover:underline">Delete</button>
+                      <button onClick={() => onDelete(notification.billId)} className="ml-4 mt-1 text-[11px] text-ink-faint hover:text-signal-neg hover:underline">Delete</button>
                     )}
                   </div>
                 )

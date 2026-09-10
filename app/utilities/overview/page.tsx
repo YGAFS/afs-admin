@@ -747,7 +747,7 @@ function OverviewContent() {
         {thisMonthUtilityBills.length === 0 ? (
           <p className="text-sm text-ink-faint py-2">No utility bills uploaded this month</p>
         ) : (
-          <div className="space-y-2">
+          <div className="max-h-[22rem] space-y-2 overflow-y-auto overscroll-contain pr-1">
             {thisMonthUtilityBills.map(bill => (
               <div key={bill.id} className="flex items-center justify-between gap-3 rounded-lg bg-pill/60 px-3 py-2.5">
                 <div className="min-w-0">
