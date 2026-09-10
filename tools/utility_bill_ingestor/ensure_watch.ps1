@@ -15,11 +15,12 @@ if (-not (Test-Path -LiteralPath $PythonExe)) {
     throw "Utility Bill Ingestor virtual environment was not found: $PythonExe"
 }
 
-$WatcherRunning = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" |
-    Where-Object {
-        $_.ExecutablePath -eq $PythonExe -and
-        $_.CommandLine -match '(?i)-m\s+app\.main\s+watch'
-    } |
+# Get-CimInstance/CommandLine requires elevated WMI access on some Windows
+# installations. The watcher is the only long-running process using this
+# virtual environment, so checking the executable path is sufficient and
+# works under a normal signed-in user's account as well.
+$WatcherRunning = Get-Process -Name 'python' -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -eq $PythonExe } |
     Select-Object -First 1
 
 if ($WatcherRunning) {

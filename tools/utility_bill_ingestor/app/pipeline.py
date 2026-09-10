@@ -346,6 +346,24 @@ class Pipeline:
             )
             return PipelineResult("duplicate", "duplicate", dest)
 
+        # needs_review
+        filename = build_filename(
+            site_code=classification.site_code, company_id=classification.company_id,
+            vendor_db_name=(classification.vendor_cfg.folder_name if classification.vendor_cfg else None),
+            issue_date=parsed.issue_date, bill_number=parsed.bill_number,
+            billing_period_start=parsed.billing_period_start, billing_period_end=parsed.billing_period_end,
+            account_number=parsed.account_number, original_filename=original_filename,
+        )
+        dest = self._safe_move(path, self.settings.review_dir, filename)
+        self._write_import_record(
+            original_filename=original_filename, normalized_filename=filename, file_hash=file_hash,
+            source_path=str(path), archived_path=str(dest) if dest else None, status="needs_review",
+            detected_vendor=classification.vendor_key, detected_company_id=classification.company_id,
+            detected_site=classification.site_code, parsed_data=parsed_json, confidence=confidence,
+            warnings=validation.warnings + validation.errors, error_message=None, utility_bill_id=None,
+        )
+        return PipelineResult("needs_review", "; ".join(validation.errors + validation.warnings) or "needs review", dest)
+
     def _notify_email_thread(self, bill_id: str) -> None:
         """Best-effort notification after a successful bill registration.
 
@@ -379,23 +397,6 @@ class Pipeline:
         except (OSError, urllib.error.URLError, RuntimeError) as exc:
             log.warning("bill %s registered, but email thread notification failed: %s", bill_id, exc)
 
-        # needs_review
-        filename = build_filename(
-            site_code=classification.site_code, company_id=classification.company_id,
-            vendor_db_name=(classification.vendor_cfg.folder_name if classification.vendor_cfg else None),
-            issue_date=parsed.issue_date, bill_number=parsed.bill_number,
-            billing_period_start=parsed.billing_period_start, billing_period_end=parsed.billing_period_end,
-            account_number=parsed.account_number, original_filename=original_filename,
-        )
-        dest = self._safe_move(path, self.settings.review_dir, filename)
-        self._write_import_record(
-            original_filename=original_filename, normalized_filename=filename, file_hash=file_hash,
-            source_path=str(path), archived_path=str(dest) if dest else None, status="needs_review",
-            detected_vendor=classification.vendor_key, detected_company_id=classification.company_id,
-            detected_site=classification.site_code, parsed_data=parsed_json, confidence=confidence,
-            warnings=validation.warnings + validation.errors, error_message=None, utility_bill_id=None,
-        )
-        return PipelineResult("needs_review", "; ".join(validation.errors + validation.warnings) or "needs review", dest)
 
     def _attach_onedrive_link(self, bill_id: str, archived_path: Path) -> None:
         """Best-effort: never let a Graph API problem affect the bill that
