@@ -27,6 +27,9 @@ from app.logging_config import get_logger
 log = get_logger()
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
+# Stable document-library URLs remain usable by signed-in afstrans.co users
+# even when the app-only Graph registration cannot create sharing links.
+SHAREPOINT_LIBRARY_ROOT = "https://afstransco.sharepoint.com/sites/afstrans.co/Shared%20Documents"
 TOKEN_URL_TMPL = "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
 REQUEST_TIMEOUT_SECONDS = 20
 # Refresh a bit before actual expiry so a token never goes stale mid-call.
@@ -139,6 +142,16 @@ class GraphClient:
                 fallback = self._search_file_web_url(local_path.name, headers)
                 if fallback:
                     return fallback
+            # App-only Graph permissions are tenant-admin controlled. If the
+            # token cannot create/search a sharing link, the file is still
+            # addressable through the SharePoint document-library URL, which
+            # the dashboard user can open with their normal Microsoft 365
+            # session. Keep this as a graceful fallback instead of leaving a
+            # blank download action on an otherwise valid bill.
+            direct = self._direct_sharepoint_url(rel_path)
+            if direct:
+                log.warning("Graph link unavailable for %s; using direct SharePoint URL", local_path)
+                return direct
             log.warning("Graph createLink failed for %s: %s %s", local_path, exc, detail)
             return None
 
@@ -149,6 +162,10 @@ class GraphClient:
             return None
 
         return link_url
+
+    @staticmethod
+    def _direct_sharepoint_url(rel_path: str) -> str:
+        return f"{SHAREPOINT_LIBRARY_ROOT}/{urllib.parse.quote(rel_path, safe='/')}"
 
     def _search_file_web_url(self, filename: str, headers: dict[str, str]) -> str | None:
         """Find an exact filename when the local sync path is not addressable.
