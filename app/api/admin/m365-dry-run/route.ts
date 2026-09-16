@@ -50,7 +50,9 @@ export async function GET(req: NextRequest) {
   try {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
     const [localResult, users, skus, audits] = await Promise.all([
-      db().from('licenses').select('id,account_id,display_name,email_address,license_plan,status,company,created_date').order('company').order('account_id'),
+      // This app registration belongs to the AFS tenant. TNT and ZFS use
+      // separate admin domains/tenants and must never enter this comparison.
+      db().from('licenses').select('id,account_id,display_name,email_address,license_plan,status,company,created_date').eq('company', 'AFS').order('account_id'),
       listUsers(), listSubscribedSkus(), listDirectoryAudits(since),
     ])
     if (localResult.error) throw new Error('Unable to read local license records')
@@ -85,7 +87,7 @@ export async function GET(req: NextRequest) {
     const allComparisons = [...comparisons, ...dbOnly]
     const summary = allComparisons.reduce<Record<string, number>>((acc, item) => { acc[item.result] = (acc[item.result] ?? 0) + 1; return acc }, {})
 
-    return NextResponse.json({ mode: 'dry-run', writes_performed: false, checked_at: new Date().toISOString(), audit_since: since.toISOString(), summary, comparisons: allComparisons, audit_events: relevantAuditEvents(audits, users).slice(0, 500), sku_catalog: skus })
+    return NextResponse.json({ tenant_company: 'AFS', mode: 'dry-run', writes_performed: false, checked_at: new Date().toISOString(), audit_since: since.toISOString(), summary, comparisons: allComparisons, audit_events: relevantAuditEvents(audits, users).slice(0, 500), sku_catalog: skus })
   } catch (error) {
     console.error('[m365-dry-run]', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'M365 dry run failed' }, { status: 500 })

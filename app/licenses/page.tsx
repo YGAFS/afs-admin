@@ -896,6 +896,7 @@ type M365Audit = {
 }
 
 type M365DryRun = {
+  tenant_company?: string
   checked_at: string
   audit_since: string
   summary: Record<string, number>
@@ -923,7 +924,7 @@ function m365ResultColor(result: string) {
   return 'bg-red-100 text-red-700'
 }
 
-function M365SyncView({ company }: { company: string }) {
+function M365SyncView() {
   const [days, setDays] = useState(30)
   const [data, setData] = useState<M365DryRun | null>(null)
   const [loading, setLoading] = useState(false)
@@ -938,14 +939,14 @@ function M365SyncView({ company }: { company: string }) {
     setData(result.data)
   }
 
-  const comparisons = (data?.comparisons ?? []).filter(item => !company || item.local?.company === company)
+  const comparisons = data?.comparisons ?? []
 
   return (
     <div className="space-y-5">
       <div className="bg-white rounded-xl border border-line p-5 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-ink">Microsoft 365 비교 및 이력</h2>
-          <p className="text-sm text-ink-muted mt-1">Microsoft 계정·플랜과 현재 라이선스 목록을 읽기 전용으로 비교합니다.</p>
+          <p className="text-sm text-ink-muted mt-1">AFS 테넌트의 Microsoft 계정·플랜과 AFS 라이선스 목록만 읽기 전용으로 비교합니다.</p>
           <p className="text-xs text-ink-faint mt-1">자동 수정이나 DB 저장은 수행하지 않습니다.</p>
         </div>
         <div className="flex items-end gap-2">
@@ -1179,7 +1180,7 @@ export default function LicensesPage() {
             {t(tab.labelKey, locale)}
           </button>
         ))}
-        <button onClick={() => setView('m365')}
+        <button onClick={() => { setCompany('AFS'); setView('m365') }}
           className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${view === 'm365' ? 'bg-pill text-ink' : 'text-ink-muted hover:bg-pill hover:text-ink'}`}>
           M365 비교 / 이력
         </button>
@@ -1193,7 +1194,7 @@ export default function LicensesPage() {
             <Dashboard licenses={licenses} subscriptions={subscriptions} company={company} />
           )}
 
-          {view === 'm365' && <M365SyncView company={company} />}
+          {view === 'm365' && <M365SyncView />}
 
           {view === 'licenses' && (
             <div>
