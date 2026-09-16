@@ -97,15 +97,21 @@ class Repository:
     def resolve_service_account(self, vendor_id: str, account_number: str) -> dict[str, Any] | None:
         if not self.has_client:
             return None
+        # Account numbers are stored with vendor-specific separators in the
+        # database (e.g. 7121-072918-0000), while extractors may normalize
+        # them before lookup. Fetch the small vendor-scoped set and compare
+        # normalized values, just like bill-number duplicate detection.
         res = (
             self.client.table("utility_service_accounts")
             .select("id, vendor_id, location_id, account_number, is_auto_pay")
             .eq("vendor_id", vendor_id)
-            .eq("account_number", account_number)
-            .limit(1)
             .execute()
         )
-        return _first_row(res.data)
+        wanted = normalize_account_number(account_number)
+        for row in (res.data or []):
+            if isinstance(row, dict) and normalize_account_number(str(row.get("account_number", ""))) == wanted:
+                return row
+        return None
 
     def get_bill(self, bill_id: str) -> dict[str, Any] | None:
         if not self.has_client:

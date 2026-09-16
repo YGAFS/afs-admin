@@ -94,6 +94,20 @@ grandbridge_tnt:
     - Grand Bridge
   accounts: []
 
+waste_connections_tnt_cambridge:
+  # The legal bill header says "Waste Connections of Canada Inc."; keep the
+  # short vendor name used in the dashboard and archive folder.
+  db_name: "Waste Connections"
+  company_id: tnt
+  site_code: CAMBRIDGE
+  utility_name: "Waste Disposal"
+  aliases:
+    - Waste Connections
+    - Waste Connections of Canada
+    - Waste Connections of Canada Inc.
+  accounts:
+    - "7121-072918-0000"
+
 # Rogers has multiple accounts at different sites. Originally one shared
 # utility_vendors row ("Rogers"), which merged both sites' bills/averages
 # into a single line in the Vendors UI -- split into two separate DB vendor
