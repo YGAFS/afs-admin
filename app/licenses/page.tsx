@@ -873,9 +873,144 @@ function Dashboard({ licenses, subscriptions, company }: {
   )
 }
 
+type M365Comparison = {
+  graph_user_id?: string
+  email?: string | null
+  graph_name?: string | null
+  graph_created_at?: string | null
+  graph_account_enabled?: boolean | null
+  graph_plans?: string[]
+  plan_status?: 'match' | 'mismatch' | 'unverified'
+  result: string
+  local?: License | null
+  local_match_count?: number
+}
+
+type M365Audit = {
+  id?: string
+  activityDateTime?: string
+  activityDisplayName?: string
+  category?: string
+  initiatedBy?: { user?: { userPrincipalName?: string; displayName?: string } }
+  targetResources?: { id?: string; displayName?: string; userPrincipalName?: string }[]
+}
+
+type M365DryRun = {
+  checked_at: string
+  audit_since: string
+  summary: Record<string, number>
+  comparisons: M365Comparison[]
+  audit_events: M365Audit[]
+}
+
+function dateLabel(value?: string | null) {
+  if (!value) return '—'
+  return new Date(value).toLocaleString()
+}
+
+function m365ResultLabel(result: string) {
+  const labels: Record<string, string> = {
+    match: '일치', microsoft_only: 'MS에만 존재', database_only: 'DB에만 존재',
+    ambiguous_email: '이메일 중복', active_status_mismatch: '활성 상태 불일치',
+    plan_mismatch: '플랜 불일치', plan_unverified: '플랜 확인 필요',
+  }
+  return labels[result] ?? result
+}
+
+function m365ResultColor(result: string) {
+  if (result === 'match') return 'bg-green-100 text-green-700'
+  if (result === 'plan_unverified') return 'bg-amber-100 text-amber-700'
+  return 'bg-red-100 text-red-700'
+}
+
+function M365SyncView({ company }: { company: string }) {
+  const [days, setDays] = useState(30)
+  const [data, setData] = useState<M365DryRun | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function runDryRun() {
+    setLoading(true)
+    setError('')
+    const result = await hrFetch<M365DryRun>(`/api/admin/m365-dry-run?days=${days}`)
+    setLoading(false)
+    if (result.error) { setError(result.error.message); return }
+    setData(result.data)
+  }
+
+  const comparisons = (data?.comparisons ?? []).filter(item => !company || item.local?.company === company)
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-white rounded-xl border border-line p-5 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold text-ink">Microsoft 365 비교 및 이력</h2>
+          <p className="text-sm text-ink-muted mt-1">Microsoft 계정·플랜과 현재 라이선스 목록을 읽기 전용으로 비교합니다.</p>
+          <p className="text-xs text-ink-faint mt-1">자동 수정이나 DB 저장은 수행하지 않습니다.</p>
+        </div>
+        <div className="flex items-end gap-2">
+          <label className="text-xs text-ink-muted">감사 이력 기간
+            <select className="block mt-1 border rounded-lg px-3 py-2 text-sm bg-white" value={days} onChange={e => setDays(Number(e.target.value))}>
+              <option value={7}>최근 7일</option><option value={30}>최근 30일</option><option value={90}>최근 90일</option>
+            </select>
+          </label>
+          <button onClick={runDryRun} disabled={loading} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
+            {loading ? '조회 중…' : data ? '다시 조회' : 'Microsoft 조회'}
+          </button>
+        </div>
+      </div>
+
+      {error && <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3">{error}</div>}
+      {!data && !loading && !error && <div className="bg-white rounded-xl border border-line p-10 text-center text-sm text-ink-muted">Microsoft 조회 버튼을 누르면 비교 결과와 변경 이력이 표시됩니다.</div>}
+
+      {data && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {Object.entries(data.summary).map(([key, count]) => (
+              <div key={key} className="bg-white rounded-xl border border-line p-4">
+                <div className="text-2xl font-semibold text-ink">{count}</div>
+                <div className="text-xs text-ink-muted mt-1">{m365ResultLabel(key)}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-white rounded-xl border border-line overflow-x-auto">
+            <div className="px-5 py-4 border-b border-line flex justify-between items-center">
+              <h3 className="font-semibold text-ink">계정 비교 결과 ({comparisons.length})</h3>
+              <span className="text-xs text-ink-faint">조회: {dateLabel(data.checked_at)}</span>
+            </div>
+            <table className="w-full text-sm min-w-[900px]">
+              <thead className="bg-gray-50 text-xs text-gray-500"><tr>
+                <th className="px-4 py-3 text-left">이메일</th><th className="px-4 py-3 text-left">소유자</th>
+                <th className="px-4 py-3 text-left">Graph 플랜</th><th className="px-4 py-3 text-left">DB 플랜</th>
+                <th className="px-4 py-3 text-left">생성일</th><th className="px-4 py-3 text-left">결과</th>
+              </tr></thead>
+              <tbody className="divide-y divide-gray-100">
+                {comparisons.map((item, index) => <tr key={`${item.graph_user_id ?? item.local?.id ?? 'row'}-${index}`}>
+                  <td className="px-4 py-3">{item.email ?? item.local?.email_address ?? '—'}</td>
+                  <td className="px-4 py-3">{item.graph_name ?? item.local?.display_name ?? '—'}</td>
+                  <td className="px-4 py-3">{item.graph_plans?.join(', ') || '—'}</td>
+                  <td className="px-4 py-3">{item.local?.license_plan ?? '—'}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{dateLabel(item.graph_created_at ?? item.local?.created_date)}</td>
+                  <td className="px-4 py-3"><Badge label={m365ResultLabel(item.result)} color={m365ResultColor(item.result)} /></td>
+                </tr>)}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-white rounded-xl border border-line overflow-x-auto">
+            <div className="px-5 py-4 border-b border-line"><h3 className="font-semibold text-ink">Microsoft 변경 이력</h3><p className="text-xs text-ink-muted mt-1">{dateLabel(data.audit_since)} 이후 Entra 감사 로그</p></div>
+            {data.audit_events.length === 0 ? <p className="px-5 py-8 text-sm text-ink-muted">해당 기간에 계정 변경 이력이 없습니다.</p> : <table className="w-full text-sm min-w-[760px]"><thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="px-4 py-3 text-left">일시</th><th className="px-4 py-3 text-left">작업</th><th className="px-4 py-3 text-left">대상</th><th className="px-4 py-3 text-left">실행자</th></tr></thead><tbody className="divide-y divide-gray-100">{data.audit_events.map((event, index) => <tr key={event.id ?? index}><td className="px-4 py-3 whitespace-nowrap">{dateLabel(event.activityDateTime)}</td><td className="px-4 py-3">{event.activityDisplayName ?? '—'}</td><td className="px-4 py-3">{event.targetResources?.map(target => target.userPrincipalName ?? target.displayName).filter(Boolean).join(', ') || '—'}</td><td className="px-4 py-3">{event.initiatedBy?.user?.userPrincipalName ?? event.initiatedBy?.user?.displayName ?? '—'}</td></tr>)}</tbody></table>}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-type ViewTab = 'dashboard' | 'licenses' | 'subscriptions'
+type ViewTab = 'dashboard' | 'licenses' | 'subscriptions' | 'm365'
 type LicSortCol = 'account_id' | 'display_name' | 'account_type' | 'license_plan' | 'monthly_cost_cad' | 'status'
 
 export default function LicensesPage() {
@@ -1044,6 +1179,10 @@ export default function LicensesPage() {
             {t(tab.labelKey, locale)}
           </button>
         ))}
+        <button onClick={() => setView('m365')}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${view === 'm365' ? 'bg-pill text-ink' : 'text-ink-muted hover:bg-pill hover:text-ink'}`}>
+          M365 비교 / 이력
+        </button>
       </div>
 
       {loading ? (
@@ -1053,6 +1192,8 @@ export default function LicensesPage() {
           {view === 'dashboard' && (
             <Dashboard licenses={licenses} subscriptions={subscriptions} company={company} />
           )}
+
+          {view === 'm365' && <M365SyncView company={company} />}
 
           {view === 'licenses' && (
             <div>
