@@ -67,12 +67,19 @@ const BILLING_CYCLES = ['Monthly', 'Annual', 'One-time']
 function computeNextAccountId(licenses: License[]): string {
   const nums = licenses
     .map(l => {
-      const m = l.account_id?.match(/(\d+)$/)
+      const m = l.account_id?.trim().match(/^A-?(\d+)$/i)
       return m ? parseInt(m[1], 10) : null
     })
     .filter((n): n is number => n !== null)
   const max = nums.length > 0 ? Math.max(...nums) : 0
-  return `A-${String(max + 1).padStart(3, '0')}`
+  return `A${String(max + 1).padStart(3, '0')}`
+}
+
+/** Canonical internal M365 account label: A + exactly three digits (for example A001). */
+function normalizeAccountId(value: string): string | null {
+  const match = value.trim().match(/^A-?(\d{1,3})$/i)
+  if (!match) return null
+  return `A${match[1].padStart(3, '0')}`
 }
 
 function nextBillingDate(day: number): string {
@@ -397,10 +404,14 @@ function LicenseModal({ initial, clone, employees, emailPlans, nextAccountId, on
   }
 
   async function handleSubmit() {
-    if (!form.account_id.trim()) { setError(t('licenses.form.account_id_req', locale)); return }
+    const accountId = normalizeAccountId(form.account_id)
+    if (!accountId) {
+      setError('Account ID must use the A001 format (A + 3 digits).')
+      return
+    }
     setSaving(true)
     const payload = {
-      account_id: form.account_id.trim(),
+      account_id: accountId,
       display_name: form.display_name || null,
       email_address: form.email_address || null,
       alias: form.alias || null,
@@ -438,7 +449,7 @@ function LicenseModal({ initial, clone, employees, emailPlans, nextAccountId, on
       <div className="grid grid-cols-2 gap-x-3">
         <Field label="Account ID *">
           <div className="relative">
-            <input className={inputCls} value={form.account_id} onChange={set('account_id')} placeholder="A-001" />
+            <input className={inputCls} value={form.account_id} onChange={set('account_id')} placeholder="A001" />
             {!initial && !clone && (
               <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-400 pointer-events-none">
                 {t('licenses.form.auto_id_note', locale)}
