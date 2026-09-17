@@ -12,6 +12,7 @@ const supabase = createClient(
 
 const NAV: { href: string; label: { en: string; ko: string }; roles: Role[] }[] = [
   { href: '/', label: { en: 'Dashboard', ko: '대시보드' }, roles: ['requester', 'purchasing', 'operations', 'bookkeeping', 'admin'] },
+  { href: '/purchases/new', label: { en: 'New Purchase', ko: '새 구매 등록' }, roles: ['purchasing', 'admin'] },
   { href: '/requests/new', label: { en: 'New Request', ko: '새 요청 작성' }, roles: ['requester', 'purchasing', 'admin'] },
   { href: '/requests', label: { en: 'Purchase Requests', ko: '구매 요청' }, roles: ['requester', 'purchasing', 'operations', 'admin'] },
   { href: '/bookkeeping', label: { en: 'Bookkeeping Queue', ko: '경리 대기' }, roles: ['bookkeeping', 'admin'] },
@@ -39,6 +40,7 @@ export default function Shell({ role }: { role: Role }) {
 
   function isActive(href: string) {
     if (href === '/') return path === '/'
+    if (href === '/purchases/new') return path === '/purchases/new'
     if (href === '/requests/new') return path === '/requests/new'
     if (href === '/requests') return path === '/requests' || /^\/requests\/[^/]+$/.test(path)
     return path === href || path.startsWith(href + '/')
