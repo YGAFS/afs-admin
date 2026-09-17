@@ -115,5 +115,7 @@ export async function listDirectoryAudits(since: Date) {
   // A 90-day window can exceed 20 pages in an active tenant. Keep the same
   // pagination safety mechanism as the other collection calls, with room for
   // the requested maximum window.
-  return collect<M365AuditEvent>(`/auditLogs/directoryAudits?$filter=${filter}&$orderby=activityDateTime desc&$top=999`, 100)
+  // Graph can reject combining this date filter with $orderby for directory
+  // audits. Sorting is performed after collection by the API route.
+  return collect<M365AuditEvent>(`/auditLogs/directoryAudits?$filter=${filter}&$top=999`, 100)
 }

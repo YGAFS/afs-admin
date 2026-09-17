@@ -53,7 +53,7 @@ function planMatches(local: string | null, graphPlans: string[]) {
 
 function relevantAuditEvents(events: M365AuditEvent[], users: M365User[]) {
   const ids = new Set(users.map(user => user.id))
-  return events.filter(event => {
+  const relevant = events.filter(event => {
     if (!event.targetResources?.some(target => target.id && ids.has(target.id))) return false
     const activity = clean(event.activityDisplayName)
     const properties = event.targetResources?.flatMap(target => target.modifiedProperties ?? []).map(property => clean(property.displayName)) ?? []
@@ -64,6 +64,15 @@ function relevantAuditEvents(events: M365AuditEvent[], users: M365User[]) {
       activity.includes('update user license') || activity.includes('change user license') ||
       (activity.includes('update user') && (emailChanged || accountDisabled))
   })
+  const unique = new Map<string, M365AuditEvent>()
+  for (const event of relevant) {
+    const target = event.targetResources?.map(item => item.userPrincipalName ?? item.displayName ?? item.id ?? '').sort().join('|') ?? ''
+    const actor = event.initiatedBy?.user?.userPrincipalName ?? event.initiatedBy?.app?.displayName ?? ''
+    const timestamp = event.activityDateTime ? new Date(event.activityDateTime).toISOString().slice(0, 19) : ''
+    const key = `${timestamp}|${clean(event.activityDisplayName)}|${target}|${actor}`
+    if (!unique.has(key)) unique.set(key, event)
+  }
+  return [...unique.values()].sort((a, b) => (b.activityDateTime ?? '').localeCompare(a.activityDateTime ?? ''))
 }
 
 export async function GET(req: NextRequest) {

@@ -929,6 +929,10 @@ function M365SyncView() {
   const [data, setData] = useState<M365DryRun | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [auditSort, setAuditSort] = useState<'date' | 'operation' | 'target'>('date')
+  const [registerTarget, setRegisterTarget] = useState<{ item: M365Comparison; x: number; y: number } | null>(null)
+  const [registering, setRegistering] = useState(false)
+  const [registerMessage, setRegisterMessage] = useState('')
 
   async function runDryRun() {
     setLoading(true)
@@ -940,6 +944,37 @@ function M365SyncView() {
   }
 
   const comparisons = data?.comparisons ?? []
+  const sortedAudits = [...(data?.audit_events ?? [])].sort((a, b) => {
+    if (auditSort === 'operation') return (a.activityDisplayName ?? '').localeCompare(b.activityDisplayName ?? '')
+    if (auditSort === 'target') return (a.targetResources?.[0]?.userPrincipalName ?? a.targetResources?.[0]?.displayName ?? '').localeCompare(b.targetResources?.[0]?.userPrincipalName ?? b.targetResources?.[0]?.displayName ?? '')
+    return (b.activityDateTime ?? '').localeCompare(a.activityDateTime ?? '')
+  })
+
+  async function registerAccount() {
+    if (!registerTarget?.item) return
+    setRegistering(true)
+    setRegisterMessage('')
+    const accountNumbers = comparisons.map(item => item.local?.account_id ?? '').map(value => Number(value.match(/^A-?(\d+)$/i)?.[1] ?? 0))
+    const nextNumber = Math.max(0, ...accountNumbers) + 1
+    const item = registerTarget.item
+    const { error: insertError } = await supabase.from('licenses').insert({
+      account_id: `A${String(nextNumber).padStart(3, '0')}`,
+      display_name: item.graph_name ?? null,
+      email_address: item.email ?? null,
+      account_type: 'Individual',
+      license_plan: item.graph_plans?.join(', ') || null,
+      monthly_cost_cad: 0,
+      status: 'Active',
+      company: 'AFS',
+      created_date: item.graph_created_at ?? new Date().toISOString().slice(0, 10),
+      notes: 'Imported from Microsoft 365 comparison',
+    })
+    setRegistering(false)
+    if (insertError) { setRegisterMessage(insertError.message); return }
+    setRegisterTarget(null)
+    setRegisterMessage('대시보드에 등록했습니다. 다시 조회하면 일치로 표시됩니다.')
+    await runDryRun()
+  }
 
   return (
     <div className="space-y-5">
@@ -987,7 +1022,7 @@ function M365SyncView() {
                 <th className="px-4 py-3 text-left">생성일</th><th className="px-4 py-3 text-left">결과</th>
               </tr></thead>
               <tbody className="divide-y divide-gray-100">
-                {comparisons.map((item, index) => <tr key={`${item.graph_user_id ?? item.local?.id ?? 'row'}-${index}`}>
+                {comparisons.map((item, index) => <tr key={`${item.graph_user_id ?? item.local?.id ?? 'row'}-${index}`} onContextMenu={event => { if (item.result === 'microsoft_only') { event.preventDefault(); setRegisterTarget({ item, x: event.clientX, y: event.clientY }) } }} className={item.result === 'microsoft_only' ? 'cursor-context-menu hover:bg-blue-50' : ''}>
                   <td className="px-4 py-3">{item.email ?? item.local?.email_address ?? '—'}</td>
                   <td className="px-4 py-3">{item.graph_name ?? item.local?.display_name ?? '—'}</td>
                   <td className="px-4 py-3">{item.graph_plans?.join(', ') || '—'}</td>
@@ -1000,11 +1035,13 @@ function M365SyncView() {
           </div>
 
           <div className="bg-white rounded-xl border border-line overflow-x-auto">
-            <div className="px-5 py-4 border-b border-line"><h3 className="font-semibold text-ink">Microsoft 변경 이력</h3><p className="text-xs text-ink-muted mt-1">{dateLabel(data.audit_since)} 이후 Entra 감사 로그</p></div>
-            {data.audit_events.length === 0 ? <p className="px-5 py-8 text-sm text-ink-muted">해당 기간에 계정 변경 이력이 없습니다.</p> : <table className="w-full text-sm min-w-[760px]"><thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="px-4 py-3 text-left">일시</th><th className="px-4 py-3 text-left">작업</th><th className="px-4 py-3 text-left">대상</th><th className="px-4 py-3 text-left">실행자</th></tr></thead><tbody className="divide-y divide-gray-100">{data.audit_events.map((event, index) => <tr key={event.id ?? index}><td className="px-4 py-3 whitespace-nowrap">{dateLabel(event.activityDateTime)}</td><td className="px-4 py-3">{event.activityDisplayName ?? '—'}</td><td className="px-4 py-3">{event.targetResources?.map(target => target.userPrincipalName ?? target.displayName).filter(Boolean).join(', ') || '—'}</td><td className="px-4 py-3">{event.initiatedBy?.user?.userPrincipalName ?? event.initiatedBy?.user?.displayName ?? '—'}</td></tr>)}</tbody></table>}
+            <div className="px-5 py-4 border-b border-line flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold text-ink">Microsoft 변경 이력</h3><p className="text-xs text-ink-muted mt-1">{dateLabel(data.audit_since)} 이후 Entra 감사 로그 · 중복 제거됨</p></div><select className="border rounded-lg px-3 py-2 text-sm bg-white" value={auditSort} onChange={e => setAuditSort(e.target.value as typeof auditSort)}><option value="date">최신순</option><option value="operation">작업명순</option><option value="target">대상 이메일순</option></select></div>
+            {sortedAudits.length === 0 ? <p className="px-5 py-8 text-sm text-ink-muted">해당 기간에 계정 변경 이력이 없습니다.</p> : <table className="w-full text-sm min-w-[760px]"><thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="px-4 py-3 text-left">일시</th><th className="px-4 py-3 text-left">작업</th><th className="px-4 py-3 text-left">대상</th><th className="px-4 py-3 text-left">실행자</th></tr></thead><tbody className="divide-y divide-gray-100">{sortedAudits.map((event, index) => <tr key={event.id ?? index}><td className="px-4 py-3 whitespace-nowrap">{dateLabel(event.activityDateTime)}</td><td className="px-4 py-3">{event.activityDisplayName ?? '—'}</td><td className="px-4 py-3">{event.targetResources?.map(target => target.userPrincipalName ?? target.displayName).filter(Boolean).join(', ') || '—'}</td><td className="px-4 py-3">{event.initiatedBy?.user?.userPrincipalName ?? event.initiatedBy?.user?.displayName ?? '—'}</td></tr>)}</tbody></table>}
           </div>
         </>
       )}
+      {registerMessage && <div className="rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-3">{registerMessage}</div>}
+      {registerTarget && <div className="fixed z-50 bg-white border border-line rounded-lg shadow-lg p-1" style={{ left: registerTarget.x, top: registerTarget.y }} onMouseLeave={() => setRegisterTarget(null)}><button onClick={registerAccount} disabled={registering} className="px-3 py-2 text-sm rounded-md hover:bg-blue-50 text-blue-700 whitespace-nowrap">{registering ? '등록 중…' : '대시보드에 AFS 계정으로 등록'}</button></div>}
     </div>
   )
 }
