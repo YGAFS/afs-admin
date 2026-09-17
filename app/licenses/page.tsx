@@ -999,6 +999,7 @@ function M365SyncView() {
       </div>
 
       {error && <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3">{error}</div>}
+      {registerMessage && <div className={`rounded-lg border text-sm px-4 py-3 ${registerFailed ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>{registerMessage}</div>}
       {!data && !loading && !error && <div className="bg-white rounded-xl border border-line p-10 text-center text-sm text-ink-muted">Microsoft 조회 버튼을 누르면 비교 결과와 변경 이력이 표시됩니다.</div>}
 
       {data && (
@@ -1042,7 +1043,6 @@ function M365SyncView() {
           </div>
         </>
       )}
-      {registerMessage && <div className={`rounded-lg border text-sm px-4 py-3 ${registerFailed ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>{registerMessage}</div>}
       {registerTarget && <div className="fixed z-50 bg-white border border-line rounded-lg shadow-lg p-1" style={{ left: registerTarget.x, top: registerTarget.y }}><button onClick={registerAccount} disabled={registering} className="px-3 py-2 text-sm rounded-md hover:bg-blue-50 text-blue-700 whitespace-nowrap">{registering ? '등록 중…' : '대시보드에 AFS 계정으로 등록'}</button></div>}
     </div>
   )
