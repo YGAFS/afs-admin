@@ -956,7 +956,14 @@ function M365SyncView() {
     setRegistering(true)
     setRegisterMessage('')
     setRegisterFailed(false)
-    const accountNumbers = comparisons.map(item => item.local?.account_id ?? '').map(value => Number(value.match(/^A-?(\d+)$/i)?.[1] ?? 0))
+    const { data: existingAccounts, error: accountLookupError } = await supabase.from('licenses').select('account_id').eq('company', 'AFS')
+    if (accountLookupError) {
+      setRegistering(false)
+      setRegisterFailed(true)
+      setRegisterMessage(`등록 실패: 기존 AFS 계정번호를 확인할 수 없습니다. ${accountLookupError.message}`)
+      return
+    }
+    const accountNumbers = (existingAccounts ?? []).map(row => Number(String(row.account_id ?? '').match(/^A-?(\d+)$/i)?.[1] ?? 0))
     const nextNumber = Math.max(0, ...accountNumbers) + 1
     const item = registerTarget.item
     const { error: insertError } = await supabase.from('licenses').insert({
