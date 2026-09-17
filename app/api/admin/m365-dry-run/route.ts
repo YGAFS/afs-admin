@@ -87,9 +87,10 @@ export async function GET(req: NextRequest) {
   if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const requestedDays = Number(req.nextUrl.searchParams.get('days') ?? '30')
   const days = Number.isFinite(requestedDays) ? Math.min(Math.max(Math.trunc(requestedDays), 1), 90) : 30
+  const effectiveDays = Math.min(days, 30)
 
   try {
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    const since = new Date(Date.now() - effectiveDays * 24 * 60 * 60 * 1000)
     const [localResult, allUsers, skus, audits] = await Promise.all([
       // This app registration belongs to the AFS tenant. TNT and ZFS use
       // separate admin domains/tenants and must never enter this comparison.
@@ -137,7 +138,7 @@ export async function GET(req: NextRequest) {
     const allComparisons = [...comparisons, ...dbOnly]
     const summary = allComparisons.reduce<Record<string, number>>((acc, item) => { acc[item.result] = (acc[item.result] ?? 0) + 1; return acc }, {})
 
-    return NextResponse.json({ tenant_company: 'AFS', mode: 'dry-run', writes_performed: false, checked_at: new Date().toISOString(), audit_since: since.toISOString(), summary, comparisons: allComparisons, audit_events: relevantAuditEvents(audits, users).slice(0, 500), sku_catalog: skus })
+    return NextResponse.json({ tenant_company: 'AFS', mode: 'dry-run', writes_performed: false, requested_days: days, effective_days: effectiveDays, retention_limited: days > effectiveDays, checked_at: new Date().toISOString(), audit_since: since.toISOString(), summary, comparisons: allComparisons, audit_events: relevantAuditEvents(audits, users).slice(0, 500), sku_catalog: skus })
   } catch (error) {
     console.error('[m365-dry-run]', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'M365 dry run failed' }, { status: 500 })

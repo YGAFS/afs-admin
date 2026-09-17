@@ -898,6 +898,9 @@ type M365Audit = {
 
 type M365DryRun = {
   tenant_company?: string
+  requested_days?: number
+  effective_days?: number
+  retention_limited?: boolean
   checked_at: string
   audit_since: string
   summary: Record<string, number>
@@ -995,6 +998,7 @@ function M365SyncView() {
 
       {data && (
         <>
+          {data.retention_limited && <div className="rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3">Microsoft Entra currently provides up to {data.effective_days} days of audit history. The {data.requested_days}-day request was limited to the available period.</div>}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {Object.entries(data.summary).map(([key, count]) => (
               <div key={key} className="bg-white rounded-xl border border-line p-4">
