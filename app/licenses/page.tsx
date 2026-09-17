@@ -956,32 +956,14 @@ function M365SyncView() {
     setRegistering(true)
     setRegisterMessage('')
     setRegisterFailed(false)
-    const { data: existingAccounts, error: accountLookupError } = await supabase.from('licenses').select('account_id').eq('company', 'AFS')
-    if (accountLookupError) {
-      setRegistering(false)
-      setRegisterFailed(true)
-      setRegisterMessage(`등록 실패: 기존 AFS 계정번호를 확인할 수 없습니다. ${accountLookupError.message}`)
-      return
-    }
-    const accountNumbers = (existingAccounts ?? []).map(row => Number(String(row.account_id ?? '').match(/^A-?(\d+)$/i)?.[1] ?? 0))
-    const nextNumber = Math.max(0, ...accountNumbers) + 1
     const item = registerTarget.item
-    const { error: insertError } = await supabase.from('licenses').insert({
-      account_id: `A${String(nextNumber).padStart(3, '0')}`,
-      display_name: item.graph_name ?? null,
-      email_address: item.email ?? null,
-      account_type: 'Individual',
-      license_plan: item.graph_plans?.join(', ') || null,
-      monthly_cost_cad: 0,
-      status: 'Active',
-      company: 'AFS',
-      created_date: item.graph_created_at ?? new Date().toISOString().slice(0, 10),
-      notes: 'Imported from Microsoft 365 comparison',
+    const result = await hrFetch<{ ok: boolean; account?: { account_id: string }; error?: string }>('/api/admin/m365-register', {
+      method: 'POST', body: JSON.stringify({ display_name: item.graph_name, email_address: item.email, license_plan: item.graph_plans?.join(', '), created_date: item.graph_created_at }),
     })
     setRegistering(false)
-    if (insertError) { setRegisterFailed(true); setRegisterMessage(`등록 실패: ${insertError.message}`); return }
+    if (result.error) { setRegisterFailed(true); setRegisterMessage(`등록 실패: ${result.error.message}`); return }
     setRegisterTarget(null)
-    setRegisterMessage('대시보드에 등록했습니다. 다시 조회하면 일치로 표시됩니다.')
+    setRegisterMessage(`대시보드에 ${result.data?.account?.account_id ?? 'AFS 계정'}으로 등록했습니다. 다시 조회하면 일치로 표시됩니다.`)
     await runDryRun()
   }
 
