@@ -7,6 +7,8 @@ export type M365User = {
   surname?: string | null
   mail?: string | null
   userPrincipalName?: string | null
+  proxyAddresses?: string[] | null
+  otherMails?: string[] | null
   accountEnabled?: boolean | null
   createdDateTime?: string | null
   assignedLicenses?: Array<{ skuId?: string; disabledPlans?: string[] }>
@@ -95,7 +97,7 @@ async function collect<T>(path: string, maxPages = 100) {
 }
 
 export async function listUsers() {
-  const select = 'id,displayName,givenName,surname,mail,userPrincipalName,accountEnabled,createdDateTime,assignedLicenses'
+  const select = 'id,displayName,givenName,surname,mail,userPrincipalName,proxyAddresses,otherMails,accountEnabled,createdDateTime,assignedLicenses'
   return collect<M365User>(`/users?$select=${select}&$top=999`)
 }
 
@@ -110,5 +112,8 @@ export async function getMailboxUserPurpose(userId: string) {
 
 export async function listDirectoryAudits(since: Date) {
   const filter = encodeURIComponent(`activityDateTime ge ${since.toISOString()}`)
-  return collect<M365AuditEvent>(`/auditLogs/directoryAudits?$filter=${filter}&$orderby=activityDateTime desc&$top=999`, 20)
+  // A 90-day window can exceed 20 pages in an active tenant. Keep the same
+  // pagination safety mechanism as the other collection calls, with room for
+  // the requested maximum window.
+  return collect<M365AuditEvent>(`/auditLogs/directoryAudits?$filter=${filter}&$orderby=activityDateTime desc&$top=999`, 100)
 }

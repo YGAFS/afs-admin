@@ -21,21 +21,34 @@ async function requireAdmin(req: NextRequest) {
 
 type LicenseRow = { id: string; account_id: string; display_name: string | null; email_address: string | null; license_plan: string | null; status: string | null; company: string | null; created_date: string | null }
 
-function emailOf(user: M365User) { return (user.mail ?? user.userPrincipalName ?? '').trim().toLowerCase() }
-function isAfsUser(user: M365User) { return emailOf(user).endsWith('@afstransco.com') }
+function userEmails(user: M365User) {
+  const aliases = (user.proxyAddresses ?? []).map(value => value.replace(/^smtp:/i, '').trim())
+  return [user.mail, user.userPrincipalName, ...(user.otherMails ?? []), ...aliases]
+    .filter((value): value is string => !!value).map(value => value.toLowerCase())
+}
+function emailOf(user: M365User) {
+  return userEmails(user).find(value => value.endsWith('@afstransco.com')) ?? userEmails(user)[0] ?? ''
+}
+function isAfsUser(user: M365User) { return userEmails(user).some(value => value.endsWith('@afstransco.com')) }
 function clean(value: string | null | undefined) { return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ') }
 function planTokens(value: string | null | undefined) { return clean(value).replace(/[^a-z0-9]+/g, '') }
 
+function planKeys(value: string | null | undefined) {
+  const token = planTokens(value)
+  const keys: string[] = []
+  if (token.includes('businesspremium') || token === 'spb') keys.push('businesspremium')
+  if (token.includes('businessstandard') || token === 'o365businesspremium') keys.push('businessstandard')
+  if (token.includes('businessbasic') || token === 'o365businessessentials') keys.push('businessbasic')
+  if (token.includes('powerautomatefree') || token === 'flowfree') keys.push('powerautomatefree')
+  if (token.includes('exchangeonlineplan1') || token === 'exchangestandard') keys.push('exchangeonlineplan1')
+  return [...new Set(keys)]
+}
+
 function planMatches(local: string | null, graphPlans: string[]) {
-  if (!local || !graphPlans.length) return null
-  const localToken = planTokens(local)
-  // Graph exposes skuPartNumber, while the local table may contain a friendly
-  // product name. Only call it a mismatch when the values are directly
-  // comparable; unknown friendly-name mappings must not create false alarms.
-  const comparable = graphPlans.map(planTokens).filter(Boolean)
-  const looksLikeSku = /[_-]/.test(local.trim()) || /^[A-Z0-9]{2,12}$/.test(local.trim())
-  if (!looksLikeSku) return null
-  return comparable.some(token => token === localToken)
+  const localKeys = planKeys(local)
+  const graphKeys = [...new Set(graphPlans.flatMap(planKeys))]
+  if (!localKeys.length || !graphKeys.length) return null
+  return localKeys.length === graphKeys.length && localKeys.every(key => graphKeys.includes(key))
 }
 
 function relevantAuditEvents(events: M365AuditEvent[], users: M365User[]) {
@@ -82,7 +95,7 @@ export async function GET(req: NextRequest) {
     const matchedLocalIds = new Set<string>()
     const comparisons = licensedUsers.map(user => {
       const email = emailOf(user)
-      const candidates = byEmail.get(email) ?? []
+      const candidates = [...new Map(userEmails(user).flatMap(key => byEmail.get(key) ?? []).map(row => [row.id, row])).values()]
       const row = candidates.length === 1 ? candidates[0] : null
       if (row) matchedLocalIds.add(row.id)
       const graphPlans = (user.assignedLicenses ?? []).map(license => {
@@ -102,7 +115,7 @@ export async function GET(req: NextRequest) {
         result: !row ? 'microsoft_only' : candidates.length > 1 ? 'ambiguous_email' : localActive !== graphActive ? 'active_status_mismatch' : planStatus === false ? 'plan_mismatch' : planStatus === null ? 'plan_unverified' : 'match',
       }
     })
-    const knownGraphEmails = new Set(users.map(emailOf).filter(Boolean))
+    const knownGraphEmails = new Set(users.flatMap(userEmails))
     const dbOnly = local.filter(row => !matchedLocalIds.has(row.id) && !knownGraphEmails.has(clean(row.email_address))).map(row => ({ result: 'database_only', local: row }))
     const allComparisons = [...comparisons, ...dbOnly]
     const summary = allComparisons.reduce<Record<string, number>>((acc, item) => { acc[item.result] = (acc[item.result] ?? 0) + 1; return acc }, {})
