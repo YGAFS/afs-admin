@@ -41,6 +41,7 @@ export type M365AuditEvent = {
   category?: string | null
   initiatedBy?: { user?: { id?: string; userPrincipalName?: string; displayName?: string } | null; app?: { appId?: string; displayName?: string } | null } | null
   targetResources?: Array<{ id?: string; displayName?: string; userPrincipalName?: string; type?: string; modifiedProperties?: Array<{ displayName?: string; oldValue?: string | null; newValue?: string | null }> }>
+  audit_kind?: 'created' | 'license' | 'deleted' | 'email' | 'changed'
 }
 
 function requiredEnv(name: 'M365_GRAPH_TENANT_ID' | 'M365_GRAPH_CLIENT_ID' | 'M365_GRAPH_CLIENT_SECRET') {

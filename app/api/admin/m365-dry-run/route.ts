@@ -72,7 +72,15 @@ function relevantAuditEvents(events: M365AuditEvent[], users: M365User[]) {
     const key = `${timestamp}|${clean(event.activityDisplayName)}|${target}|${actor}`
     if (!unique.has(key)) unique.set(key, event)
   }
-  return [...unique.values()].sort((a, b) => (b.activityDateTime ?? '').localeCompare(a.activityDateTime ?? ''))
+  return [...unique.values()].sort((a, b) => (b.activityDateTime ?? '').localeCompare(a.activityDateTime ?? '')).map(event => {
+    const activity = clean(event.activityDisplayName)
+    const properties = event.targetResources?.flatMap(target => target.modifiedProperties ?? []).map(property => clean(property.displayName)) ?? []
+    const kind = activity.includes('add user') || activity.includes('create user') ? 'created' :
+      activity.includes('delete user') ? 'deleted' :
+      activity.includes('remove license') || activity.includes('revoke license') || activity.includes('assign license') || activity.includes('license') ? 'license' :
+      properties.some(property => ['mail', 'userprincipalname', 'proxyaddresses', 'othermails'].includes(property)) ? 'email' : 'changed'
+    return { ...event, audit_kind: kind }
+  })
 }
 
 export async function GET(req: NextRequest) {

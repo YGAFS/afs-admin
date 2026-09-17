@@ -893,6 +893,7 @@ type M365Audit = {
   category?: string
   initiatedBy?: { user?: { userPrincipalName?: string; displayName?: string } }
   targetResources?: { id?: string; displayName?: string; userPrincipalName?: string }[]
+  audit_kind?: 'created' | 'license' | 'deleted' | 'email' | 'changed'
 }
 
 type M365DryRun = {
@@ -911,9 +912,9 @@ function dateLabel(value?: string | null) {
 
 function m365ResultLabel(result: string) {
   const labels: Record<string, string> = {
-    match: '일치', microsoft_only: 'MS에만 존재', database_only: 'DB에만 존재',
-    ambiguous_email: '이메일 중복', active_status_mismatch: '활성 상태 불일치',
-    plan_mismatch: '플랜 불일치', plan_unverified: '플랜 확인 필요',
+    match: 'Match', microsoft_only: 'Microsoft only', database_only: 'Register only',
+    ambiguous_email: 'Duplicate email', active_status_mismatch: 'Status mismatch',
+    plan_mismatch: 'Plan mismatch', plan_unverified: 'Plan needs review',
   }
   return labels[result] ?? result
 }
@@ -930,6 +931,7 @@ function M365SyncView() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [auditSort, setAuditSort] = useState<'date' | 'operation' | 'target'>('date')
+  const [auditFilter, setAuditFilter] = useState<'all' | 'license' | 'created' | 'deleted' | 'email'>('all')
   const [registerTarget, setRegisterTarget] = useState<{ item: M365Comparison; x: number; y: number } | null>(null)
   const [registering, setRegistering] = useState(false)
   const [registerMessage, setRegisterMessage] = useState('')
@@ -945,7 +947,7 @@ function M365SyncView() {
   }
 
   const comparisons = data?.comparisons ?? []
-  const sortedAudits = [...(data?.audit_events ?? [])].sort((a, b) => {
+  const sortedAudits = [...(data?.audit_events ?? [])].filter(event => auditFilter === 'all' || event.audit_kind === auditFilter).sort((a, b) => {
     if (auditSort === 'operation') return (a.activityDisplayName ?? '').localeCompare(b.activityDisplayName ?? '')
     if (auditSort === 'target') return (a.targetResources?.[0]?.userPrincipalName ?? a.targetResources?.[0]?.displayName ?? '').localeCompare(b.targetResources?.[0]?.userPrincipalName ?? b.targetResources?.[0]?.displayName ?? '')
     return (b.activityDateTime ?? '').localeCompare(a.activityDateTime ?? '')
@@ -961,9 +963,9 @@ function M365SyncView() {
       method: 'POST', body: JSON.stringify({ display_name: item.graph_name, email_address: item.email, license_plan: item.graph_plans?.join(', '), created_date: item.graph_created_at }),
     })
     setRegistering(false)
-    if (result.error) { setRegisterFailed(true); setRegisterMessage(`등록 실패: ${result.error.message}`); return }
+    if (result.error) { setRegisterFailed(true); setRegisterMessage(`Registration failed: ${result.error.message}`); return }
     setRegisterTarget(null)
-    setRegisterMessage(`대시보드에 ${result.data?.account?.account_id ?? 'AFS 계정'}으로 등록했습니다. 다시 조회하면 일치로 표시됩니다.`)
+    setRegisterMessage(`Registered as ${result.data?.account?.account_id ?? 'an AFS account'}. Refresh to confirm the match.`)
     await runDryRun()
   }
 
@@ -971,25 +973,25 @@ function M365SyncView() {
     <div className="space-y-5">
       <div className="bg-white rounded-xl border border-line p-5 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-ink">Microsoft 365 비교 및 이력</h2>
-          <p className="text-sm text-ink-muted mt-1">AFS 테넌트의 Microsoft 계정·플랜과 AFS 라이선스 목록만 읽기 전용으로 비교합니다.</p>
-          <p className="text-xs text-ink-faint mt-1">자동 수정이나 DB 저장은 수행하지 않습니다.</p>
+          <h2 className="text-lg font-semibold text-ink">Microsoft 365 Comparison & History</h2>
+          <p className="text-sm text-ink-muted mt-1">Read-only comparison of Microsoft accounts and plans in the AFS tenant against the AFS license register.</p>
+          <p className="text-xs text-ink-faint mt-1">No automatic changes or database writes are performed.</p>
         </div>
         <div className="flex items-end gap-2">
-          <label className="text-xs text-ink-muted">감사 이력 기간
+          <label className="text-xs text-ink-muted">Audit history period
             <select className="block mt-1 border rounded-lg px-3 py-2 text-sm bg-white" value={days} onChange={e => setDays(Number(e.target.value))}>
-              <option value={7}>최근 7일</option><option value={30}>최근 30일</option><option value={90}>최근 90일</option>
+              <option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option>
             </select>
           </label>
           <button onClick={runDryRun} disabled={loading} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
-            {loading ? '조회 중…' : data ? '다시 조회' : 'Microsoft 조회'}
+            {loading ? 'Loading…' : data ? 'Refresh' : 'Load Microsoft data'}
           </button>
         </div>
       </div>
 
       {error && <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3">{error}</div>}
       {registerMessage && <div className={`rounded-lg border text-sm px-4 py-3 ${registerFailed ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>{registerMessage}</div>}
-      {!data && !loading && !error && <div className="bg-white rounded-xl border border-line p-10 text-center text-sm text-ink-muted">Microsoft 조회 버튼을 누르면 비교 결과와 변경 이력이 표시됩니다.</div>}
+      {!data && !loading && !error && <div className="bg-white rounded-xl border border-line p-10 text-center text-sm text-ink-muted">Load Microsoft data to see account comparisons and change history.</div>}
 
       {data && (
         <>
@@ -1004,14 +1006,14 @@ function M365SyncView() {
 
           <div className="bg-white rounded-xl border border-line overflow-x-auto">
             <div className="px-5 py-4 border-b border-line flex justify-between items-center">
-              <h3 className="font-semibold text-ink">계정 비교 결과 ({comparisons.length})</h3>
-              <span className="text-xs text-ink-faint">조회: {dateLabel(data.checked_at)}</span>
+                <h3 className="font-semibold text-ink">Account comparison ({comparisons.length})</h3>
+              <span className="text-xs text-ink-faint">Checked: {dateLabel(data.checked_at)}</span>
             </div>
             <table className="w-full text-sm min-w-[900px]">
               <thead className="bg-gray-50 text-xs text-gray-500"><tr>
-                <th className="px-4 py-3 text-left">이메일</th><th className="px-4 py-3 text-left">소유자</th>
-                <th className="px-4 py-3 text-left">Graph 플랜</th><th className="px-4 py-3 text-left">DB 플랜</th>
-                <th className="px-4 py-3 text-left">생성일</th><th className="px-4 py-3 text-left">결과</th>
+                <th className="px-4 py-3 text-left">Email</th><th className="px-4 py-3 text-left">Owner</th>
+                <th className="px-4 py-3 text-left">Microsoft plan</th><th className="px-4 py-3 text-left">Registered plan</th>
+                <th className="px-4 py-3 text-left">Created</th><th className="px-4 py-3 text-left">Result</th>
               </tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {comparisons.map((item, index) => <tr key={`${item.graph_user_id ?? item.local?.id ?? 'row'}-${index}`} onContextMenu={event => { if (item.result === 'microsoft_only') { event.preventDefault(); setRegisterTarget({ item, x: event.clientX, y: event.clientY }) } }} className={item.result === 'microsoft_only' ? 'cursor-context-menu hover:bg-blue-50' : ''}>
@@ -1027,12 +1029,12 @@ function M365SyncView() {
           </div>
 
           <div className="bg-white rounded-xl border border-line overflow-x-auto">
-            <div className="px-5 py-4 border-b border-line flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold text-ink">Microsoft 변경 이력</h3><p className="text-xs text-ink-muted mt-1">{dateLabel(data.audit_since)} 이후 Entra 감사 로그 · 중복 제거됨</p></div><select className="border rounded-lg px-3 py-2 text-sm bg-white" value={auditSort} onChange={e => setAuditSort(e.target.value as typeof auditSort)}><option value="date">최신순</option><option value="operation">작업명순</option><option value="target">대상 이메일순</option></select></div>
-            {sortedAudits.length === 0 ? <p className="px-5 py-8 text-sm text-ink-muted">해당 기간에 계정 변경 이력이 없습니다.</p> : <table className="w-full text-sm min-w-[760px]"><thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="px-4 py-3 text-left">일시</th><th className="px-4 py-3 text-left">작업</th><th className="px-4 py-3 text-left">대상</th><th className="px-4 py-3 text-left">실행자</th></tr></thead><tbody className="divide-y divide-gray-100">{sortedAudits.map((event, index) => <tr key={event.id ?? index}><td className="px-4 py-3 whitespace-nowrap">{dateLabel(event.activityDateTime)}</td><td className="px-4 py-3">{event.activityDisplayName ?? '—'}</td><td className="px-4 py-3">{event.targetResources?.map(target => target.userPrincipalName ?? target.displayName).filter(Boolean).join(', ') || '—'}</td><td className="px-4 py-3">{event.initiatedBy?.user?.userPrincipalName ?? event.initiatedBy?.user?.displayName ?? '—'}</td></tr>)}</tbody></table>}
+            <div className="px-5 py-4 border-b border-line flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold text-ink">Microsoft change history</h3><p className="text-xs text-ink-muted mt-1">Entra audit logs since {dateLabel(data.audit_since)} · duplicates removed</p></div><div className="flex gap-2"><select className="border rounded-lg px-3 py-2 text-sm bg-white" value={auditFilter} onChange={e => setAuditFilter(e.target.value as typeof auditFilter)}><option value="all">All changes</option><option value="license">License changes</option><option value="created">Created accounts</option><option value="deleted">Deleted / deactivated</option><option value="email">Email address changes</option></select><select className="border rounded-lg px-3 py-2 text-sm bg-white" value={auditSort} onChange={e => setAuditSort(e.target.value as typeof auditSort)}><option value="date">Newest first</option><option value="operation">Operation</option><option value="target">Target email</option></select></div></div>
+            {sortedAudits.length === 0 ? <p className="px-5 py-8 text-sm text-ink-muted">No matching account changes in this period.</p> : <table className="w-full text-sm min-w-[760px]"><thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="px-4 py-3 text-left">Date</th><th className="px-4 py-3 text-left">Operation</th><th className="px-4 py-3 text-left">Target</th><th className="px-4 py-3 text-left">Initiated by</th></tr></thead><tbody className="divide-y divide-gray-100">{sortedAudits.map((event, index) => <tr key={event.id ?? index}><td className="px-4 py-3 whitespace-nowrap">{dateLabel(event.activityDateTime)}</td><td className="px-4 py-3">{event.activityDisplayName ?? '—'}</td><td className="px-4 py-3">{event.targetResources?.map(target => target.userPrincipalName ?? target.displayName).filter(Boolean).join(', ') || '—'}</td><td className="px-4 py-3">{event.initiatedBy?.user?.userPrincipalName ?? event.initiatedBy?.user?.displayName ?? '—'}</td></tr>)}</tbody></table>}
           </div>
         </>
       )}
-      {registerTarget && <div className="fixed z-50 bg-white border border-line rounded-lg shadow-lg p-1" style={{ left: registerTarget.x, top: registerTarget.y }}><button onClick={registerAccount} disabled={registering} className="px-3 py-2 text-sm rounded-md hover:bg-blue-50 text-blue-700 whitespace-nowrap">{registering ? '등록 중…' : '대시보드에 AFS 계정으로 등록'}</button></div>}
+      {registerTarget && <div className="fixed z-50 bg-white border border-line rounded-lg shadow-lg p-1" style={{ left: registerTarget.x, top: registerTarget.y }}><button onClick={registerAccount} disabled={registering} className="px-3 py-2 text-sm rounded-md hover:bg-blue-50 text-blue-700 whitespace-nowrap">{registering ? 'Registering…' : 'Register as AFS account'}</button></div>}
     </div>
   )
 }
@@ -1040,7 +1042,7 @@ function M365SyncView() {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 type ViewTab = 'dashboard' | 'licenses' | 'subscriptions' | 'm365'
-type LicSortCol = 'account_id' | 'display_name' | 'account_type' | 'license_plan' | 'monthly_cost_cad' | 'status'
+type LicSortCol = 'account_id' | 'display_name' | 'account_type' | 'license_plan' | 'created_date' | 'monthly_cost_cad' | 'status'
 
 export default function LicensesPage() {
   const { locale } = useLocale()
@@ -1157,6 +1159,7 @@ export default function LicensesPage() {
     else if (col === 'display_name') { av = a.display_name ?? '';        bv = b.display_name ?? '' }
     else if (col === 'account_type') { av = a.account_type ?? '';        bv = b.account_type ?? '' }
     else if (col === 'license_plan') { av = a.license_plan ?? '';        bv = b.license_plan ?? '' }
+    else if (col === 'created_date') { av = a.created_date ?? '';         bv = b.created_date ?? '' }
     else if (col === 'monthly_cost_cad') { av = a.monthly_cost_cad ?? 0; bv = b.monthly_cost_cad ?? 0 }
     else if (col === 'status')       { av = a.status ?? '';              bv = b.status ?? '' }
     if (av < bv) return dir === 'asc' ? -1 : 1
@@ -1210,7 +1213,7 @@ export default function LicensesPage() {
         ))}
         <button onClick={() => { setCompany('AFS'); setView('m365') }}
           className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${view === 'm365' ? 'bg-pill text-ink' : 'text-ink-muted hover:bg-pill hover:text-ink'}`}>
-          M365 비교 / 이력
+          <span aria-label="M365 sync" title="M365 sync">↻</span>
         </button>
       </div>
 
@@ -1260,8 +1263,8 @@ export default function LicensesPage() {
                         )
                       })}
                       <th className="px-4 py-3 text-left">Email</th>
-                      {(['account_type', 'license_plan'] as LicSortCol[]).map(col => {
-                        const labels: Record<string, string> = { account_type: 'Type', license_plan: 'Plan' }
+                      {(['account_type', 'license_plan', 'created_date'] as LicSortCol[]).map(col => {
+                        const labels: Record<string, string> = { account_type: 'Type', license_plan: 'Plan', created_date: 'Created' }
                         const active = licSort.col === col
                         return (
                           <th key={col} onClick={() => toggleLicSort(col)}
@@ -1311,6 +1314,7 @@ export default function LicensesPage() {
                         <td className="px-4 py-2 text-gray-600 text-xs">{r.email_address ?? '—'}</td>
                         <td className="px-4 py-2"><Badge label={r.account_type} color={accountTypeColor(r.account_type)} /></td>
                         <td className="px-4 py-2 text-gray-600 text-xs">{r.license_plan ?? '—'}</td>
+                        <td className="px-4 py-2 text-gray-600 text-xs whitespace-nowrap">{r.created_date ? new Date(r.created_date).toLocaleDateString() : '—'}</td>
                         <td className="px-4 py-2 text-gray-600">{r.company ?? '—'}</td>
                         <td className="px-4 py-2 text-gray-600">
                           {r.employee_id
