@@ -933,6 +933,7 @@ function M365SyncView() {
   const [registerTarget, setRegisterTarget] = useState<{ item: M365Comparison; x: number; y: number } | null>(null)
   const [registering, setRegistering] = useState(false)
   const [registerMessage, setRegisterMessage] = useState('')
+  const [registerFailed, setRegisterFailed] = useState(false)
 
   async function runDryRun() {
     setLoading(true)
@@ -954,6 +955,7 @@ function M365SyncView() {
     if (!registerTarget?.item) return
     setRegistering(true)
     setRegisterMessage('')
+    setRegisterFailed(false)
     const accountNumbers = comparisons.map(item => item.local?.account_id ?? '').map(value => Number(value.match(/^A-?(\d+)$/i)?.[1] ?? 0))
     const nextNumber = Math.max(0, ...accountNumbers) + 1
     const item = registerTarget.item
@@ -970,7 +972,7 @@ function M365SyncView() {
       notes: 'Imported from Microsoft 365 comparison',
     })
     setRegistering(false)
-    if (insertError) { setRegisterMessage(insertError.message); return }
+    if (insertError) { setRegisterFailed(true); setRegisterMessage(`등록 실패: ${insertError.message}`); return }
     setRegisterTarget(null)
     setRegisterMessage('대시보드에 등록했습니다. 다시 조회하면 일치로 표시됩니다.')
     await runDryRun()
@@ -1040,8 +1042,8 @@ function M365SyncView() {
           </div>
         </>
       )}
-      {registerMessage && <div className="rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-3">{registerMessage}</div>}
-      {registerTarget && <div className="fixed z-50 bg-white border border-line rounded-lg shadow-lg p-1" style={{ left: registerTarget.x, top: registerTarget.y }} onMouseLeave={() => setRegisterTarget(null)}><button onClick={registerAccount} disabled={registering} className="px-3 py-2 text-sm rounded-md hover:bg-blue-50 text-blue-700 whitespace-nowrap">{registering ? '등록 중…' : '대시보드에 AFS 계정으로 등록'}</button></div>}
+      {registerMessage && <div className={`rounded-lg border text-sm px-4 py-3 ${registerFailed ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>{registerMessage}</div>}
+      {registerTarget && <div className="fixed z-50 bg-white border border-line rounded-lg shadow-lg p-1" style={{ left: registerTarget.x, top: registerTarget.y }}><button onClick={registerAccount} disabled={registering} className="px-3 py-2 text-sm rounded-md hover:bg-blue-50 text-blue-700 whitespace-nowrap">{registering ? '등록 중…' : '대시보드에 AFS 계정으로 등록'}</button></div>}
     </div>
   )
 }
