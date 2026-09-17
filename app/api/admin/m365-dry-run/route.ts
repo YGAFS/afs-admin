@@ -22,6 +22,7 @@ async function requireAdmin(req: NextRequest) {
 type LicenseRow = { id: string; account_id: string; display_name: string | null; email_address: string | null; license_plan: string | null; status: string | null; company: string | null; created_date: string | null }
 
 function emailOf(user: M365User) { return (user.mail ?? user.userPrincipalName ?? '').trim().toLowerCase() }
+function isAfsUser(user: M365User) { return emailOf(user).endsWith('@afstransco.com') }
 function clean(value: string | null | undefined) { return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ') }
 function planTokens(value: string | null | undefined) { return clean(value).replace(/[^a-z0-9]+/g, '') }
 
@@ -39,7 +40,17 @@ function planMatches(local: string | null, graphPlans: string[]) {
 
 function relevantAuditEvents(events: M365AuditEvent[], users: M365User[]) {
   const ids = new Set(users.map(user => user.id))
-  return events.filter(event => event.targetResources?.some(target => target.id && ids.has(target.id)))
+  return events.filter(event => {
+    if (!event.targetResources?.some(target => target.id && ids.has(target.id))) return false
+    const activity = clean(event.activityDisplayName)
+    const properties = event.targetResources?.flatMap(target => target.modifiedProperties ?? []).map(property => clean(property.displayName)) ?? []
+    const emailChanged = properties.some(property => ['mail', 'userprincipalname', 'proxyaddresses', 'othermails'].includes(property))
+    const accountDisabled = properties.includes('accountenabled')
+    return activity.includes('add user') || activity.includes('create user') || activity.includes('delete user') ||
+      activity.includes('remove license') || activity.includes('revoke license') || activity.includes('assign license') ||
+      activity.includes('update user license') || activity.includes('change user license') ||
+      (activity.includes('update user') && (emailChanged || accountDisabled))
+  })
 }
 
 export async function GET(req: NextRequest) {
@@ -49,13 +60,14 @@ export async function GET(req: NextRequest) {
 
   try {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
-    const [localResult, users, skus, audits] = await Promise.all([
+    const [localResult, allUsers, skus, audits] = await Promise.all([
       // This app registration belongs to the AFS tenant. TNT and ZFS use
       // separate admin domains/tenants and must never enter this comparison.
       db().from('licenses').select('id,account_id,display_name,email_address,license_plan,status,company,created_date').eq('company', 'AFS').order('account_id'),
       listUsers(), listSubscribedSkus(), listDirectoryAudits(since),
     ])
     if (localResult.error) throw new Error('Unable to read local license records')
+    const users = allUsers.filter(isAfsUser)
 
     const local = (localResult.data ?? []) as LicenseRow[]
     const byEmail = new Map<string, LicenseRow[]>()
