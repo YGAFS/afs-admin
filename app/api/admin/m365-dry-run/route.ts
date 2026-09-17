@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { listDirectoryAudits, listSubscribedSkus, listUsers, type M365AuditEvent, type M365Sku, type M365User } from '@/lib/server/m365Graph'
+import { listDirectoryAudits, listSubscribedSkus, listUsers, M365_SKU_DISPLAY_NAMES, type M365AuditEvent, type M365Sku, type M365User } from '@/lib/server/m365Graph'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,6 +68,9 @@ export async function GET(req: NextRequest) {
     ])
     if (localResult.error) throw new Error('Unable to read local license records')
     const users = allUsers.filter(isAfsUser)
+    // Unlicensed users do not represent an active subscription and are
+    // intentionally excluded from comparison counts.
+    const licensedUsers = users.filter(user => (user.assignedLicenses?.length ?? 0) > 0)
 
     const local = (localResult.data ?? []) as LicenseRow[]
     const byEmail = new Map<string, LicenseRow[]>()
@@ -77,12 +80,16 @@ export async function GET(req: NextRequest) {
     }
     const skuMap = new Map(skus.map(sku => [sku.skuId.toLowerCase(), sku]))
     const matchedLocalIds = new Set<string>()
-    const comparisons = users.map(user => {
+    const comparisons = licensedUsers.map(user => {
       const email = emailOf(user)
       const candidates = byEmail.get(email) ?? []
       const row = candidates.length === 1 ? candidates[0] : null
       if (row) matchedLocalIds.add(row.id)
-      const graphPlans = (user.assignedLicenses ?? []).map(license => skuMap.get((license.skuId ?? '').toLowerCase())?.skuPartNumber ?? license.skuId).filter((value): value is string => !!value)
+      const graphPlans = (user.assignedLicenses ?? []).map(license => {
+        const sku = skuMap.get((license.skuId ?? '').toLowerCase())
+        const code = sku?.skuPartNumber ?? license.skuId
+        return code ? M365_SKU_DISPLAY_NAMES[code.toUpperCase()] ?? code : null
+      }).filter((value): value is string => !!value)
       const localActive = row ? clean(row.status) === 'active' : null
       const graphActive = user.accountEnabled !== false && graphPlans.length > 0
       const planStatus = row ? planMatches(row.license_plan, graphPlans) : null
@@ -95,7 +102,8 @@ export async function GET(req: NextRequest) {
         result: !row ? 'microsoft_only' : candidates.length > 1 ? 'ambiguous_email' : localActive !== graphActive ? 'active_status_mismatch' : planStatus === false ? 'plan_mismatch' : planStatus === null ? 'plan_unverified' : 'match',
       }
     })
-    const dbOnly = local.filter(row => !matchedLocalIds.has(row.id)).map(row => ({ result: 'database_only', local: row }))
+    const knownGraphEmails = new Set(users.map(emailOf).filter(Boolean))
+    const dbOnly = local.filter(row => !matchedLocalIds.has(row.id) && !knownGraphEmails.has(clean(row.email_address))).map(row => ({ result: 'database_only', local: row }))
     const allComparisons = [...comparisons, ...dbOnly]
     const summary = allComparisons.reduce<Record<string, number>>((acc, item) => { acc[item.result] = (acc[item.result] ?? 0) + 1; return acc }, {})
 

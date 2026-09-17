@@ -21,6 +21,17 @@ export type M365Sku = {
   servicePlans?: Array<{ servicePlanId?: string; servicePlanName?: string; provisioningStatus?: string }>
 }
 
+// Graph returns skuPartNumber codes, while the admin center shows friendly
+// product names. Keep this mapping small and explicit; unknown SKUs remain
+// visible as their Graph code instead of being guessed.
+export const M365_SKU_DISPLAY_NAMES: Record<string, string> = {
+  SPB: 'Microsoft 365 Business Premium',
+  O365_BUSINESS_PREMIUM: 'Microsoft 365 Business Standard',
+  O365_BUSINESS_ESSENTIALS: 'Microsoft 365 Business Basic',
+  EXCHANGESTANDARD: 'Exchange Online (Plan 1)',
+  FLOW_FREE: 'Microsoft Power Automate Free',
+}
+
 export type M365AuditEvent = {
   id: string
   activityDateTime?: string | null
