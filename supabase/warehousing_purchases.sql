@@ -73,6 +73,7 @@ create table if not exists purchases (
   purchase_request_id      uuid references purchase_requests(id) on delete set null,
   company_id               text not null check (company_id in ('afs', 'tnt', 'zfs')),
   location_id              uuid references utility_locations(id) on delete set null,
+  shipping_location_text   text,
   vendor_name              text,
   order_date               date,
   order_number             text,

@@ -5,7 +5,8 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useAuth } from '@/app/providers'
-import { parsePurchaseText, type ParsedPurchaseSuggestion } from '@/lib/purchaseCapture'
+import { recognizeImageLocally } from '@/lib/localOcr'
+import { parsePurchaseInput, type ParsedPurchaseSuggestion, type PurchaseParseInput } from '@/lib/purchaseCapture'
 import type { Category, CompanyId, Location, PaymentMethod } from '@/lib/types'
 
 const supabase = createClient(
@@ -38,6 +39,7 @@ type LineDraft = {
   productUrl: string
   quantity: string
   unitPrice: string
+  lineTotal: string
   classification: Classification
   itemId: string
   newItemName: string
@@ -66,6 +68,7 @@ function emptyLine(): LineDraft {
     productUrl: '',
     quantity: '1',
     unitPrice: '',
+    lineTotal: '',
     classification: 'unclassified',
     itemId: '',
     newItemName: '',
@@ -105,6 +108,7 @@ export default function NewPurchasePage() {
   const [orderDate, setOrderDate] = useState('')
   const [orderNumber, setOrderNumber] = useState('')
   const [locationId, setLocationId] = useState('')
+  const [shippingLocationText, setShippingLocationText] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [description, setDescription] = useState('Office Supplies')
   const [subtotal, setSubtotal] = useState('')
@@ -124,6 +128,8 @@ export default function NewPurchasePage() {
   const [vendorRefs, setVendorRefs] = useState<VendorRef[]>([])
 
   const [parseMessage, setParseMessage] = useState<string | null>(null)
+  const [recognizedText, setRecognizedText] = useState('')
+  const [ocrProgress, setOcrProgress] = useState<{ fileName: string; progress: number; status: string } | null>(null)
   const [clipboardBusy, setClipboardBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -174,6 +180,7 @@ export default function NewPurchasePage() {
     }
     setAttachments(current => [...current, ...accepted])
     if (rejected.length) setError(rejected.join('\n'))
+    return accepted.map(value => value.file)
   }
 
   function applySuggestion(suggestion: ParsedPurchaseSuggestion, sourceText: string) {
@@ -186,6 +193,7 @@ export default function NewPurchasePage() {
     if (suggestion.total !== undefined) setTotal(current => current || String(suggestion.total))
     if (suggestion.currency) setCurrency(suggestion.currency)
     if (suggestion.cardLast4) setCardLast4(current => current || suggestion.cardLast4 || '')
+    if (suggestion.shippingLocationText) setShippingLocationText(current => current || suggestion.shippingLocationText || '')
 
     if (suggestion.lines.length) {
       setLines(current => {
@@ -197,6 +205,7 @@ export default function NewPurchasePage() {
           productUrl: line.productUrl ?? '',
           quantity: line.quantity == null ? '1' : String(line.quantity),
           unitPrice: line.unitPrice == null ? '' : String(line.unitPrice),
+          lineTotal: line.lineTotal == null ? '' : String(line.lineTotal),
         }))
         return currentIsEmpty ? parsed : [...current, ...parsed]
       })
@@ -208,16 +217,44 @@ export default function NewPurchasePage() {
     })
     if (possibleLocation) setLocationId(current => current || possibleLocation.id)
 
-    const extracted = [suggestion.vendorName, suggestion.orderDate, suggestion.orderNumber, suggestion.total, suggestion.cardLast4]
+    const extracted = [suggestion.vendorName, suggestion.orderDate, suggestion.orderNumber, suggestion.total, suggestion.cardLast4, suggestion.shippingLocationText]
       .filter(value => value !== undefined).length
-    setParseMessage(isKo
-      ? `텍스트는 저장하지 않고 브라우저에서 분석했습니다. ${extracted}개 주요 필드를 제안했습니다.`
-      : `The text was parsed locally and was not stored. ${extracted} key fields were suggested.`)
+    const warning = suggestion.warnings.length ? ` ${suggestion.warnings.join(' ')}` : ''
+    setParseMessage(suggestion.parserId
+      ? (isKo
+          ? `${suggestion.parserId.toUpperCase()} 파서가 로컬에서 ${extracted}개 주요 필드를 제안했습니다.${warning}`
+          : `${suggestion.parserId.toUpperCase()} parser suggested ${extracted} key fields locally.${warning}`)
+      : (isKo ? `지원되는 업체 파서를 찾지 못했습니다. 수동 입력은 계속 가능합니다.${warning}` : `No supported vendor parser matched. Manual entry remains available.${warning}`))
   }
 
-  function parseText(text: string) {
-    if (!text.trim()) return
-    applySuggestion(parsePurchaseText(text), text)
+  function parseInput(input: PurchaseParseInput) {
+    const sourceText = input.text || input.ocrText || (input.html ? htmlToText(input.html) : '')
+    if (!sourceText.trim() && !input.html?.trim()) return
+    applySuggestion(parsePurchaseInput(input), sourceText)
+  }
+
+  async function runOcr(files: File[]) {
+    const images = files.filter(file => file.type.startsWith('image/'))
+    if (!images.length) return
+    const parts: string[] = []
+    for (const file of images) {
+      try {
+        const text = await recognizeImageLocally(file, (progress, status) => setOcrProgress({ fileName: file.name, progress, status }))
+        if (text) parts.push(text)
+      } catch (caught) {
+        setError(caught instanceof Error
+          ? `${isKo ? '로컬 OCR 실패' : 'Local OCR failed'}: ${caught.message}`
+          : (isKo ? '로컬 OCR에 실패했습니다. 수동 입력은 계속 가능합니다.' : 'Local OCR failed. Manual entry remains available.'))
+      }
+    }
+    setOcrProgress(null)
+    const text = parts.join('\n')
+    if (text) {
+      setRecognizedText(text)
+      parseInput({ ocrText: text })
+    } else {
+      setParseMessage(isKo ? '이미지는 첨부했지만 OCR 텍스트를 찾지 못했습니다. 수동 입력은 계속 가능합니다.' : 'The image was attached, but OCR found no text. Manual entry remains available.')
+    }
   }
 
   async function handlePaste(event: React.ClipboardEvent<HTMLDivElement>) {
@@ -227,11 +264,13 @@ export default function NewPurchasePage() {
       .filter(item => item.kind === 'file')
       .map(item => item.getAsFile())
       .filter((file): file is File => !!file)
-    if (files.length) appendFiles(files, 'screenshot')
+    const acceptedFiles = files.length ? appendFiles(files, 'screenshot') : []
 
     const plain = event.clipboardData.getData('text/plain')
     const html = event.clipboardData.getData('text/html')
-    parseText(plain || (html ? htmlToText(html) : ''))
+    if (html) parseInput({ html })
+    else if (plain) parseInput({ text: plain })
+    else if (acceptedFiles.length) await runOcr(acceptedFiles)
     if (!files.length && !plain && !html) setError(isKo ? '붙여넣을 수 있는 이미지나 텍스트가 없습니다.' : 'No supported image or text was found on the clipboard.')
   }
 
@@ -242,6 +281,7 @@ export default function NewPurchasePage() {
       if (!navigator.clipboard?.read) throw new Error(isKo ? '이 브라우저는 직접 클립보드 읽기를 지원하지 않습니다. Ctrl+V를 사용해 주세요.' : 'Direct clipboard reading is not supported. Use Ctrl+V instead.')
       const clipboardItems = await navigator.clipboard.read()
       const files: File[] = []
+      const htmlParts: string[] = []
       const textParts: string[] = []
       for (const clipboardItem of clipboardItems) {
         for (const type of clipboardItem.types) {
@@ -249,16 +289,18 @@ export default function NewPurchasePage() {
           if (type.startsWith('image/')) {
             const extension = type.split('/')[1] || 'png'
             files.push(new File([blob], `clipboard-${Date.now()}.${extension}`, { type }))
-          } else if (type === 'text/plain') {
+          } else if (type === 'text/html') {
+            htmlParts.push(await blob.text())
+          } else if (type === 'text/plain' && !clipboardItem.types.includes('text/html')) {
             textParts.push(await blob.text())
-          } else if (type === 'text/html' && !clipboardItem.types.includes('text/plain')) {
-            textParts.push(htmlToText(await blob.text()))
           }
         }
       }
-      if (files.length) appendFiles(files, 'screenshot')
-      parseText(textParts.join('\n'))
-      if (!files.length && !textParts.length) throw new Error(isKo ? '지원되는 클립보드 내용이 없습니다.' : 'No supported clipboard content was found.')
+      const acceptedFiles = files.length ? appendFiles(files, 'screenshot') : []
+      if (htmlParts.length) parseInput({ html: htmlParts.join('\n') })
+      else if (textParts.length) parseInput({ text: textParts.join('\n') })
+      else if (acceptedFiles.length) await runOcr(acceptedFiles)
+      if (!acceptedFiles.length && !textParts.length && !htmlParts.length) throw new Error(isKo ? '지원되는 클립보드 내용이 없습니다.' : 'No supported clipboard content was found.')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : (isKo ? '클립보드를 읽지 못했습니다.' : 'Could not read the clipboard.'))
     } finally {
@@ -332,6 +374,7 @@ export default function NewPurchasePage() {
     const { data: purchase, error: purchaseError } = await supabase.from('purchases').insert({
       company_id: companyId,
       location_id: locationId || null,
+      shipping_location_text: shippingLocationText.trim() || null,
       vendor_name: vendorName.trim() || null,
       order_date: orderDate || null,
       order_number: orderNumber.trim() || null,
@@ -367,9 +410,11 @@ export default function NewPurchasePage() {
         product_url: line.productUrl.trim() || null,
         quantity: numberOrNull(line.quantity),
         unit_price: numberOrNull(line.unitPrice),
-        line_subtotal: numberOrNull(line.quantity) != null && numberOrNull(line.unitPrice) != null
-          ? Number(numberOrNull(line.quantity)) * Number(numberOrNull(line.unitPrice))
-          : null,
+        line_subtotal: numberOrNull(line.lineTotal) ?? (
+          numberOrNull(line.quantity) != null && numberOrNull(line.unitPrice) != null
+            ? Number((Number(numberOrNull(line.quantity)) * Number(numberOrNull(line.unitPrice))).toFixed(2))
+            : null
+        ),
       }))).select('id')
       if (lineError) warnings.push(`Line items: ${lineError.message}`)
       insertedLineIds = inserted?.map(row => row.id) ?? []
@@ -453,7 +498,11 @@ export default function NewPurchasePage() {
             <button type="button" onClick={() => fileInput.current?.click()} className="px-3 py-1.5 text-xs text-ink-muted border border-line rounded-lg hover:bg-pill">
               {isKo ? '파일 선택' : 'Choose Files'}
             </button>
-            <input ref={fileInput} type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={event => appendFiles(Array.from(event.target.files ?? []))} />
+            <input ref={fileInput} type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={async event => {
+              const accepted = appendFiles(Array.from(event.target.files ?? []))
+              await runOcr(accepted)
+              event.target.value = ''
+            }} />
           </div>
         </div>
 
@@ -464,6 +513,23 @@ export default function NewPurchasePage() {
         </div>
 
         {parseMessage && <div className="text-xs text-signal-pos bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">{parseMessage}</div>}
+
+        {ocrProgress && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs text-ink-muted">
+              <span>{isKo ? '무료 로컬 OCR 실행 중' : 'Running free local OCR'} · {ocrProgress.fileName} · {ocrProgress.status}</span>
+              <span>{Math.round(ocrProgress.progress * 100)}%</span>
+            </div>
+            <div className="h-2 bg-pill rounded-full overflow-hidden"><div className="h-full bg-signal-pos transition-all" style={{ width: `${Math.max(2, ocrProgress.progress * 100)}%` }} /></div>
+          </div>
+        )}
+
+        {recognizedText && (
+          <details className="border border-line-soft rounded-lg px-3 py-2">
+            <summary className="text-xs font-semibold text-ink-muted cursor-pointer">{isKo ? 'OCR 인식 텍스트 확인' : 'Review OCR text'}</summary>
+            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-ink-muted">{recognizedText}</pre>
+          </details>
+        )}
 
         {attachments.length > 0 && (
           <div className="space-y-2">
@@ -508,6 +574,9 @@ export default function NewPurchasePage() {
           </Field>
           <Field label={isKo ? '이메일 설명' : 'Email Description'} className="md:col-span-2">
             <input value={description} onChange={event => setDescription(event.target.value)} className={inputClass} placeholder="Office Supplies" />
+          </Field>
+          <Field label={isKo ? '배송지 인식 텍스트' : 'Recognized Shipping / Location'}>
+            <input value={shippingLocationText} onChange={event => setShippingLocationText(event.target.value)} className={inputClass} placeholder={isKo ? 'OCR/주문 페이지에서 인식된 배송지' : 'Shipping location recognized from the order'} />
           </Field>
           <Field label={isKo ? '결제수단' : 'Payment Method'}>
             <select value={paymentMethodId} onChange={event => {
@@ -555,6 +624,7 @@ export default function NewPurchasePage() {
                   <Field label={isKo ? '상품 URL' : 'Product URL'}><input type="url" value={line.productUrl} onChange={event => patchLine(line.key, { productUrl: event.target.value })} className={inputClass} /></Field>
                   <Field label={isKo ? '수량' : 'Quantity'}><input type="number" min="0" step="0.001" value={line.quantity} onChange={event => patchLine(line.key, { quantity: event.target.value })} className={inputClass} /></Field>
                   <Field label={isKo ? '구매 당시 단가' : 'Historical Unit Price'}><input type="number" min="0" step="0.01" value={line.unitPrice} onChange={event => patchLine(line.key, { unitPrice: event.target.value })} className={inputClass} /></Field>
+                  <Field label={isKo ? '라인 합계' : 'Line Total'}><input type="number" min="0" step="0.01" value={line.lineTotal} onChange={event => patchLine(line.key, { lineTotal: event.target.value })} className={inputClass} /></Field>
                 </div>
 
                 {suggestion && (

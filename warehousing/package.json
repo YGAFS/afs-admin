@@ -5,19 +5,24 @@
     "@azure/msal-browser": "^5.17.0",
     "@supabase/supabase-js": "^2.105.4",
     "@tailwindcss/postcss": "^4.3.0",
+    "@tesseract.js-data/eng": "^1.0.0",
     "@types/node": "^25.7.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.5.0",
-    "next": "^16.2.6",
+    "next": "^16.3.3",
     "postcss": "^8.5.14",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "tailwindcss": "^4.3.0",
+    "tesseract.js": "^7.0.0",
     "typescript": "^6.0.3"
   },
   "scripts": {
+    "prepare:ocr": "node scripts/prepare-tesseract-assets.mjs",
+    "predev": "npm run prepare:ocr",
     "dev": "next dev -p 3001",
+    "prebuild": "npm run prepare:ocr",
     "build": "next build",
     "start": "next start"
   }
