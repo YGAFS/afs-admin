@@ -24,7 +24,9 @@ export async function POST(req: NextRequest) {
     const email = body.email_address?.trim().toLowerCase()
     if (!email || !email.endsWith('@afstransco.com')) return NextResponse.json({ error: 'AFS email address is required' }, { status: 400 })
     const client = db()
-    const { data: existing, error: lookupError } = await client.from('licenses').select('account_id').eq('company', 'AFS')
+    // account_id has a table-wide unique constraint, so include TNT/ZFS IDs
+    // when allocating the next label even though the imported account is AFS.
+    const { data: existing, error: lookupError } = await client.from('licenses').select('account_id')
     if (lookupError) throw new Error(`Unable to read AFS account IDs: ${lookupError.message}`)
     const used = new Set((existing ?? []).map(row => String(row.account_id ?? '').toUpperCase()))
     const numbers = [...used].map(value => Number(value.match(/^A-?(\d+)$/)?.[1] ?? 0))
