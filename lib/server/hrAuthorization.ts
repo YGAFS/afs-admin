@@ -12,6 +12,14 @@ export type HrAuthorization = {
   employeeId: string | null
 }
 
+// These manager identities are intentionally restricted to their own company.
+// Keep this check server-side so a user cannot bypass the company tabs by
+// calling the HR API directly.
+const COMPANY_MANAGER_RULES: Record<string, { companyCode: string }> = {
+  'tntadmin@tnt-expresslines.com': { companyCode: 'TNT' },
+  'admin@zenithfortio.com': { companyCode: 'ZFS' },
+}
+
 function serviceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -22,6 +30,24 @@ function serviceClient() {
 function bearerToken(req: NextRequest) {
   const value = req.headers.get('authorization') ?? ''
   return value.startsWith('Bearer ') ? value.slice(7).trim() : ''
+}
+
+async function validateCompanyManagerScope(
+  db: SupabaseClient,
+  email: string | undefined,
+  companyId: string | null,
+  companyCode: string | null | undefined,
+  timed: <T>(name: string, operation: PromiseLike<T>) => Promise<T>,
+) {
+  const rule = COMPANY_MANAGER_RULES[email?.trim().toLowerCase() ?? '']
+  if (!rule || !companyId && !companyCode) return true
+  let resolvedCode = companyCode?.trim().toUpperCase() ?? null
+  if (!resolvedCode && companyId) {
+    const { data, error } = await timed('company.domainScope', db.from('companies').select('code').eq('id', companyId).maybeSingle())
+    if (error || !data?.code) return false
+    resolvedCode = data.code.toUpperCase()
+  }
+  return resolvedCode === rule.companyCode
 }
 
 export async function authorizeHrRequest(
@@ -80,6 +106,7 @@ export async function authorizeHrRequest(
           resolvedCompanyId = employees[0].company_id
         }
         if (!resolvedCompanyId && !isSuperAdmin) return null
+        if (!isSuperAdmin && !(await validateCompanyManagerScope(db, claims?.email as string | undefined, resolvedCompanyId, options.companyCode, timed))) return null
         return {
           user,
           db,
@@ -143,6 +170,7 @@ export async function authorizeHrRequest(
       assignedCompanyIds = [bulkCompanyId]
     }
 
+    if (!isSuperAdmin && !(await validateCompanyManagerScope(db, user.email, resolvedCompanyId, options.companyCode, timed))) return null
     if (!isSuperAdmin && !resolvedCompanyId && options.allowAssignedCompanies && options.action === 'read') {
       const { data: roles, error: rolesError } = await timed('assignedCompanies', db
         .from('user_company_roles').select('company_id')
@@ -150,6 +178,12 @@ export async function authorizeHrRequest(
       )
       if (rolesError || !roles?.length) return null
       assignedCompanyIds = Array.from(new Set(roles.map(role => role.company_id)))
+    }
+
+    const restrictedManager = COMPANY_MANAGER_RULES[user.email?.trim().toLowerCase() ?? '']
+    if (!isSuperAdmin && restrictedManager && assignedCompanyIds.length > 0) {
+      const validAssignments = await Promise.all(assignedCompanyIds.map(id => validateCompanyManagerScope(db, user.email, id, null, timed)))
+      if (validAssignments.some(valid => !valid)) return null
     }
 
     if (!isSuperAdmin && !(assignedCompanyIds.length > 0 && options.allowAssignedCompanies && options.action === 'read') && !(options.allowCompanyDiscovery && options.action === 'read' && !resolvedCompanyId && !options.employeeId)) {

@@ -68,6 +68,14 @@ True 90-day or longer history requires exporting Entra audit logs to Azure Monit
 - Accounts are not automatically deleted or deactivated.
 - TNT and ZFS are excluded from the AFS comparison and must use separate tenant connections.
 
+## TNT / ZFS manager accounts
+
+- Added `tntadmin@tnt-expresslines.com` as a TNT-only HR company manager.
+- Added `admin@zenithfortio.com` as a ZFS-only HR company manager.
+- Added server-side company-scope checks so these identities cannot access another company's HR API by changing the URL or request parameters.
+- Added `supabase/add_company_manager_accounts.sql`; run it after the two Auth users exist. It creates the active profile, company role, and HR section grant and includes verification output.
+- The HR landing page shows only the assigned company tab for these two identities.
+
 ## Not implemented yet
 
 - Scheduled automatic synchronization.

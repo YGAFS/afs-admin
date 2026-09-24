@@ -4,17 +4,24 @@ import { useRouter } from 'next/navigation'
 import HrSummaryCards from './components/HrSummaryCards'
 import EmployeeSearch from './components/EmployeeSearch'
 import { useLocale } from '@/app/providers'
+import { useAuth } from '@/app/providers'
 import { t } from '@/lib/i18n'
 
 export default function HrPage() {
   const router = useRouter()
   const { locale } = useLocale()
+  const { user } = useAuth()
 
   const COMPANIES: { slug: string; labelKey: string; color: string; disabled?: boolean }[] = [
     { slug: 'afs', labelKey: 'hr.afs_attendance', color: 'bg-white border border-line text-blue-600 hover:bg-pill' },
     { slug: 'tnt', labelKey: 'hr.tnt_attendance', color: 'bg-white border border-line text-amber-600 hover:bg-pill' },
     { slug: 'zfs', labelKey: 'hr.zfs_attendance',  color: 'bg-white border border-line text-emerald-600 hover:bg-pill' },
   ]
+  const managerCompany = ({
+    'tntadmin@tnt-expresslines.com': 'tnt',
+    'admin@zenithfortio.com': 'zfs',
+  } as Record<string, string>)[user?.email?.trim().toLowerCase() ?? '']
+  const visibleCompanies = managerCompany ? COMPANIES.filter(company => company.slug === managerCompany) : COMPANIES
 
   return (
     <div className="min-h-screen bg-pill">
@@ -22,7 +29,7 @@ export default function HrPage() {
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-semibold text-ink">{t('hr.title', locale)}</h1>
           <div className="flex gap-2">
-            {COMPANIES.map(c => (
+            {visibleCompanies.map(c => (
               <button key={c.slug}
                 onClick={() => !c.disabled && router.push(`/hr/${c.slug}`)}
                 disabled={c.disabled}
