@@ -977,7 +977,7 @@ function M365SyncView({ company }: { company: string }) {
       <div className="bg-white rounded-xl border border-line p-5 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-ink">Microsoft 365 Comparison & History</h2>
-          <p className="text-sm text-ink-muted mt-1">Read-only comparison of Microsoft accounts and plans in the AFS tenant against the AFS license register.</p>
+          <p className="text-sm text-ink-muted mt-1">Read-only comparison of Microsoft accounts and plans in the {company} tenant against the {company} license register.</p>
           <p className="text-xs text-ink-faint mt-1">No automatic changes or database writes are performed.</p>
         </div>
         <div className="flex items-end gap-2">
