@@ -45,14 +45,22 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
   if (segment === 'summary') {
     if (!auth.companyId && !auth.isSuperAdmin && !auth.companyIds.length) return jsonError('Company scope required', 403)
-    let employeeQuery = auth.db.from('employees').select('id,vacation_allowance,uses_accrual,is_exempt,employment_type,company_id').eq('is_active', true)
+    let employeeQuery = auth.db.from('employees').select('id,name,vacation_allowance,uses_accrual,is_exempt,employment_type,company_id').eq('is_active', true)
     if (auth.companyId) employeeQuery = employeeQuery.eq('company_id', auth.companyId)
     else if (!auth.isSuperAdmin) employeeQuery = employeeQuery.in('company_id', auth.companyIds)
     const result = await timed(timing, 'summary.employees', employeeQuery)
     if (result.error) return finish(jsonError('Failed to load HR summary', 500), 'GET.total')
     const ids = (result.data ?? []).map(x => x.id)
-    const entries = ids.length ? await timed(timing, 'summary.entries', auth.db.from('leave_entries').select('employee_id,leave_code,date').in('employee_id', ids)) : { data: [], error: null }
-    return finish(entries.error ? jsonError('Failed to load HR summary', 500) : Response.json({ employees: result.data ?? [], entries: entries.data ?? [] }), 'GET.total')
+    const entries = ids.length ? await timed(timing, 'summary.entries', auth.db.from('leave_entries').select('employee_id,leave_code,date,reported_at').in('employee_id', ids)) : { data: [], error: null }
+    if (entries.error) return finish(jsonError('Failed to load HR summary', 500), 'GET.total')
+    const companyIds = Array.from(new Set((result.data ?? []).map(employee => employee.company_id).filter(Boolean)))
+    const companies = companyIds.length
+      ? await timed(timing, 'summary.companies', auth.db.from('companies').select('id,code,name').in('id', companyIds))
+      : { data: [], error: null }
+    if (companies.error) return finish(jsonError('Failed to load HR summary', 500), 'GET.total')
+    const companyById = new Map((companies.data ?? []).map(company => [company.id, company]))
+    const employees = (result.data ?? []).map(employee => ({ ...employee, company: companyById.get(employee.company_id) ?? null }))
+    return finish(Response.json({ employees, entries: entries.data ?? [] }), 'GET.total')
   }
   if (segment === 'attendance') {
     if (!auth.companyId) return jsonError('Company scope required', 403)
