@@ -21,6 +21,11 @@ type EmployeeRow = {
   employment_type?: string | null
 }
 
+const leaveLabel: Record<string, string> = {
+  L: 'Paid Leave', L1: 'Paid Leave (AM Half)', L2: 'Paid Leave (PM Half)', L3: 'Paid Leave (Hourly)',
+  S: 'Sick Leave', S1: 'Sick Leave (AM Half)', S2: 'Sick Leave (PM Half)', S3: 'Sick Leave (Hourly)',
+}
+
 export default function HrSummaryCards() {
   const [stats, setStats] = useState<Stats>({ total: 0, absent: 0, wfh: 0, highVac: 0 })
   const [pendingReports, setPendingReports] = useState<PendingReport[]>([])
@@ -127,21 +132,34 @@ export default function HrSummaryCards() {
         ))}
       </div>
       {pendingReports.length > 0 && (
-        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-950">
-          <div className="flex items-start gap-3">
-            <span className="mt-0.5 text-lg" aria-hidden="true">⚠</span>
-            <div className="min-w-0">
-              <p className="font-semibold">
-                오늘 보고되지 않은 휴가가 {pendingReports.length}건 있습니다.
-              </p>
-              <p className="mt-1 text-sm text-amber-800">
-                {pendingReports.map((entry, index) => (
-                  <span key={`${entry.employeeId}-${entry.leaveCode}-${index}`}>
-                    {index > 0 && ', '}{entry.companyCode ? `${entry.companyCode} ` : ''}{entry.employeeName} ({entry.leaveCode})
+        <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
+          <div className="border-l-4 border-amber-400 bg-amber-50/60 px-5 py-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700" aria-hidden="true">
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M9.999 1.75a1.5 1.5 0 0 1 1.3.75l7.1 12.25a1.5 1.5 0 0 1-1.3 2.25H2.9a1.5 1.5 0 0 1-1.3-2.25L8.7 2.5a1.5 1.5 0 0 1 1.3-.75Zm0 4.25a.75.75 0 0 0-.75.75v3.5a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75Zm0 7.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-ink">Unreported leave today</p>
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                    {pendingReports.length} {pendingReports.length === 1 ? 'entry' : 'entries'}
                   </span>
-                ))}
-              </p>
-              <p className="mt-2 text-xs text-amber-700">각 회사 출근부의 Report 버튼에서 이메일 보고를 완료해 주세요.</p>
+                </div>
+                <p className="mt-1 text-sm text-ink-muted">
+                  The following leave entries have not been included in an email report yet.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {pendingReports.map((entry, index) => (
+                    <span key={`${entry.employeeId}-${entry.leaveCode}-${index}`} className="rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink">
+                      {entry.companyCode ? `${entry.companyCode} · ` : ''}{entry.employeeName}
+                      <span className="ml-1.5 font-normal text-ink-muted">{leaveLabel[entry.leaveCode] ?? entry.leaveCode}</span>
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-ink-faint">Open the relevant company attendance page and select Report to send the notification.</p>
+              </div>
             </div>
           </div>
         </div>
