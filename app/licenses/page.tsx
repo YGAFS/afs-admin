@@ -928,7 +928,7 @@ function m365ResultColor(result: string) {
   return 'bg-red-100 text-red-700'
 }
 
-function M365SyncView() {
+function M365SyncView({ company }: { company: string }) {
   const [days, setDays] = useState(30)
   const [data, setData] = useState<M365DryRun | null>(null)
   const [loading, setLoading] = useState(false)
@@ -943,7 +943,7 @@ function M365SyncView() {
   async function runDryRun() {
     setLoading(true)
     setError('')
-    const result = await hrFetch<M365DryRun>(`/api/admin/m365-dry-run?days=${days}`)
+    const result = await hrFetch<M365DryRun>(`/api/admin/m365-dry-run?company=${encodeURIComponent(company)}&days=${days}`)
     setLoading(false)
     if (result.error) { setError(result.error.message); return }
     setData(result.data)
@@ -963,12 +963,12 @@ function M365SyncView() {
     setRegisterFailed(false)
     const item = registerTarget.item
     const result = await hrFetch<{ ok: boolean; account?: { account_id: string }; error?: string }>('/api/admin/m365-register', {
-      method: 'POST', body: JSON.stringify({ display_name: item.graph_name, email_address: item.email, license_plan: item.graph_plans?.join(', '), created_date: item.graph_created_at }),
+      method: 'POST', body: JSON.stringify({ company, display_name: item.graph_name, email_address: item.email, license_plan: item.graph_plans?.join(', '), created_date: item.graph_created_at }),
     })
     setRegistering(false)
     if (result.error) { setRegisterFailed(true); setRegisterMessage(`Registration failed: ${result.error.message}`); return }
     setRegisterTarget(null)
-    setRegisterMessage(`Registered as ${result.data?.account?.account_id ?? 'an AFS account'}. Refresh to confirm the match.`)
+    setRegisterMessage(`Registered as ${result.data?.account?.account_id ?? `a ${company} account`}. Refresh to confirm the match.`)
     await runDryRun()
   }
 
@@ -1215,7 +1215,7 @@ export default function LicensesPage() {
             {t(tab.labelKey, locale)}
           </button>
         ))}
-        <button onClick={() => { setCompany('AFS'); setView('m365') }}
+        <button onClick={() => { if (!company) setCompany('AFS'); setView('m365') }}
           className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${view === 'm365' ? 'bg-pill text-ink' : 'text-ink-muted hover:bg-pill hover:text-ink'}`}>
           <span aria-label="M365 sync" title="M365 sync">↻</span>
         </button>
@@ -1229,7 +1229,7 @@ export default function LicensesPage() {
             <Dashboard licenses={licenses} subscriptions={subscriptions} company={company} />
           )}
 
-          {view === 'm365' && <M365SyncView />}
+          {view === 'm365' && <M365SyncView company={company || 'AFS'} />}
 
           {view === 'licenses' && (
             <div>

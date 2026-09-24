@@ -20,26 +20,31 @@ async function isAdmin(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!(await isAdmin(req))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   try {
-    const body = await req.json() as { display_name?: string | null; email_address?: string | null; license_plan?: string | null; created_date?: string | null }
+    const body = await req.json() as { display_name?: string | null; email_address?: string | null; license_plan?: string | null; created_date?: string | null; company?: string | null }
+    const company = body.company?.trim().toUpperCase()
+    const allowed = company === 'AFS' || company === 'TNT' || company === 'ZFS' ? company : null
+    if (!allowed) return NextResponse.json({ error: 'A valid company is required' }, { status: 400 })
     const email = body.email_address?.trim().toLowerCase()
-    if (!email || !email.endsWith('@afstransco.com')) return NextResponse.json({ error: 'AFS email address is required' }, { status: 400 })
+    const domain = allowed === 'AFS' ? 'afstransco.com' : allowed === 'TNT' ? 'tnt-expresslines.com' : 'zenithfortio.com'
+    if (!email || !email.endsWith(`@${domain}`)) return NextResponse.json({ error: `${allowed} email address is required` }, { status: 400 })
     const client = db()
     // account_id has a table-wide unique constraint, so include TNT/ZFS IDs
     // when allocating the next label even though the imported account is AFS.
     const { data: existing, error: lookupError } = await client.from('licenses').select('account_id')
     if (lookupError) throw new Error(`Unable to read AFS account IDs: ${lookupError.message}`)
     const used = new Set((existing ?? []).map(row => String(row.account_id ?? '').toUpperCase()))
-    const numbers = [...used].map(value => Number(value.match(/^A-?(\d+)$/)?.[1] ?? 0))
+    const prefix = allowed === 'AFS' ? 'A' : allowed === 'TNT' ? 'T' : 'Z'
+    const numbers = [...used].map(value => Number(value.match(new RegExp(`^${prefix}-?(\\d+)$`))?.[1] ?? 0))
     let next = Math.max(0, ...numbers) + 1
-    let accountId = `A${String(next).padStart(3, '0')}`
-    while (used.has(accountId) && next < 100000) { next += 1; accountId = `A${String(next).padStart(3, '0')}` }
+    let accountId = `${prefix}${String(next).padStart(3, '0')}`
+    while (used.has(accountId) && next < 100000) { next += 1; accountId = `${prefix}${String(next).padStart(3, '0')}` }
     const { data, error } = await client.from('licenses').insert({
       account_id: accountId, display_name: body.display_name?.trim() || null, email_address: email,
       account_type: 'Individual', license_plan: body.license_plan?.trim() || null, monthly_cost_cad: 0,
-      status: 'Active', company: 'AFS', created_date: body.created_date || new Date().toISOString().slice(0, 10),
+      status: 'Active', company: allowed, created_date: body.created_date || new Date().toISOString().slice(0, 10),
       notes: 'Imported from Microsoft 365 comparison',
     }).select('id,account_id,email_address').single()
-    if (error) throw new Error(`Unable to register AFS account: ${error.message}`)
+    if (error) throw new Error(`Unable to register ${allowed} account: ${error.message}`)
     return NextResponse.json({ ok: true, account: data })
   } catch (error) {
     console.error('[m365-register]', error)

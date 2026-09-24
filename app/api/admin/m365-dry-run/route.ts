@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { listDirectoryAudits, listSubscribedSkus, listUsers, M365_SKU_DISPLAY_NAMES, type M365AuditEvent, type M365Sku, type M365User } from '@/lib/server/m365Graph'
+import { graphConfig, listDirectoryAudits, listSubscribedSkus, listUsers, M365_SKU_DISPLAY_NAMES, type M365AuditEvent, type M365Company, type M365Sku, type M365User } from '@/lib/server/m365Graph'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,10 +26,10 @@ function userEmails(user: M365User) {
   return [user.mail, user.userPrincipalName, ...(user.otherMails ?? []), ...aliases]
     .filter((value): value is string => !!value).map(value => value.toLowerCase())
 }
-function emailOf(user: M365User) {
-  return userEmails(user).find(value => value.endsWith('@afstransco.com')) ?? userEmails(user)[0] ?? ''
+function emailOf(user: M365User, domain: string) {
+  return userEmails(user).find(value => value.endsWith(`@${domain}`)) ?? userEmails(user)[0] ?? ''
 }
-function isAfsUser(user: M365User) { return userEmails(user).some(value => value.endsWith('@afstransco.com')) }
+function isCompanyUser(user: M365User, domain: string) { return userEmails(user).some(value => value.endsWith(`@${domain}`)) }
 function clean(value: string | null | undefined) { return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ') }
 function planTokens(value: string | null | undefined) { return clean(value).replace(/[^a-z0-9]+/g, '') }
 
@@ -86,19 +86,20 @@ function relevantAuditEvents(events: M365AuditEvent[], users: M365User[]) {
 export async function GET(req: NextRequest) {
   if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const requestedDays = Number(req.nextUrl.searchParams.get('days') ?? '30')
+  const requestedCompany = (req.nextUrl.searchParams.get('company') ?? 'AFS').toUpperCase()
+  const company = (requestedCompany === 'TNT' || requestedCompany === 'ZFS' ? requestedCompany : 'AFS') as M365Company
   const days = Number.isFinite(requestedDays) ? Math.min(Math.max(Math.trunc(requestedDays), 1), 90) : 30
   const effectiveDays = Math.min(days, 30)
 
   try {
     const since = new Date(Date.now() - effectiveDays * 24 * 60 * 60 * 1000)
+    const config = graphConfig(company)
     const [localResult, allUsers, skus, audits] = await Promise.all([
-      // This app registration belongs to the AFS tenant. TNT and ZFS use
-      // separate admin domains/tenants and must never enter this comparison.
-      db().from('licenses').select('id,account_id,display_name,email_address,license_plan,status,company,created_date').eq('company', 'AFS').order('account_id'),
-      listUsers(), listSubscribedSkus(), listDirectoryAudits(since),
+      db().from('licenses').select('id,account_id,display_name,email_address,license_plan,status,company,created_date').eq('company', company).order('account_id'),
+      listUsers(company), listSubscribedSkus(company), listDirectoryAudits(since, company),
     ])
     if (localResult.error) throw new Error('Unable to read local license records')
-    const users = allUsers.filter(isAfsUser)
+    const users = allUsers.filter(user => isCompanyUser(user, config.domain))
     // Unlicensed users do not represent an active subscription and are
     // intentionally excluded from comparison counts.
     const licensedUsers = users.filter(user => (user.assignedLicenses?.length ?? 0) > 0)
@@ -112,7 +113,7 @@ export async function GET(req: NextRequest) {
     const skuMap = new Map(skus.map(sku => [sku.skuId.toLowerCase(), sku]))
     const matchedLocalIds = new Set<string>()
     const comparisons = licensedUsers.map(user => {
-      const email = emailOf(user)
+      const email = emailOf(user, config.domain)
       const candidates = [...new Map(userEmails(user).flatMap(key => byEmail.get(key) ?? []).map(row => [row.id, row])).values()]
       const row = candidates.length === 1 ? candidates[0] : null
       if (row) matchedLocalIds.add(row.id)
@@ -138,7 +139,7 @@ export async function GET(req: NextRequest) {
     const allComparisons = [...comparisons, ...dbOnly]
     const summary = allComparisons.reduce<Record<string, number>>((acc, item) => { acc[item.result] = (acc[item.result] ?? 0) + 1; return acc }, {})
 
-    return NextResponse.json({ tenant_company: 'AFS', mode: 'dry-run', writes_performed: false, requested_days: days, effective_days: effectiveDays, retention_limited: days > effectiveDays, checked_at: new Date().toISOString(), audit_since: since.toISOString(), summary, comparisons: allComparisons, audit_events: relevantAuditEvents(audits, users).slice(0, 500), sku_catalog: skus })
+    return NextResponse.json({ tenant_company: company, domain: config.domain, mode: 'dry-run', writes_performed: false, requested_days: days, effective_days: effectiveDays, retention_limited: days > effectiveDays, checked_at: new Date().toISOString(), audit_since: since.toISOString(), summary, comparisons: allComparisons, audit_events: relevantAuditEvents(audits, users).slice(0, 500), sku_catalog: skus })
   } catch (error) {
     console.error('[m365-dry-run]', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'M365 dry run failed' }, { status: 500 })

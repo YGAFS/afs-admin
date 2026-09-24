@@ -44,24 +44,54 @@ export type M365AuditEvent = {
   audit_kind?: 'created' | 'license' | 'deleted' | 'email' | 'changed'
 }
 
-function requiredEnv(name: 'M365_GRAPH_TENANT_ID' | 'M365_GRAPH_CLIENT_ID' | 'M365_GRAPH_CLIENT_SECRET') {
+export type M365Company = 'AFS' | 'TNT' | 'ZFS'
+
+type GraphConfig = {
+  tenant: string
+  clientId: string
+  clientSecret: string
+  domain: string
+}
+
+function requiredEnv(name: string) {
   const value = process.env[name]?.trim()
   if (!value) throw new Error(`${name} is not configured`)
   return value
 }
 
-async function getToken() {
-  const tenant = requiredEnv('M365_GRAPH_TENANT_ID')
+export function graphConfig(company: M365Company = 'AFS'): GraphConfig {
+  if (company === 'TNT') return {
+    tenant: requiredEnv('M365_GRAPH_TNT_TENANT_ID'),
+    clientId: requiredEnv('M365_GRAPH_TNT_CLIENT_ID'),
+    clientSecret: requiredEnv('M365_GRAPH_TNT_CLIENT_SECRET'),
+    domain: 'tnt-expresslines.com',
+  }
+  if (company === 'ZFS') return {
+    tenant: requiredEnv('M365_GRAPH_ZFS_TENANT_ID'),
+    clientId: requiredEnv('M365_GRAPH_ZFS_CLIENT_ID'),
+    clientSecret: requiredEnv('M365_GRAPH_ZFS_CLIENT_SECRET'),
+    domain: 'zenithfortio.com',
+  }
+  return {
+    tenant: requiredEnv('M365_GRAPH_TENANT_ID'),
+    clientId: requiredEnv('M365_GRAPH_CLIENT_ID'),
+    clientSecret: requiredEnv('M365_GRAPH_CLIENT_SECRET'),
+    domain: 'afstransco.com',
+  }
+}
+
+async function getToken(company: M365Company) {
+  const config = graphConfig(company)
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
-    client_id: requiredEnv('M365_GRAPH_CLIENT_ID'),
-    client_secret: requiredEnv('M365_GRAPH_CLIENT_SECRET'),
+    client_id: config.clientId,
+    client_secret: config.clientSecret,
     scope: 'https://graph.microsoft.com/.default',
   })
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 20000)
   try {
-    const response = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`, {
+    const response = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(config.tenant)}/oauth2/v2.0/token`, {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body, cache: 'no-store', signal: controller.signal,
     })
     if (!response.ok) throw new Error(`Graph token request failed (${response.status})`)
@@ -71,8 +101,8 @@ async function getToken() {
   } finally { clearTimeout(timeout) }
 }
 
-async function graph<T>(pathOrUrl: string): Promise<T> {
-  const token = await getToken()
+async function graph<T>(pathOrUrl: string, company: M365Company): Promise<T> {
+  const token = await getToken(company)
   const url = pathOrUrl.startsWith('http') ? pathOrUrl : `https://graph.microsoft.com/v1.0${pathOrUrl}`
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 30000)
@@ -83,12 +113,12 @@ async function graph<T>(pathOrUrl: string): Promise<T> {
   } finally { clearTimeout(timeout) }
 }
 
-async function collect<T>(path: string, maxPages = 100) {
+async function collect<T>(path: string, company: M365Company, maxPages = 100) {
   const rows: T[] = []
   let next: string | undefined = path
   let pages = 0
   while (next && pages < maxPages) {
-    const page: GraphPage<T> = await graph<GraphPage<T>>(next)
+    const page: GraphPage<T> = await graph<GraphPage<T>>(next, company)
     rows.push(...(page.value ?? []))
     next = page['@odata.nextLink']
     pages += 1
@@ -97,26 +127,26 @@ async function collect<T>(path: string, maxPages = 100) {
   return rows
 }
 
-export async function listUsers() {
+export async function listUsers(company: M365Company = 'AFS') {
   const select = 'id,displayName,givenName,surname,mail,userPrincipalName,proxyAddresses,otherMails,accountEnabled,createdDateTime,assignedLicenses'
-  return collect<M365User>(`/users?$select=${select}&$top=999`)
+  return collect<M365User>(`/users?$select=${select}&$top=999`, company)
 }
 
-export async function listSubscribedSkus() {
-  return collect<M365Sku>('/subscribedSkus?$select=skuId,skuPartNumber,capabilityStatus,consumedUnits,prepaidUnits,servicePlans')
+export async function listSubscribedSkus(company: M365Company = 'AFS') {
+  return collect<M365Sku>('/subscribedSkus?$select=skuId,skuPartNumber,capabilityStatus,consumedUnits,prepaidUnits,servicePlans', company)
 }
 
-export async function getMailboxUserPurpose(userId: string) {
-  const settings = await graph<{ userPurpose?: string | null }>(`/users/${encodeURIComponent(userId)}/mailboxSettings?$select=userPurpose`)
+export async function getMailboxUserPurpose(userId: string, company: M365Company = 'AFS') {
+  const settings = await graph<{ userPurpose?: string | null }>(`/users/${encodeURIComponent(userId)}/mailboxSettings?$select=userPurpose`, company)
   return settings.userPurpose ?? null
 }
 
-export async function listDirectoryAudits(since: Date) {
+export async function listDirectoryAudits(since: Date, company: M365Company = 'AFS') {
   const filter = encodeURIComponent(`activityDateTime ge ${since.toISOString()}`)
   // A 90-day window can exceed 20 pages in an active tenant. Keep the same
   // pagination safety mechanism as the other collection calls, with room for
   // the requested maximum window.
   // Graph can reject combining this date filter with $orderby for directory
   // audits. Sorting is performed after collection by the API route.
-  return collect<M365AuditEvent>(`/auditLogs/directoryAudits?$filter=${filter}&$top=999`, 100)
+  return collect<M365AuditEvent>(`/auditLogs/directoryAudits?$filter=${filter}&$top=999`, company, 100)
 }
