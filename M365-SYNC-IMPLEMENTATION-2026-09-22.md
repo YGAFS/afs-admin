@@ -13,6 +13,7 @@ Production: https://hr.afstransco.com
 - Added company-selected tenant connections for AFS, TNT, and ZFS.
 - The comparison now filters Graph users by the selected company's email domain.
 - TNT connection uses tenant `cee030c8-828a-46d9-8ed2-428ef6a037db` and app `ea9be5a6-6a89-4512-8eac-3073696eb7fe`.
+- ZFS connection uses tenant `d7e4f0f4-81e9-42ab-ad38-1235060dac9f` and app `c1edf185-b37c-4bad-8b20-100af1aac541`.
 - Excluded `Unlicensed` users from subscription comparison counts.
 - Added SKU-to-friendly-name mapping for common plans:
   - Microsoft 365 Business Premium
@@ -57,6 +58,8 @@ Admin consent was completed for the AFS tenant.
 
 TNT app permissions and tenant-wide admin consent were completed on 2026-09-24.
 
+ZFS app permissions and tenant-wide admin consent were completed on 2026-09-24.
+
 ## Important retention limitation
 
 The UI offers 7, 30, and 90-day history choices. Microsoft Entra audit logs for the current tenant are only available through the tenant's actual retention window, currently up to 30 days. A 90-day request is therefore safely limited to the available period and displays a notice instead of failing.
@@ -93,7 +96,7 @@ True 90-day or longer history requires exporting Entra audit logs to Azure Monit
 - Automatic database registration of newly licensed accounts.
 - Automatic notification email after a new account is registered.
 - Persistent local audit-history storage beyond Microsoft Entra's retention period.
-- ZFS tenant credentials and connection.
+- ZFS tenant credentials and connection are configured in Vercel Production; the client secret is intentionally not documented.
 
 ## Main implementation files
 
