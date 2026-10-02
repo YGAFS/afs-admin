@@ -177,6 +177,14 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   let query = auth.db.from(table).delete()
   if (table === 'employees') {
     if (!employeeId) return finish(jsonError('Employee scope required', 400), 'DELETE.total')
+    const [leaveHistory, portalLink] = await Promise.all([
+      auth.db.from('leave_entries').select('id', { count: 'exact', head: true }).eq('employee_id', employeeId),
+      auth.db.from('employee_user_links').select('employee_id', { count: 'exact', head: true }).eq('employee_id', employeeId),
+    ])
+    if (leaveHistory.error || portalLink.error) return finish(jsonError('Unable to verify employee history', 500), 'DELETE.total')
+    if ((leaveHistory.count ?? 0) > 0 || (portalLink.count ?? 0) > 0) {
+      return finish(jsonError('Employee has PTO history or a Portal login and must be deactivated instead of deleted', 409), 'DELETE.total')
+    }
     query = query.eq('id', employeeId)
   }
   else {

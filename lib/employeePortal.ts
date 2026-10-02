@@ -1,9 +1,6 @@
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from './supabase'
 
-export const portalSupabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
-)
+export const portalSupabase = supabase
 
 let sessionPromise: ReturnType<typeof portalSupabase.auth.getSession> | null = null
 portalSupabase.auth.onAuthStateChange(() => { sessionPromise = null })

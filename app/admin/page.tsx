@@ -3,15 +3,10 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { useAuth, useLocale } from '@/app/providers'
 import { t, type Locale } from '@/lib/i18n'
 import Link from 'next/link'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
-)
+import { supabase } from '@/lib/supabase'
 
 const SECTIONS: { key: string; label: string }[] = [
   { key: 'hr', label: 'HR / Attendance' },
@@ -25,7 +20,9 @@ const SECTIONS: { key: string; label: string }[] = [
 export default function AdminPage() {
   const { locale, setLocale } = useLocale()
   const { user, isSuperAdmin, loading } = useAuth()
-  const isAdminOwner = user?.email?.trim().toLowerCase() === 'admin@afstransco.com'
+  // Access is role-based. The legacy admin email remains supported because
+  // the provider resolves it to super-admin access for unmigrated accounts.
+  const isAdminOwner = isSuperAdmin
 
   const languages: { code: Locale; label: string; flag: string }[] = [
     { code: 'en', label: t('settings.lang.en', locale), flag: '🇺🇸' },
@@ -39,7 +36,7 @@ export default function AdminPage() {
 
       {!loading && !isAdminOwner && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-          This Admin page is restricted to admin@afstransco.com.
+          This Admin page is restricted to super administrators.
         </div>
       )}
 
@@ -73,6 +70,7 @@ export default function AdminPage() {
         </div>
       )}
       {isAdminOwner && isSuperAdmin && <Link href="/admin/pto-policy" className="mt-6 block rounded-xl border border-line-soft bg-white p-5 text-sm font-semibold text-ink shadow-sm hover:bg-pill">Manage company PTO policies <span className="text-ink-muted">→</span></Link>}
+      {isAdminOwner && isSuperAdmin && <Link href="/admin/employees" className="mt-6 block rounded-xl border border-line-soft bg-white p-5 text-sm font-semibold text-ink shadow-sm hover:bg-pill">Employee Portal accounts <span className="text-ink-muted">→</span></Link>}
     </div>
   )
 }

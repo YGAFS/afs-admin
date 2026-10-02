@@ -3,23 +3,15 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { getMsal } from '@/lib/msal'
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { User } from '@supabase/supabase-js'
 import type { Locale } from '@/lib/i18n'
+import { supabase } from '@/lib/supabase'
 
 const ROOT_SECTION_KEYS = ['hr', 'utilities', 'licenses', 'assets', 'supplies', 'admin'] as const
 const ADMIN_EMAILS = ['admin@afstransco.com']
 
-// Lazy singleton — only instantiated client-side (never during SSR/prerender)
-let _supabase: SupabaseClient | null = null
 function getSupabase() {
-  if (!_supabase) {
-    _supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
-    )
-  }
-  return _supabase
+  return supabase
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

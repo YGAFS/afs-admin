@@ -1,0 +1,80 @@
+object_type,object_scope,object_name,definition
+constraint,public.employee_user_links,employee_user_links_employee_id_fkey,FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+constraint,public.employee_user_links,employee_user_links_pkey,PRIMARY KEY (employee_id)
+constraint,public.employee_user_links,employee_user_links_user_id_fkey,FOREIGN KEY (user_id) REFERENCES user_profiles(user_id) ON DELETE CASCADE
+constraint,public.employee_user_links,employee_user_links_user_id_key,UNIQUE (user_id)
+constraint,public.employees,employees_company_id_fkey,FOREIGN KEY (company_id) REFERENCES companies(id)
+constraint,public.employees,employees_pkey,PRIMARY KEY (id)
+function,public,stage2c_has_hr_company(p_company_id uuid),"CREATE OR REPLACE FUNCTION public.stage2c_has_hr_company(p_company_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  SELECT public.stage2c_is_super_admin() OR (
+    public.stage2c_is_active_user() AND EXISTS (
+      SELECT 1 FROM public.user_company_roles
+      WHERE user_id = auth.uid()
+        AND company_id = p_company_id
+        AND role IN ('hr_admin', 'company_admin')
+    )
+  );
+$function$
+"
+function,public,stage2c_is_active_user(),"CREATE OR REPLACE FUNCTION public.stage2c_is_active_user()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_profiles
+    WHERE user_id = auth.uid() AND status = 'active'
+  );
+$function$
+"
+function,public,stage2c_is_linked_employee(p_employee_id uuid),"CREATE OR REPLACE FUNCTION public.stage2c_is_linked_employee(p_employee_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  SELECT public.stage2c_is_active_user() AND EXISTS (
+    SELECT 1 FROM public.employee_user_links
+    WHERE employee_id = p_employee_id AND user_id = auth.uid()
+  );
+$function$
+"
+function,public,stage2c_is_super_admin(),"CREATE OR REPLACE FUNCTION public.stage2c_is_super_admin()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  SELECT public.stage2c_is_active_user() AND EXISTS (
+    SELECT 1 FROM public.user_global_roles
+    WHERE user_id = auth.uid() AND role = 'super_admin'
+  );
+$function$
+"
+policy,public.companies,allow read companies,permissive=PERMISSIVE; roles={public}; command=SELECT; using=true; with_check=<none>
+policy,public.employee_user_links,employee_user_links_self_select,permissive=PERMISSIVE; roles={authenticated}; command=SELECT; using=(user_id = auth.uid()); with_check=<none>
+policy,public.employees,stage2c_employees_delete,permissive=PERMISSIVE; roles={authenticated}; command=DELETE; using=stage2c_has_hr_company(company_id); with_check=<none>
+policy,public.employees,stage2c_employees_insert,permissive=PERMISSIVE; roles={authenticated}; command=INSERT; using=<none>; with_check=stage2c_has_hr_company(company_id)
+policy,public.employees,stage2c_employees_select,permissive=PERMISSIVE; roles={authenticated}; command=SELECT; using=(stage2c_is_active_user() AND (stage2c_has_hr_company(company_id) OR stage2c_is_linked_employee(id))); with_check=<none>
+policy,public.employees,stage2c_employees_update,permissive=PERMISSIVE; roles={authenticated}; command=UPDATE; using=stage2c_has_hr_company(company_id); with_check=stage2c_has_hr_company(company_id)
+policy,public.leave_entries,stage2c_leave_entries_delete,"permissive=PERMISSIVE; roles={authenticated}; command=DELETE; using=(EXISTS ( SELECT 1
+   FROM employees e
+  WHERE ((e.id = leave_entries.employee_id) AND stage2c_has_hr_company(e.company_id)))); with_check=<none>"
+policy,public.leave_entries,stage2c_leave_entries_insert,"permissive=PERMISSIVE; roles={authenticated}; command=INSERT; using=<none>; with_check=(EXISTS ( SELECT 1
+   FROM employees e
+  WHERE ((e.id = leave_entries.employee_id) AND stage2c_has_hr_company(e.company_id))))"
+policy,public.leave_entries,stage2c_leave_entries_select,"permissive=PERMISSIVE; roles={authenticated}; command=SELECT; using=(stage2c_is_active_user() AND (EXISTS ( SELECT 1
+   FROM employees e
+  WHERE ((e.id = leave_entries.employee_id) AND (stage2c_has_hr_company(e.company_id) OR stage2c_is_linked_employee(e.id)))))); with_check=<none>"
+policy,public.leave_entries,stage2c_leave_entries_update,"permissive=PERMISSIVE; roles={authenticated}; command=UPDATE; using=(EXISTS ( SELECT 1
+   FROM employees e
+  WHERE ((e.id = leave_entries.employee_id) AND stage2c_has_hr_company(e.company_id)))); with_check=(EXISTS ( SELECT 1
+   FROM employees e
+  WHERE ((e.id = leave_entries.employee_id) AND stage2c_has_hr_company(e.company_id))))"
+policy,public.user_company_roles,user_company_roles_self_select,permissive=PERMISSIVE; roles={authenticated}; command=SELECT; using=(user_id = auth.uid()); with_check=<none>

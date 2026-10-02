@@ -1,0 +1,17 @@
+.env*
+.codex-vercel-production.env
+.codex
+.agents
+.next
+node_modules
+clean-deployment-*
+deployment-full-*
+deployment-release-*
+resume-preview
+tmp
+rotated-names*.png
+*.tsbuildinfo
+warehousing/*.traineddata
+tools/outlook_mail_sorter/.token_cache*
+AGENTS.md
+CHANGES-*.md

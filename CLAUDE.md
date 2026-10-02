@@ -4,7 +4,7 @@
 
 HR attendance management system for AFS / TNT / ZFS companies.
 Built with Next.js 16 (App Router), Supabase, Tailwind CSS v4, TypeScript.
-Production URL: **https://hr.afstrans.co**
+Production URL: **https://hr.afstransco.com**
 
 ---
 

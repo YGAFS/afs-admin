@@ -7,7 +7,7 @@ import { portalSupabase } from '@/lib/employeePortal'
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname(); const router = useRouter(); const [menu, setMenu] = useState(false)
-  if (path === '/portal/login') return <>{children}</>
+  if (path === '/portal/login' || path === '/portal/forgot-password' || path === '/portal/update-password') return <>{children}</>
   const slug = path.split('/')[2]
   const home = slug ? `/portal/${slug}` : '/portal'
   async function logout() { await portalSupabase.auth.signOut(); router.replace('/portal/login') }
@@ -19,6 +19,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       <nav className="space-y-1">
         <Link href={home} className={`block rounded-xl px-4 py-3 text-sm font-medium ${path === home ? 'bg-ink text-white' : 'text-ink-muted hover:bg-pill'}`}>My PTO</Link>
         <Link href={`${home}/policy`} className={`block rounded-xl px-4 py-3 text-sm font-medium ${path.endsWith('/policy') ? 'bg-ink text-white' : 'text-ink-muted hover:bg-pill'}`}>PTO Policy</Link>
+        <Link href={`${home}/settings/security`} className={`block rounded-xl px-4 py-3 text-sm font-medium ${path.endsWith('/settings/security') ? 'bg-ink text-white' : 'text-ink-muted hover:bg-pill'}`}>Security</Link>
       </nav>
       <button onClick={logout} className="absolute bottom-6 left-6 flex items-center gap-2 rounded-xl px-2 py-2 text-sm text-ink-muted transition-colors hover:bg-pill hover:text-ink">
         <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M8 6l-4 4 4 4M4 10h9M12 4h2a2 2 0 012 2v8a2 2 0 01-2 2h-2" /></svg>

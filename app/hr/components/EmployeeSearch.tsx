@@ -1,15 +1,10 @@
 ﻿'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { hrFetch } from '@/lib/hrApi'
 import { useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
-)
+import { supabase } from '@/lib/supabase'
 
 type Employee = {
   id: string; name: string; team: string; manager_name: string

@@ -3,3 +3,14 @@ node_modules/
 
 .vercel
 .env*.local
+.env*
+.codex-vercel-production.env
+tools/outlook_mail_sorter/.token_cache*
+clean-deployment-*/
+deployment-full-*/
+deployment-release-*/
+resume-preview/
+tmp/
+rotated-names*.png
+*.tsbuildinfo
+warehousing/*.traineddata

@@ -17,6 +17,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:employee-portal": "node --experimental-strip-types scripts/test-employee-portal-access.ts && node --experimental-strip-types scripts/test-employee-portal-pto.ts && node --experimental-strip-types scripts/test-policy-markdown.ts"
   }
 }

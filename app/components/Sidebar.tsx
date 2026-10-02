@@ -3,14 +3,9 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
 import { useAuth, useLocale } from '../providers'
 import { t } from '@/lib/i18n'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
-)
+import { supabase } from '@/lib/supabase'
 
 type NavItem = {
   href: string
