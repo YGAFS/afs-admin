@@ -3,14 +3,9 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, useMemo } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 import { computeBillStatus, STATUS_BADGE } from '@/lib/billStatus'
 import type { BalanceStatus, InvoiceStatus } from '@/lib/billStatus'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
-)
 
 type Company = 'afs' | 'tnt' | 'zfs'
 

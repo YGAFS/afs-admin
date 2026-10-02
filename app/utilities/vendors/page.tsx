@@ -5,15 +5,10 @@ export const dynamic = 'force-dynamic'
 import {
   useEffect, useMemo, useState, useCallback, useRef, Suspense,
 } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 import { useSearchParams } from 'next/navigation'
 import { computeBillStatus, STATUS_BADGE, type BalanceStatus, type InvoiceStatus } from '@/lib/billStatus'
 import { useAuth } from '@/app/providers'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
-)
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

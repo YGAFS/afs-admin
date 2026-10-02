@@ -4,17 +4,12 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/app/providers'
 import {
   computeBillStatus, isActiveOutstanding, STATUS_BADGE,
   type BalanceStatus, type InvoiceStatus,
 } from '@/lib/billStatus'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder'
-)
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 

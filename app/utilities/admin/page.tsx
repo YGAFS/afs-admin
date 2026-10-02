@@ -3,10 +3,9 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useRef, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/app/providers'
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://localhost', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder')
 type Thread = { id: string; subject: string; sender_email: string; created_at: string }
 type Notification = { id: string; bill_id: string; bill_name: string; status: 'queued' | 'sending' | 'sent' | 'failed'; created_at: string; sent_at: string | null; graph_message_id?: string | null }
 type Bill = { id: string; provider: string | null; utility_name: string; account_number?: string | null; company_id?: string | null; location_id?: string | null; created_at?: string; utility_locations?: { name?: string | null; city?: string | null } | { name?: string | null; city?: string | null }[] | null }
