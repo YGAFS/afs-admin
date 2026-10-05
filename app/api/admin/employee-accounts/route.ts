@@ -18,7 +18,7 @@ import {
 export const dynamic = 'force-dynamic'
 
 type ActionBody = {
-  action?: 'create' | 'reset' | 'disable' | 'enable' | 'archive'
+  action?: 'create' | 'reset' | 'change_email' | 'disable' | 'enable' | 'archive'
   employeeId?: string
   email?: string
   mode?: PortalLoginMode
@@ -165,6 +165,57 @@ export async function POST(req: NextRequest) {
   if (linkResult.error || !linkResult.data?.user_id) return portalJsonError('Employee login not found', 404)
   const linkedUser = await admin.auth.admin.getUserById(linkResult.data.user_id)
   if (linkedUser.error || !linkedUser.data.user) return portalJsonError('Auth user not found', 404)
+
+  if (input.action === 'change_email') {
+    if (linkResult.data.portal_login_mode !== 'email') {
+      return portalJsonError('Only Email-managed accounts can change login email', 409)
+    }
+
+    const newEmail = normalizePortalEmail(input.email ?? '')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      return portalJsonError('A valid login email is required', 400)
+    }
+
+    const currentEmail = normalizePortalEmail(linkedUser.data.user.email ?? '')
+    if (!currentEmail) return portalJsonError('Auth user has no login email', 409)
+    if (currentEmail === newEmail) return portalJsonError('The new email matches the current login email', 400)
+
+    const users = await allAuthUsers(admin).catch(() => null)
+    if (!users) return portalJsonError('Unable to verify Auth users', 500)
+    if (users.some(user => user.id !== linkResult.data!.user_id && normalizePortalEmail(user.email ?? '') === newEmail)) {
+      return portalJsonError('An Auth user already uses this email', 409)
+    }
+
+    const employeesWithEmail = await admin.from('employees')
+      .select('id,work_email')
+      .eq('is_active', true)
+      .not('work_email', 'is', null)
+    if (employeesWithEmail.error) return portalJsonError('Unable to verify employee emails', 500)
+    if ((employeesWithEmail.data ?? []).some(row => row.id !== employee.id && normalizePortalEmail(row.work_email ?? '') === newEmail)) {
+      return portalJsonError('Another active employee already uses this email', 409)
+    }
+
+    const authUpdated = await admin.auth.admin.updateUserById(linkResult.data.user_id, {
+      email: newEmail,
+      email_confirm: true,
+    })
+    if (authUpdated.error) return portalJsonError('Unable to update the Auth login email', 500)
+
+    const employeeUpdated = await admin.from('employees')
+      .update({ work_email: newEmail })
+      .eq('id', employee.id)
+    if (employeeUpdated.error) {
+      await admin.auth.admin.updateUserById(linkResult.data.user_id, {
+        email: currentEmail,
+        email_confirm: true,
+      })
+      return portalJsonError('Email update failed and the Auth email was restored', 500)
+    }
+
+    return Response.json({ ok: true, mode: 'email', email: newEmail }, {
+      headers: { 'Cache-Control': 'no-store' },
+    })
+  }
 
   if (input.action === 'reset') {
     const reset = await admin.rpc('portal_admin_reset_login', {
