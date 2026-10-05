@@ -4,7 +4,7 @@ import { Fragment, type ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { portalFetch } from '@/lib/employeePortal'
 
-type TocItem = { id: string; label: string; level: 2 | 3 }
+type TocItem = { id: string; label: string; level: 2 | 3 | 4 }
 
 function slugify(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9가-힣\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-')
@@ -20,7 +20,7 @@ function inlineMarkdown(value: string): ReactNode[] {
 }
 
 function isBlockStart(line: string) {
-  return /^(#{1,3})\s|^[-*_]{3,}\s*$|^[-*]\s|^\d+\.\s|^>\s/.test(line)
+  return /^(#{1,4})\s|^[-*_]{3,}\s*$|^[-*]\s|^\d+\.\s|^>\s/.test(line)
 }
 
 function renderBlocks(lines: string[], keyPrefix: string, skipTitle = false): ReactNode[] {
@@ -30,14 +30,14 @@ function renderBlocks(lines: string[], keyPrefix: string, skipTitle = false): Re
     const line = lines[index].trim()
     if (!line) { index += 1; continue }
 
-    const heading = line.match(/^(#{1,3})\s+(.+)$/)
+    const heading = line.match(/^(#{1,4})\s+(.+)$/)
     if (heading) {
       const level = heading[1].length
       const label = heading[2].trim()
       if (level === 1 && skipTitle) { index += 1; continue }
       const id = slugify(label)
-      const className = level === 2 ? 'mb-3 mt-10 scroll-mt-24 text-2xl font-bold text-ink first:mt-0' : level === 3 ? 'mb-2 mt-7 scroll-mt-24 text-lg font-bold text-ink' : 'mb-4 mt-2 scroll-mt-24 text-3xl font-bold text-ink'
-      const Heading = level === 1 ? 'h1' : level === 2 ? 'h2' : 'h3'
+      const className = level === 2 ? 'mb-3 mt-10 scroll-mt-24 text-2xl font-bold text-ink first:mt-0' : level === 3 ? 'mb-2 mt-7 scroll-mt-24 text-lg font-bold text-ink' : level === 4 ? 'mb-2 mt-6 scroll-mt-24 text-base font-bold text-ink' : 'mb-4 mt-2 scroll-mt-24 text-3xl font-bold text-ink'
+      const Heading = level === 1 ? 'h1' : level === 2 ? 'h2' : level === 3 ? 'h3' : 'h4'
       output.push(<Heading key={`${keyPrefix}-${index}`} id={id} className={className}>{inlineMarkdown(label)}</Heading>)
       index += 1
       continue
@@ -77,8 +77,8 @@ function renderBlocks(lines: string[], keyPrefix: string, skipTitle = false): Re
 function PolicyMarkdown({ source }: { source: string }) {
   const lines = source.split(/\r?\n/)
   const headings = lines.map((line, index) => {
-    const match = line.trim().match(/^(##|###)\s+(.+)$/)
-    return match ? { id: slugify(match[2]), label: match[2], level: match[1].length as 2 | 3, index } : null
+    const match = line.trim().match(/^(#{2,4})\s+(.+)$/)
+    return match ? { id: slugify(match[2]), label: match[2], level: match[1].length as 2 | 3 | 4, index } : null
   }).filter((item): item is TocItem & { index: number } => !!item)
   const definitionIndex = headings.find(item => /definitions|용어/i.test(item.label))?.index
   const nextHeadingIndex = definitionIndex === undefined ? undefined : headings.find(item => item.index > definitionIndex && item.level === 2)?.index
@@ -86,18 +86,18 @@ function PolicyMarkdown({ source }: { source: string }) {
   const definitions = definitionIndex === undefined ? [] : lines.slice(definitionIndex, nextHeadingIndex ?? lines.length)
   const afterDefinitions = definitionIndex === undefined ? [] : lines.slice(nextHeadingIndex ?? lines.length)
 
-  return <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_220px]">
-    <div className="min-w-0">
+  return <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_240px]">
+    <article className="min-w-0 rounded-3xl border border-line-soft bg-white p-7 shadow-sm md:p-10">
       {renderBlocks(beforeDefinitions, 'before', true)}
       {definitions.length > 0 && <details className="mb-6 overflow-hidden rounded-2xl border border-line-soft bg-pill" open>
         <summary id="definitions-and-scope" className="cursor-pointer select-none px-5 py-4 font-bold text-ink">Definitions and Scope</summary>
         <div className="border-t border-line-soft px-5 pb-2 pt-1">{renderBlocks(definitions.slice(1), 'definitions', false)}</div>
       </details>}
       {renderBlocks(afterDefinitions, 'after', false)}
-    </div>
-    {headings.length > 0 && <aside className="order-first lg:order-last"><nav className="sticky top-6 rounded-2xl border border-line-soft bg-pill p-4" aria-label="Table of contents">
+    </article>
+    {headings.length > 0 && <aside className="order-first lg:order-last"><nav className="sticky top-6 rounded-2xl border border-line-soft bg-white p-4 shadow-sm" aria-label="Table of contents">
       <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink-muted">Contents</p>
-      <div className="space-y-1">{headings.map(item => <a key={`${item.id}-${item.index}`} href={`#${item.id}`} className={`block rounded-lg px-2 py-1.5 text-sm leading-5 text-ink-muted hover:bg-white hover:text-ink ${item.level === 3 ? 'ml-3' : 'font-semibold'}`}>{inlineMarkdown(item.label)}</a>)}</div>
+      <div className="space-y-1">{headings.map(item => <a key={`${item.id}-${item.index}`} href={`#${item.id}`} className={`block rounded-lg px-2 py-1.5 text-sm leading-5 text-ink-muted hover:bg-pill hover:text-ink ${item.level === 3 ? 'ml-3' : item.level === 4 ? 'ml-6 text-xs' : 'font-semibold'}`}>{inlineMarkdown(item.label)}</a>)}</div>
     </nav></aside>}
   </div>
 }
@@ -116,6 +116,6 @@ export default function PolicyPage() {
   if (!data) return <div className="p-8 text-sm text-ink-muted">Loading policy…</div>
   return <div className="mx-auto max-w-6xl p-6 md:p-10">
     <header className="mb-8"><p className="mb-2 text-sm font-medium text-signal-pos">{data.company.name}</p><h1 className="text-3xl font-bold text-ink">{title}</h1>{data.policy?.metadata && <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-ink-muted"><span>Version {data.policy.metadata.version}</span><span>Effective {data.policy.metadata.effectiveDate}</span><span>Last updated {data.policy.metadata.lastUpdated}</span></div>}</header>
-    <article className="rounded-3xl border border-line-soft bg-white p-7 shadow-sm md:p-10">{data.policy ? <PolicyMarkdown source={data.policy.markdown} /> : <p className="text-ink-muted">The PTO and Attendance Policy for your company has not been published yet.</p>}</article>
+    {data.policy ? <PolicyMarkdown source={data.policy.markdown} /> : <article className="rounded-3xl border border-line-soft bg-white p-7 shadow-sm md:p-10"><p className="text-ink-muted">The PTO and Attendance Policy for your company has not been published yet.</p></article>}
   </div>
 }
