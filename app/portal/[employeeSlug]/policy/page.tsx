@@ -11,9 +11,10 @@ function slugify(value: string) {
 }
 
 function inlineMarkdown(value: string): ReactNode[] {
-  return value.split(/(<mark(?:\s[^>]*)?>.*?<\/mark>|==.*?==|\*\*.*?\*\*|__.*?__|`.*?`|\*[^*\n]+\*|_[^_\n]+_)/g).filter(Boolean).map((part, index) => {
+  return value.split(/(<mark(?:\s[^>]*)?>.*?<\/mark>|==.*?==|\*\*\*.*?\*\*\*|\*\*.*?\*\*|__.*?__|`.*?`|\*[^*\n]+\*|_[^_\n]+_)/g).filter(Boolean).map((part, index) => {
     if (part.startsWith('<mark')) return <mark key={index} className="rounded bg-yellow-200 px-1 text-ink">{inlineMarkdown(part.replace(/^<mark(?:\s[^>]*)?>/, '').replace(/<\/mark>$/, ''))}</mark>
     if (part.startsWith('==') && part.endsWith('==')) return <mark key={index} className="rounded bg-yellow-200 px-1 text-ink">{inlineMarkdown(part.slice(2, -2))}</mark>
+    if (part.startsWith('***') && part.endsWith('***')) return <strong key={index}><em>{part.slice(3, -3)}</em></strong>
     if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) return <strong key={index}>{part.slice(2, -2)}</strong>
     if (part.startsWith('`') && part.endsWith('`')) return <code key={index} className="rounded bg-pill px-1.5 py-0.5 text-[0.9em]">{part.slice(1, -1)}</code>
     if ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))) return <em key={index}>{part.slice(1, -1)}</em>
@@ -22,7 +23,7 @@ function inlineMarkdown(value: string): ReactNode[] {
 }
 
 function isBlockStart(line: string) {
-  return /^(#{1,4})\s|^[-*_]{3,}\s*$|^[-*]\s|^\d+\.\s|^>\s/.test(line)
+  return /^(#{1,4})\s|^[-*_]{3,}\s*$|^[-*]\s|^\d+\.\s|^>\s?|^<mark(?:\s[^>]*)?>\s*[-*]\s/.test(line)
 }
 
 function renderBlocks(lines: string[], keyPrefix: string, skipTitle = false): ReactNode[] {
@@ -47,6 +48,13 @@ function renderBlocks(lines: string[], keyPrefix: string, skipTitle = false): Re
 
     if (/^[-*_]{3,}\s*$/.test(line)) { output.push(<hr key={`${keyPrefix}-${index}`} className="my-8 border-line-soft" />); index += 1; continue }
 
+    const markedList = line.match(/^<mark(?:\s[^>]*)?>\s*[-*]\s+(.+?)<\/mark>$/)
+    if (markedList) {
+      output.push(<ul key={`${keyPrefix}-${index}`} className="mb-4 list-disc space-y-2 pl-6 leading-7"><li><mark className="rounded bg-yellow-200 px-1 text-ink">{inlineMarkdown(markedList[1])}</mark></li></ul>)
+      index += 1
+      continue
+    }
+
     if (/^[-*]\s+/.test(line)) {
       const items: string[] = []
       while (index < lines.length) { const item = lines[index].trim().match(/^[-*]\s+(.+)$/); if (!item) break; items.push(item[1]); index += 1 }
@@ -61,9 +69,9 @@ function renderBlocks(lines: string[], keyPrefix: string, skipTitle = false): Re
       continue
     }
 
-    if (line.startsWith('> ')) {
+    if (line.startsWith('>')) {
       const quoteLines: string[] = []
-      while (index < lines.length && lines[index].trim().startsWith('> ')) { quoteLines.push(lines[index].trim().slice(2)); index += 1 }
+      while (index < lines.length && lines[index].trim().startsWith('>')) { quoteLines.push(lines[index].trim().slice(1).trimStart()); index += 1 }
       output.push(<blockquote key={`${keyPrefix}-${index}`} className="mb-4 border-l-4 border-line pl-4 italic leading-7 text-ink-muted">{quoteLines.map((quote, quoteIndex) => <p key={quoteIndex}>{inlineMarkdown(quote)}</p>)}</blockquote>)
       continue
     }
