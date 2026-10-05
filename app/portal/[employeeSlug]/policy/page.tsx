@@ -11,7 +11,9 @@ function slugify(value: string) {
 }
 
 function inlineMarkdown(value: string): ReactNode[] {
-  return value.split(/(\*\*.*?\*\*|__.*?__|`.*?`|\*[^*\n]+\*|_[^_\n]+_)/g).filter(Boolean).map((part, index) => {
+  return value.split(/(<mark(?:\s[^>]*)?>.*?<\/mark>|==.*?==|\*\*.*?\*\*|__.*?__|`.*?`|\*[^*\n]+\*|_[^_\n]+_)/g).filter(Boolean).map((part, index) => {
+    if (part.startsWith('<mark')) return <mark key={index} className="rounded bg-yellow-200 px-1 text-ink">{inlineMarkdown(part.replace(/^<mark(?:\s[^>]*)?>/, '').replace(/<\/mark>$/, ''))}</mark>
+    if (part.startsWith('==') && part.endsWith('==')) return <mark key={index} className="rounded bg-yellow-200 px-1 text-ink">{inlineMarkdown(part.slice(2, -2))}</mark>
     if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) return <strong key={index}>{part.slice(2, -2)}</strong>
     if (part.startsWith('`') && part.endsWith('`')) return <code key={index} className="rounded bg-pill px-1.5 py-0.5 text-[0.9em]">{part.slice(1, -1)}</code>
     if ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))) return <em key={index}>{part.slice(1, -1)}</em>

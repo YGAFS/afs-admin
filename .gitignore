@@ -14,3 +14,4 @@ tmp/
 rotated-names*.png
 *.tsbuildinfo
 warehousing/*.traineddata
+scripts/afs-pto-policy-sync.log

@@ -14,14 +14,21 @@ function Log-Message([string]$message) {
   Write-Host $line
 }
 
+function Get-FileDigest([string]$path) {
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  $stream = [System.IO.File]::OpenRead($path)
+  try { return ([System.BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '') }
+  finally { $stream.Dispose(); $sha.Dispose() }
+}
+
 function Sync-Policy {
   if (-not (Test-Path -LiteralPath $source)) {
     throw "AFS PTO source file not found: $source"
   }
 
-  $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+  $sourceHash = Get-FileDigest $source
   $destinationHash = if (Test-Path -LiteralPath $destination) {
-    (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+    Get-FileDigest $destination
   } else { '' }
 
   if ($sourceHash -eq $destinationHash) {
