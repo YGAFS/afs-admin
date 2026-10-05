@@ -50,14 +50,21 @@ function entriesForPriorPeriod(used: number): PtoLeaveEntryInput[] {
 assert.equal(calculatePto({
   employee: { vacationAllowance: 10, usesAccrual: true, isExempt: false, startDate: '2024-01-01', endDate: null },
   leaveEntries: entriesForPriorPeriod(10), year: 2026, asOfDate: '2026-08-28',
-}).vacation.carryIn, 5)
+}).vacation.carryIn, 10)
 assert.equal(calculatePto({
   employee: { vacationAllowance: 10, usesAccrual: true, isExempt: false, startDate: '2024-01-01', endDate: null },
   leaveEntries: entriesForPriorPeriod(11), year: 2026, asOfDate: '2026-08-28',
-}).vacation.carryIn, 4)
+}).vacation.carryIn, 9)
 assert.equal(calculatePto({
   employee: { vacationAllowance: 10, usesAccrual: true, isExempt: false, startDate: '2024-01-01', endDate: null },
   leaveEntries: entriesForPriorPeriod(7), year: 2026, asOfDate: '2026-08-28',
-}).vacation.carryIn, 5)
+}).vacation.carryIn, 13)
+
+const notYetEligible = calculatePto({
+  employee: { vacationAllowance: 10, usesAccrual: true, isExempt: false, startDate: '2026-08-01', endDate: null },
+  leaveEntries: [], year: 2026, asOfDate: '2026-10-01',
+}).sick
+assert.equal(notYetEligible.notYetEligible, true)
+assert.equal(notYetEligible.eligible, false)
 
 console.log('Employee Portal PTO tests passed')

@@ -77,8 +77,9 @@ export async function loadPortalPtoData(
         hours: entry.hours,
       })),
     policySummary: {
-      vacationCarryoverLimit: 5,
       paidSickAllowance: 5,
+      unpaidSickAllowance: 3,
+      sickEligibilityDays: 90,
       sickAlertThreshold: 8,
       dayHours: 8,
       hourlyLeaveUsesLegacyDayWeighting: true,

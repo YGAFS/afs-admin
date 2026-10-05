@@ -39,6 +39,8 @@ export type SickPtoResult = {
   unpaidUsed: number
   remaining: number
   alert: boolean
+  eligible: boolean
+  notYetEligible: boolean
 }
 
 export type PtoResult = {
@@ -47,8 +49,9 @@ export type PtoResult = {
 }
 
 export const PTO_POLICY = {
-  carryoverLimit: 5,
   paidSickAllowance: 5,
+  unpaidSickAllowance: 3,
+  sickEligibilityDays: 90,
   sickAlertThreshold: 8,
   dayHours: 8,
 } as const
@@ -195,8 +198,8 @@ export function calculateVacation(
       break
     }
 
-    excessCarryover = Math.max(0, round2(remaining - PTO_POLICY.carryoverLimit))
-    carryIn = Math.min(PTO_POLICY.carryoverLimit, remaining)
+    excessCarryover = 0
+    carryIn = remaining
   }
 
   if (!current) {
@@ -226,11 +229,12 @@ export function calculateVacation(
   }
 }
 
-export function calculateSick(year: number, leaveEntries: PtoLeaveEntryInput[]): SickPtoResult {
+export function calculateSick(year: number, leaveEntries: PtoLeaveEntryInput[], startDate: string | null = null, asOfDate?: string): SickPtoResult {
   const used = round2(leaveEntries
     .filter(entry => entry.date.startsWith(`${year}-`) && isSickCode(entry.leaveCode))
     .reduce((sum, entry) => sum + leaveCodeDays(entry.leaveCode), 0))
   const paidUsed = Math.min(used, PTO_POLICY.paidSickAllowance)
+  const eligible = !startDate || !asOfDate || Math.floor((parseIsoDate(asOfDate).getTime() - parseIsoDate(startDate).getTime()) / 86400000) >= PTO_POLICY.sickEligibilityDays
 
   return {
     allowance: PTO_POLICY.paidSickAllowance,
@@ -239,6 +243,8 @@ export function calculateSick(year: number, leaveEntries: PtoLeaveEntryInput[]):
     unpaidUsed: Math.max(0, round2(used - PTO_POLICY.paidSickAllowance)),
     remaining: Math.max(0, round2(PTO_POLICY.paidSickAllowance - paidUsed)),
     alert: used > PTO_POLICY.sickAlertThreshold,
+    eligible,
+    notYetEligible: !eligible,
   }
 }
 
@@ -250,6 +256,6 @@ export function calculatePto(input: {
 }): PtoResult {
   return {
     vacation: calculateVacation(input.employee, input.leaveEntries, input.asOfDate),
-    sick: calculateSick(input.year, input.leaveEntries),
+    sick: calculateSick(input.year, input.leaveEntries, input.employee.startDate, input.asOfDate),
   }
 }

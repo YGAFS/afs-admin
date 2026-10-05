@@ -92,7 +92,7 @@ function calcAnnivVacStat(
       : emp.vacation_allowance
     const remaining = Math.max(0, accrued + carryIn - used)
     if (isCurrent) { result = { accrued, carryIn, periodUsed: used }; break }
-    carryIn = Math.min(5, remaining)
+    carryIn = remaining
   }
   return result
 }

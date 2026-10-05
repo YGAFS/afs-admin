@@ -78,6 +78,7 @@ function sortEmployees(emps: Employee[], mode: 'hire' | 'name' = 'hire'): Employ
 type AnnivPeriod  = { periodStart: Date; periodEnd: Date; periodYear: number }
 type PeriodStat   = {
   periodYear: number; periodStart: Date; periodEnd: Date
+  useBy: Date | null
   accrued: number; carryIn: number; used: number
   remaining: number; carryOut: number; expired: number; isCurrent: boolean
 }
@@ -325,6 +326,8 @@ export default function EmployeeSearch() {
       const isCurrent = i === periods.length - 1
       const pStartIso = isoFromDate(p.periodStart)
       const pEndIso   = isCurrent ? effectiveDateIso : isoFromDate(p.periodEnd)
+      const useBy = isCurrent ? null : new Date(p.periodEnd)
+      if (useBy) useBy.setFullYear(useBy.getFullYear() + 1)
 
       const used = Math.round(
         vacEntries
@@ -336,10 +339,10 @@ export default function EmployeeSearch() {
         ? calcAccruedInPeriod(emp.vacation_allowance, p.periodStart, effectiveDate)
         : emp.vacation_allowance
       const remaining = Math.max(0, Math.round((accrued + carryIn - used) * 100) / 100)
-      const carryOut  = isCurrent ? 0 : Math.min(5, remaining)
-      const expired   = isCurrent ? 0 : Math.max(0, Math.round((remaining - 5) * 100) / 100)
+      const carryOut  = isCurrent ? 0 : remaining
+      const expired   = 0
 
-      history.push({ periodYear: p.periodYear, periodStart: p.periodStart, periodEnd: p.periodEnd, accrued, carryIn, used, remaining, carryOut, expired, isCurrent })
+      history.push({ periodYear: p.periodYear, periodStart: p.periodStart, periodEnd: p.periodEnd, useBy, accrued, carryIn, used, remaining, carryOut, expired, isCurrent })
       carryIn = carryOut
     }
 
@@ -737,6 +740,8 @@ export default function EmployeeSearch() {
           const paidSick   = Math.min(summary.sick, 5)
           const unpaidSick = Math.max(0, summary.sick - 5)
           const sickAlert  = summary.sick > 8
+           const sickNotYetEligible = !!selected.start_date
+             && Math.floor((new Date().getTime() - new Date(`${selected.start_date}T00:00:00`).getTime()) / 86400000) < 90
 
           return (
             <div className="flex-1 min-w-0">
@@ -990,15 +995,15 @@ export default function EmployeeSearch() {
                   {vacStats.isAccrual && (
                     <div className="text-xs text-ink-faint font-medium mt-1.5">
                       {locale === 'ko'
-                        ? `입사일 기준 매월 ${(vacStats.annual/12).toFixed(2)}일 적립 · 미사용 최대 5일 이월, 초과분 수당 정산`
-                        : `Accrual from hire: ${(vacStats.annual/12).toFixed(2)} days/month · up to 5 days carry over, excess paid out`}
+                         ? `입사일 기준 매월 ${(vacStats.annual/12).toFixed(2)}일 적립 · 법정 잔액 전액 이월`
+                         : `Accrual from hire: ${(vacStats.annual/12).toFixed(2)} days/month · full statutory balance carries forward`}
                     </div>
                   )}
-                  {paidOutPrev > 0 && (
+                  {selected.probation_start && selected.probation_end
+                    && selected.probation_start <= todayIso()
+                    && selected.probation_end >= todayIso() && (
                     <div className="text-xs text-amber-600 font-semibold mt-1">
-                      {locale === 'ko'
-                        ? `전년도 수당 정산: ${paidOutPrev.toFixed(2)}일 소멸 (5일 초과분)`
-                        : `Prior year payout: ${paidOutPrev.toFixed(2)} days expired (over 5-day limit)`}
+                      {locale === 'ko' ? '수습기간 중 유급휴가 사용은 사전 승인 필요' : 'Paid vacation during probation requires prior approval'}
                     </div>
                   )}
                 </div>
@@ -1047,6 +1052,11 @@ export default function EmployeeSearch() {
                 <div className="text-xs text-ink-faint font-medium mt-1">
                   {locale === 'ko' ? '매해 1월 1일 초기화 · 연차와 별도 타임라인' : 'Resets Jan 1 each year · separate from vacation'}
                 </div>
+                {sickNotYetEligible && (
+                  <div className="text-xs text-amber-600 font-semibold mt-1">
+                    {locale === 'ko' ? 'Not yet eligible · 입사 후 90일 근무 전 (입력은 가능)' : 'Not yet eligible · 90 consecutive days not completed (entry is allowed)'}
+                  </div>
+                )}
                 {sickAlert && (
                   <div className="text-xs text-signal-neg font-bold mt-1">{t('emp.sick.alert', locale)}</div>
                 )}
@@ -1154,7 +1164,7 @@ export default function EmployeeSearch() {
                             <th className="text-center px-2 py-2">{locale === 'ko' ? '사용' : 'Used'}</th>
                             <th className="text-center px-2 py-2">{locale === 'ko' ? '잔여' : 'Balance'}</th>
                             <th className="text-center px-2 py-2">{locale === 'ko' ? '→이월' : '→Next'}</th>
-                            <th className="text-center px-2 py-2">{locale === 'ko' ? '소멸' : 'Expired'}</th>
+                            <th className="text-center px-2 py-2">{locale === 'ko' ? '사용기한' : 'Use by'}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1182,8 +1192,8 @@ export default function EmployeeSearch() {
                               <td className="text-center px-2 py-2 text-ink-muted">
                                 {stat.isCurrent ? '—' : stat.carryOut > 0 ? days(stat.carryOut) : '—'}
                               </td>
-                              <td className="text-center px-2 py-2 text-amber-600 font-medium">
-                                {stat.isCurrent ? '—' : stat.expired > 0 ? days(stat.expired) : '—'}
+                              <td className="text-center px-2 py-2 text-ink-muted">
+                                {stat.useBy ? isoFromDate(stat.useBy) : '—'}
                               </td>
                             </tr>
                           ))}
