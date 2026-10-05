@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, type ReactNode } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { portalFetch } from '@/lib/employeePortal'
 
 type TocItem = { id: string; label: string; level: 2 | 3 | 4 }
@@ -75,6 +75,8 @@ function renderBlocks(lines: string[], keyPrefix: string, skipTitle = false): Re
 }
 
 function PolicyMarkdown({ source }: { source: string }) {
+  const [tocScrolling, setTocScrolling] = useState(false)
+  const tocTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lines = source.split(/\r?\n/)
   const headings = lines.map((line, index) => {
     const match = line.trim().match(/^(#{2,4})\s+(.+)$/)
@@ -95,7 +97,7 @@ function PolicyMarkdown({ source }: { source: string }) {
       </details>}
       {renderBlocks(afterDefinitions, 'after', false)}
     </article>
-    {headings.length > 0 && <aside className="order-first self-start lg:order-last lg:sticky lg:top-6"><nav className="max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-line-soft bg-white p-4 shadow-sm" aria-label="Table of contents">
+    {headings.length > 0 && <aside className="order-first self-start lg:order-last lg:sticky lg:top-6"><nav onScroll={() => { setTocScrolling(true); if (tocTimer.current) clearTimeout(tocTimer.current); tocTimer.current = setTimeout(() => setTocScrolling(false), 700) }} className={`policy-toc-scrollbar max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-line-soft bg-white p-4 shadow-sm ${tocScrolling ? 'is-scrolling' : ''}`} aria-label="Table of contents">
       <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink">Contents</p>
       <div className="space-y-1">{headings.map(item => <a key={`${item.id}-${item.index}`} href={`#${item.id}`} className={`block rounded-lg px-2 py-1.5 text-sm leading-5 text-ink hover:bg-pill ${item.level === 3 ? 'ml-3' : item.level === 4 ? 'ml-6 text-xs' : 'font-semibold'}`}>{inlineMarkdown(item.label)}</a>)}</div>
     </nav></aside>}
@@ -114,7 +116,7 @@ export default function PolicyPage() {
   const title = useMemo(() => data?.policy?.metadata?.title || 'PTO and Attendance Policy', [data])
   if (error) return <div className="p-8 text-sm text-ink-muted">Unable to load your PTO policy.</div>
   if (!data) return <div className="p-8 text-sm text-ink-muted">Loading policy…</div>
-  return <div className="mx-auto max-w-6xl p-6 md:p-10">
+  return <div className="policy-obsidian mx-auto max-w-6xl p-6 md:p-10">
     <header className="mb-8"><p className="mb-2 text-sm font-medium text-signal-pos">{data.company.name}</p><h1 className="text-3xl font-bold text-ink">{title}</h1>{data.policy?.metadata && <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-ink-muted"><span>Version {data.policy.metadata.version}</span><span>Effective {data.policy.metadata.effectiveDate}</span><span>Last updated {data.policy.metadata.lastUpdated}</span></div>}</header>
     {data.policy ? <PolicyMarkdown source={data.policy.markdown} /> : <article className="rounded-3xl border border-line-soft bg-white p-7 shadow-sm md:p-10"><p className="text-ink-muted">The PTO and Attendance Policy for your company has not been published yet.</p></article>}
   </div>
