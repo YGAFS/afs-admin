@@ -3,7 +3,7 @@ import { calculatePto, type PtoLeaveEntryInput } from '@/lib/hr/pto'
 import { portalBusinessDate } from '@/lib/portalAccess'
 import { type PortalEmployee } from '@/lib/server/portalAuthorization'
 
-const RELEVANT_CODES = new Set(['L', 'L1', 'L2', 'L3', 'S', 'S1', 'S2', 'S3'])
+const RELEVANT_CODES = new Set(['L', 'L1', 'L2', 'L3', 'S', 'S1', 'S2', 'S3', 'W', 'T', 'T1', 'T2', 'T3'])
 
 export function currentPortalYear() {
   return Number(portalBusinessDate().slice(0, 4))
@@ -73,7 +73,7 @@ export async function loadPortalPtoData(
         id: entry.id,
         date: entry.date,
         code: entry.leave_code,
-        days: ['L1', 'L2', 'S1', 'S2'].includes(entry.leave_code) ? 0.5 : 1,
+        days: ['L1', 'L2', 'S1', 'S2', 'T1', 'T2'].includes(entry.leave_code) ? 0.5 : 1,
         hours: entry.hours,
       })),
     policySummary: {
