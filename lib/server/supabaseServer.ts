@@ -62,9 +62,12 @@ export function employeePortalV2SchemaEnabled() {
 }
 
 export function canonicalPortalOrigin() {
+  if (process.env.VERCEL_ENV === 'preview' && process.env.VERCEL_URL?.trim()) {
+    return new URL(`https://${process.env.VERCEL_URL.trim()}`).origin
+  }
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim() || 'https://hr.afstransco.com'
   const origin = new URL(configured).origin
-  if (process.env.NODE_ENV === 'production' && origin !== 'https://hr.afstransco.com') {
+  if (process.env.VERCEL_ENV === 'production' && origin !== 'https://hr.afstransco.com') {
     throw new Error('Production Portal origin must be https://hr.afstransco.com')
   }
   return origin

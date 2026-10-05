@@ -38,8 +38,8 @@ begin
   if (select count(*) from public.employees) <> 42 then
     raise exception 'Production invariant failed: employees must remain 42';
   end if;
-  if (select count(*) from public.leave_entries) <> 1141 then
-    raise exception 'Production invariant failed: leave_entries must remain 1141';
+  if (select count(*) from public.leave_entries) <> 1143 then
+    raise exception 'Production invariant failed: leave_entries must remain 1143';
   end if;
   if (select count(*) from auth.users) <> 5 then
     raise exception 'Production invariant failed: auth.users must remain 5';
@@ -195,7 +195,7 @@ begin
   if (select count(*) from public.employees) <> 42 then
     raise exception 'super_admin RLS failed: employees not fully visible';
   end if;
-  if (select count(*) from public.leave_entries) <> 1141 then
+  if (select count(*) from public.leave_entries) <> 1143 then
     raise exception 'super_admin RLS failed: leave_entries not fully visible';
   end if;
   if (select count(*) from public.employee_user_links) <> 1 then

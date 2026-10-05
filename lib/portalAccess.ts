@@ -1,6 +1,7 @@
 export const PORTAL_TIME_ZONE = 'America/Vancouver'
 
 export type PortalLifecycleStatus = 'pending' | 'active' | 'disabled'
+export type PortalLoginMode = 'email' | 'admin_managed'
 
 export type PortalAccessState = {
   profileStatus: string | null
@@ -40,6 +41,18 @@ export function isPortalDataAccessAllowed(state: PortalAccessState, businessDate
 
 export function normalizePortalEmail(value: string) {
   return value.trim().toLowerCase()
+}
+
+export function normalizePortalLoginId(value: string) {
+  return value.trim().toUpperCase()
+}
+
+export function isPortalEmailIdentifier(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizePortalEmail(value))
+}
+
+export function isPortalLoginId(value: string) {
+  return /^A[0-9]{3,}$/.test(normalizePortalLoginId(value))
 }
 
 export function archivedPortalLoginEmail(authUserId: string) {

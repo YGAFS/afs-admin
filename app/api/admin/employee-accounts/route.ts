@@ -4,7 +4,9 @@ import {
   isEmploymentPortalEligible,
   normalizePortalEmail,
   portalBusinessDate,
+  type PortalLoginMode,
 } from '@/lib/portalAccess'
+import { generateTemporaryPortalPassword, syntheticPortalAuthEmail } from '@/lib/server/portalCredentials'
 import { authorizeSuperAdminRequest, portalJsonError } from '@/lib/server/portalAuthorization'
 import {
   anonymousClient,
@@ -19,6 +21,7 @@ type ActionBody = {
   action?: 'create' | 'reset' | 'disable' | 'enable' | 'archive'
   employeeId?: string
   email?: string
+  mode?: PortalLoginMode
   delivery?: 'email' | 'link'
 }
 
@@ -43,7 +46,7 @@ export async function GET(req: NextRequest) {
       .select('id,name,work_email,is_active,end_date,company_id,companies(id,code,name)')
       .order('name'),
     admin.from('employee_user_links')
-      .select('employee_id,user_id,portal_status,password_setup_required,disabled_at,archived_login_email'),
+      .select('employee_id,user_id,portal_status,password_setup_required,disabled_at,archived_login_email,portal_login_mode,portal_login_id'),
     admin.from('user_profiles').select('user_id,status'),
     allAuthUsers(admin),
   ])
@@ -62,7 +65,9 @@ export async function GET(req: NextRequest) {
       ...employee,
       account: link ? {
         authUserId: link.user_id,
-        loginEmail: user?.email ?? null,
+        loginMode: link.portal_login_mode,
+        loginId: link.portal_login_id,
+        loginEmail: link.portal_login_mode === 'email' ? user?.email ?? null : null,
         portalStatus: link.portal_status,
         passwordSetupRequired: link.password_setup_required,
         profileStatus: profile?.status ?? null,
@@ -93,37 +98,68 @@ export async function POST(req: NextRequest) {
   const redirectTo = `${canonicalPortalOrigin()}/portal/update-password`
 
   if (input.action === 'create') {
-    const email = normalizePortalEmail(input.email ?? '')
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return portalJsonError('A valid login email is required', 400)
+    const mode: PortalLoginMode = input.mode === 'admin_managed' ? 'admin_managed' : 'email'
     if (!isEmploymentPortalEligible({ employeeActive: employee.is_active, endDate: employee.end_date }, portalBusinessDate())) {
       return portalJsonError('Employee is not active', 409)
     }
-    const users = await allAuthUsers(admin).catch(() => null)
-    if (!users) return portalJsonError('Unable to verify Auth users', 500)
-    if (users.some(user => normalizePortalEmail(user.email ?? '') === email)) {
-      return portalJsonError('An Auth user already uses this email', 409)
+    if (mode === 'email') {
+      const email = normalizePortalEmail(input.email ?? '')
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return portalJsonError('A valid login email is required', 400)
+      const users = await allAuthUsers(admin).catch(() => null)
+      if (!users) return portalJsonError('Unable to verify Auth users', 500)
+      if (users.some(user => normalizePortalEmail(user.email ?? '') === email)) {
+        return portalJsonError('An Auth user already uses this email', 409)
+      }
+      const invite = await admin.auth.admin.inviteUserByEmail(email, {
+        redirectTo,
+        data: { employee_id: employee.id, portal_invite: true, portal_login_mode: 'email' },
+      })
+      if (invite.error || !invite.data.user?.id) return portalJsonError('Unable to create invitation', 500)
+      const provision = await admin.rpc('portal_admin_provision_login_v2', {
+        p_actor_user_id: actor.user.id,
+        p_employee_id: employee.id,
+        p_auth_user_id: invite.data.user.id,
+        p_login_mode: 'email',
+        p_portal_login_id: null,
+        p_login_email: email,
+      })
+      if (provision.error) {
+        await admin.auth.admin.updateUserById(invite.data.user.id, { ban_duration: '876000h' })
+        return portalJsonError('Invitation created but Portal link failed; invited account was disabled', 500)
+      }
+      return Response.json({ ok: true, mode }, { headers: { 'Cache-Control': 'no-store' } })
     }
 
-    const invite = await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo,
-      data: { employee_id: employee.id, portal_invite: true },
+    const allocated = await admin.rpc('portal_allocate_login_id', { p_actor_user_id: actor.user.id })
+    const loginId = typeof allocated.data === 'string' ? allocated.data : ''
+    if (allocated.error || !loginId) return portalJsonError('Unable to allocate Login ID', 500)
+    const temporaryPassword = generateTemporaryPortalPassword()
+    const created = await admin.auth.admin.createUser({
+      email: syntheticPortalAuthEmail(loginId),
+      email_confirm: true,
+      password: temporaryPassword,
+      user_metadata: { employee_id: employee.id, portal_login_mode: 'admin_managed' },
     })
-    if (invite.error || !invite.data.user?.id) return portalJsonError('Unable to create invitation', 500)
-    const provision = await admin.rpc('portal_admin_provision_login', {
+    if (created.error || !created.data.user?.id) return portalJsonError('Unable to create Admin-managed login', 500)
+    const provision = await admin.rpc('portal_admin_provision_login_v2', {
       p_actor_user_id: actor.user.id,
       p_employee_id: employee.id,
-      p_auth_user_id: invite.data.user.id,
-      p_login_email: email,
+      p_auth_user_id: created.data.user.id,
+      p_login_mode: 'admin_managed',
+      p_portal_login_id: loginId,
+      p_login_email: null,
     })
     if (provision.error) {
-      await admin.auth.admin.updateUserById(invite.data.user.id, { ban_duration: '876000h' })
-      return portalJsonError('Invitation created but Portal link failed; invited account was disabled', 500)
+      await admin.auth.admin.deleteUser(created.data.user.id)
+      return portalJsonError('Unable to link Admin-managed login; the unlinked Auth user was removed', 500)
     }
-    return Response.json({ ok: true })
+    return Response.json({ ok: true, mode, loginId, temporaryPassword }, {
+      headers: { 'Cache-Control': 'no-store' },
+    })
   }
 
   const linkResult = await admin.from('employee_user_links')
-    .select('user_id,portal_status,archived_login_email')
+    .select('user_id,portal_status,archived_login_email,portal_login_mode,portal_login_id')
     .eq('employee_id', employee.id)
     .maybeSingle()
   if (linkResult.error || !linkResult.data?.user_id) return portalJsonError('Employee login not found', 404)
@@ -136,6 +172,17 @@ export async function POST(req: NextRequest) {
       p_employee_id: employee.id,
     })
     if (reset.error) return portalJsonError(reset.error.message, 409)
+    if (linkResult.data.portal_login_mode === 'admin_managed') {
+      const temporaryPassword = generateTemporaryPortalPassword()
+      const changed = await admin.auth.admin.updateUserById(linkResult.data.user_id, { password: temporaryPassword })
+      if (changed.error) return portalJsonError('Login reset; unable to issue a temporary password', 500)
+      return Response.json({
+        ok: true,
+        mode: 'admin_managed',
+        loginId: linkResult.data.portal_login_id,
+        temporaryPassword,
+      }, { headers: { 'Cache-Control': 'no-store' } })
+    }
     const email = linkedUser.data.user.email
     if (!email) return portalJsonError('Login reset but Auth user has no email', 409)
 
@@ -202,7 +249,10 @@ export async function POST(req: NextRequest) {
       ban_duration: '876000h',
     })
     if (archived.error) return portalJsonError('Account disabled; Auth email archive requires review', 500)
-    return Response.json({ ok: true, archivedEmail })
+    return Response.json({
+      ok: true,
+      archivedEmail: linkResult.data.portal_login_mode === 'email' ? archivedEmail : null,
+    })
   }
 
   return portalJsonError('Invalid action', 400)

@@ -10,6 +10,11 @@ export function getPortalSession() {
   return sessionPromise
 }
 
+export async function establishPortalSession(accessToken: string, refreshToken: string) {
+  sessionPromise = null
+  return portalSupabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+}
+
 export function employeeSlug(name: string) {
   return name.trim().toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'employee'
 }
