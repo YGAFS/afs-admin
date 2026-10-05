@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   const admin = serviceRoleClient()
   const [employeesResult, linksResult, profilesResult, users] = await Promise.all([
     actor.db.from('employees')
-      .select('id,name,work_email,is_active,end_date,company_id,companies(id,code,name)')
+      .select('id,name,work_email,is_active,end_date,employment_type,company_id,companies(id,code,name)')
       .order('name'),
     admin.from('employee_user_links')
       .select('employee_id,user_id,portal_status,password_setup_required,disabled_at,archived_login_email,portal_login_mode,portal_login_id'),

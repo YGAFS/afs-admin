@@ -21,11 +21,30 @@ type EmployeeRow = {
   work_email: string | null
   is_active: boolean
   end_date: string | null
+  employment_type: string | null
   companies: { code: string; name: string } | null
   account: Account | null
 }
 type ProvisionDialog = { employee: EmployeeRow; mode: PortalLoginMode; email: string }
 type OneTimeCredentials = { employeeName: string; loginId: string; temporaryPassword: string }
+
+type CompanyTab = 'all' | 'AFS' | 'TNT' | 'ZFS'
+type StatusTab = 'active' | 'terminated'
+
+const COMPANY_TABS: Array<{ value: CompanyTab; label: string }> = [
+  { value: 'all', label: 'All companies' },
+  { value: 'AFS', label: 'AFS' },
+  { value: 'TNT', label: 'TNT' },
+  { value: 'ZFS', label: 'ZFS' },
+]
+
+function isNonPayrollEmploymentType(value?: string | null) {
+  return value === 'non_payroll' || !!value?.endsWith('_non_payroll')
+}
+
+function isTerminated(employee: EmployeeRow) {
+  return !employee.is_active || !!employee.end_date
+}
 
 export default function EmployeeAccountsClient() {
   const [employees, setEmployees] = useState<EmployeeRow[]>([])
@@ -33,6 +52,8 @@ export default function EmployeeAccountsClient() {
   const [busy, setBusy] = useState('')
   const [provision, setProvision] = useState<ProvisionDialog | null>(null)
   const [credentials, setCredentials] = useState<OneTimeCredentials | null>(null)
+  const [companyTab, setCompanyTab] = useState<CompanyTab>('all')
+  const [statusTab, setStatusTab] = useState<StatusTab>('active')
 
   async function call(path: string, init?: RequestInit) {
     const session = (await supabase.auth.getSession()).data.session
@@ -87,11 +108,57 @@ export default function EmployeeAccountsClient() {
     setProvision({ employee, mode: employee.work_email ? 'email' : 'admin_managed', email: employee.work_email ?? '' })
   }
 
+  const visibleEmployees = employees.filter(employee => {
+    if (isNonPayrollEmploymentType(employee.employment_type)) return false
+    if (statusTab === 'terminated' ? !isTerminated(employee) : isTerminated(employee)) return false
+    if (companyTab !== 'all' && employee.companies?.code?.toUpperCase() !== companyTab) return false
+    return true
+  })
+
+  const activeCount = employees.filter(employee => !isNonPayrollEmploymentType(employee.employment_type) && !isTerminated(employee)).length
+  const terminatedCount = employees.filter(employee => !isNonPayrollEmploymentType(employee.employment_type) && isTerminated(employee)).length
+
+  function renderActions(employee: EmployeeRow) {
+    if (!employee.account && statusTab === 'active') {
+      return <button disabled={!!busy} onClick={() => openProvision(employee)} className="rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Create login</button>
+    }
+    if (!employee.account) return null
+    return <>
+      {employee.account.loginMode === 'email' ? <>
+        <button disabled={!!busy || employee.account.portalStatus === 'disabled'} onClick={() => perform(employee, 'reset', { delivery: 'email' })} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold disabled:opacity-40">Reset by email</button>
+        <button disabled={!!busy || employee.account.portalStatus === 'disabled'} onClick={() => perform(employee, 'reset', { delivery: 'link' })} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold disabled:opacity-40">Recovery link</button>
+      </> : <button disabled={!!busy || employee.account.portalStatus === 'disabled'} onClick={() => perform(employee, 'reset')} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold disabled:opacity-40">Generate temporary password</button>}
+      {employee.account.portalStatus === 'disabled'
+        ? <button disabled={!!busy} onClick={() => perform(employee, 'enable')} className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700">Enable</button>
+        : <button disabled={!!busy} onClick={() => perform(employee, 'disable')} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Disable</button>}
+      {!employee.is_active && !employee.account.archivedLoginEmail && <button disabled={!!busy} onClick={() => perform(employee, 'archive')} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800">Archive login</button>}
+    </>
+  }
+
   return <div className="p-6 md:p-10">
     <h1 className="text-2xl font-bold">Employee Portal Accounts</h1>
-    <p className="mt-2 text-sm text-ink-muted">Provision pilot accounts, reset access, or open the read-only Admin View. No bulk provisioning is available.</p>
+    <p className="mt-2 text-sm text-ink-muted">Provision pilot accounts, reset access, or open the read-only Admin View. No bulk provisioning is available. Non-payroll employees are excluded.</p>
     {message && <div className="mt-5 rounded-xl bg-pill px-4 py-3 text-sm text-ink-muted">{message}</div>}
-    <div className="mt-8 overflow-x-auto rounded-2xl border border-line-soft bg-white"><table className="w-full text-left text-sm"><thead className="bg-pill text-xs uppercase text-ink-muted"><tr><th className="px-4 py-3">Employee</th><th className="px-4 py-3">Employment</th><th className="px-4 py-3">Portal</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y divide-line-soft">{employees.map(employee => <tr key={employee.id}><td className="px-4 py-4"><p className="font-semibold">{employee.name}</p><p className="text-xs text-ink-muted">{employee.companies?.code} · {employee.work_email || 'No work email'}</p></td><td className="px-4 py-4">{employee.is_active ? 'Active' : 'Inactive'}{employee.end_date ? ` · ends ${employee.end_date}` : ''}</td><td className="px-4 py-4">{employee.account ? <><p className="font-medium">{employee.account.portalStatus}{employee.account.passwordSetupRequired ? ' · password setup required' : ''}</p><p className="text-xs text-ink-muted">{employee.account.loginMode === 'admin_managed' ? `Admin-managed · Login ID ${employee.account.loginId}` : `Email-managed · ${employee.account.loginEmail || 'Archived login'}`}</p></> : <span className="text-ink-muted">Not provisioned</span>}</td><td className="px-4 py-4"><div className="flex min-w-72 flex-wrap gap-2"><Link href={`/admin/employees/${employee.id}/portal`} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold">View Portal</Link>{!employee.account ? <button disabled={!!busy} onClick={() => openProvision(employee)} className="rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Create login</button> : <>{employee.account.loginMode === 'email' ? <><button disabled={!!busy || employee.account.portalStatus === 'disabled'} onClick={() => perform(employee, 'reset', { delivery: 'email' })} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold disabled:opacity-40">Reset by email</button><button disabled={!!busy || employee.account.portalStatus === 'disabled'} onClick={() => perform(employee, 'reset', { delivery: 'link' })} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold disabled:opacity-40">Recovery link</button></> : <button disabled={!!busy || employee.account.portalStatus === 'disabled'} onClick={() => perform(employee, 'reset')} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold disabled:opacity-40">Generate temporary password</button>}{employee.account.portalStatus === 'disabled' ? <button disabled={!!busy} onClick={() => perform(employee, 'enable')} className="rounded-lg border border-emerald-300 px-3 py-2 text-xs font-semibold text-emerald-700">Enable</button> : <button disabled={!!busy} onClick={() => perform(employee, 'disable')} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Disable</button>}{!employee.is_active && !employee.account.archivedLoginEmail && <button disabled={!!busy} onClick={() => perform(employee, 'archive')} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800">Archive login</button>}</>}</div></td></tr>)}</tbody></table></div>
+    <div className="mt-8 flex flex-wrap gap-2 border-b border-line-soft pb-3">
+      {COMPANY_TABS.map(tab => <button key={tab.value} onClick={() => setCompanyTab(tab.value)} className={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${companyTab === tab.value ? 'bg-ink text-white' : 'border border-line bg-white text-ink-muted hover:text-ink'}`}>{tab.label}</button>)}
+    </div>
+    <div className="flex flex-wrap items-center gap-2 border-b border-line-soft py-3">
+      <button onClick={() => setStatusTab('active')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${statusTab === 'active' ? 'border border-emerald-300 bg-emerald-50 text-emerald-800' : 'text-ink-muted hover:text-ink'}`}>Active ({activeCount})</button>
+      <button onClick={() => setStatusTab('terminated')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${statusTab === 'terminated' ? 'border border-red-200 bg-red-50 text-red-700' : 'text-ink-muted hover:text-ink'}`}>Terminated ({terminatedCount})</button>
+    </div>
+    <div className="mt-4 overflow-x-auto rounded-2xl border border-line-soft bg-white">
+      <table className="w-full text-left text-sm">
+        <thead className="bg-pill text-xs uppercase text-ink-muted"><tr><th className="px-4 py-3">Employee</th><th className="px-4 py-3">Employment</th><th className="px-4 py-3">Portal</th><th className="px-4 py-3">Actions</th></tr></thead>
+        <tbody className="divide-y divide-line-soft">
+          {visibleEmployees.length === 0 ? <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-ink-muted">No employees in this view.</td></tr> : visibleEmployees.map(employee => <tr key={employee.id}>
+            <td className="px-4 py-4"><p className="font-semibold">{employee.name}</p><p className="text-xs text-ink-muted">{employee.companies?.code} · {employee.work_email || 'No work email'}</p></td>
+            <td className="px-4 py-4">{employee.is_active && !employee.end_date ? 'Active' : 'Terminated'}{employee.end_date ? ` · ends ${employee.end_date}` : ''}</td>
+            <td className="px-4 py-4">{employee.account ? <><p className="font-medium">{employee.account.portalStatus}{employee.account.passwordSetupRequired ? ' · password setup required' : ''}</p><p className="text-xs text-ink-muted">{employee.account.loginMode === 'admin_managed' ? `Admin-managed · Login ID ${employee.account.loginId}` : `Email-managed · ${employee.account.loginEmail || 'Archived login'}`}</p></> : <span className="text-ink-muted">Not provisioned</span>}</td>
+            <td className="px-4 py-4"><div className="flex min-w-72 flex-wrap gap-2"><Link href={`/admin/employees/${employee.id}/portal`} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold">View Portal</Link>{renderActions(employee)}</div></td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>
 
     {provision && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-5"><div className="w-full max-w-lg rounded-3xl bg-white p-7 shadow-xl"><h2 className="text-xl font-bold">Create login for {provision.employee.name}</h2><p className="mt-2 text-sm text-ink-muted">Choose Email-managed only for a unique employee mailbox. Shared mailboxes must not be used.</p><div className="mt-6 grid gap-3"><label className="rounded-xl border border-line p-4"><input type="radio" checked={provision.mode === 'email'} onChange={() => setProvision({ ...provision, mode: 'email' })} /> <span className="ml-2 font-semibold">Email-managed</span><p className="mt-1 pl-6 text-xs text-ink-muted">Supabase invite and email recovery.</p></label><label className="rounded-xl border border-line p-4"><input type="radio" checked={provision.mode === 'admin_managed'} onChange={() => setProvision({ ...provision, mode: 'admin_managed', email: '' })} /> <span className="ml-2 font-semibold">Admin-managed</span><p className="mt-1 pl-6 text-xs text-ink-muted">Unique Login ID and one-time temporary password. No recovery email.</p></label></div>{provision.mode === 'email' && <label className="mt-5 block text-sm font-medium">Employee email<input type="email" required value={provision.email} onChange={event => setProvision({ ...provision, email: event.target.value })} className="mt-2 w-full rounded-xl border border-line px-4 py-3" /></label>}<div className="mt-7 flex justify-end gap-3"><button onClick={() => setProvision(null)} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold">Cancel</button><button disabled={!!busy || (provision.mode === 'email' && !provision.email.trim())} onClick={() => perform(provision.employee, 'create', { mode: provision.mode, email: provision.mode === 'email' ? provision.email.trim() : undefined })} className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Creating…' : provision.mode === 'email' ? 'Send invite' : 'Create Login ID'}</button></div></div></div>}
 
