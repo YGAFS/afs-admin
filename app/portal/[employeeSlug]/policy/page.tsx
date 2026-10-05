@@ -89,15 +89,15 @@ function PolicyMarkdown({ source }: { source: string }) {
   return <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_240px]">
     <article className="min-w-0 rounded-3xl border border-line-soft bg-white p-7 shadow-sm md:p-10">
       {renderBlocks(beforeDefinitions, 'before', true)}
-      {definitions.length > 0 && <details className="mb-6 overflow-hidden rounded-2xl border border-line-soft bg-pill" open>
+      {definitions.length > 0 && <details className="mb-6 overflow-hidden rounded-2xl border border-line-soft bg-pill">
         <summary id="definitions-and-scope" className="cursor-pointer select-none px-5 py-4 font-bold text-ink">Definitions and Scope</summary>
         <div className="border-t border-line-soft px-5 pb-2 pt-1">{renderBlocks(definitions.slice(1), 'definitions', false)}</div>
       </details>}
       {renderBlocks(afterDefinitions, 'after', false)}
     </article>
-    {headings.length > 0 && <aside className="order-first lg:order-last"><nav className="sticky top-6 rounded-2xl border border-line-soft bg-white p-4 shadow-sm" aria-label="Table of contents">
-      <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink-muted">Contents</p>
-      <div className="space-y-1">{headings.map(item => <a key={`${item.id}-${item.index}`} href={`#${item.id}`} className={`block rounded-lg px-2 py-1.5 text-sm leading-5 text-ink-muted hover:bg-pill hover:text-ink ${item.level === 3 ? 'ml-3' : item.level === 4 ? 'ml-6 text-xs' : 'font-semibold'}`}>{inlineMarkdown(item.label)}</a>)}</div>
+    {headings.length > 0 && <aside className="order-first self-start lg:order-last lg:sticky lg:top-6"><nav className="max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-line-soft bg-white p-4 shadow-sm" aria-label="Table of contents">
+      <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink">Contents</p>
+      <div className="space-y-1">{headings.map(item => <a key={`${item.id}-${item.index}`} href={`#${item.id}`} className={`block rounded-lg px-2 py-1.5 text-sm leading-5 text-ink hover:bg-pill ${item.level === 3 ? 'ml-3' : item.level === 4 ? 'ml-6 text-xs' : 'font-semibold'}`}>{inlineMarkdown(item.label)}</a>)}</div>
     </nav></aside>}
   </div>
 }
