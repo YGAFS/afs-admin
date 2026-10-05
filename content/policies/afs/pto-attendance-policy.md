@@ -47,7 +47,7 @@ The key terms used in this policy are defined as follows:
 	* Vacation Pay is an accrual of money and is administered separately from Vacation Time.
 	- For a typical AFS employee working five days per week, two weeks of annual Vacation Time is administratively managed as **10 vacation days**.
 
-- For administrative purposes, 10 annual vacation days may be displayed as approximately **0.83 days per month** *<font color="#7f7f7f">(10 ÷ 12 = 0.8333 days per month)</font>*.
+- For administrative purposes, 10 annual vacation days may be displayed as approximately **0.83 days per month** *<font color="#000000">(10 ÷ 12 = 0.8333 days per month)</font>*.
 
 - The 0.83-day monthly display is an internal administrative method, not a statutory accrual rate under British Columbia employment standards legislation. Monthly amounts do not each have separate expiry dates; they are managed together within the employee's Vacation Year.
 
