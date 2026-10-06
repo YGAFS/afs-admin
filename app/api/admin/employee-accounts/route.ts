@@ -8,6 +8,7 @@ import {
 } from '@/lib/portalAccess'
 import { generateTemporaryPortalPassword, syntheticPortalAuthEmail } from '@/lib/server/portalCredentials'
 import { authorizeSuperAdminRequest, portalJsonError } from '@/lib/server/portalAuthorization'
+import { portalGraphMailEnabled, sendPortalGraphMail } from '@/lib/server/portalGraphMail'
 import {
   anonymousClient,
   canonicalPortalOrigin,
@@ -110,10 +111,16 @@ export async function POST(req: NextRequest) {
       if (users.some(user => normalizePortalEmail(user.email ?? '') === email)) {
         return portalJsonError('An Auth user already uses this email', 409)
       }
-      const invite = await admin.auth.admin.inviteUserByEmail(email, {
-        redirectTo,
-        data: { employee_id: employee.id, portal_invite: true, portal_login_mode: 'email' },
-      })
+      const useGraphMail = portalGraphMailEnabled()
+      const invite = useGraphMail
+        ? await admin.auth.admin.generateLink({
+          type: 'invite', email,
+          options: { redirectTo, data: { employee_id: employee.id, portal_invite: true, portal_login_mode: 'email' } },
+        })
+        : await admin.auth.admin.inviteUserByEmail(email, {
+          redirectTo,
+          data: { employee_id: employee.id, portal_invite: true, portal_login_mode: 'email' },
+        })
       if (invite.error || !invite.data.user?.id) return portalJsonError('Unable to create invitation', 500)
       const provision = await admin.rpc('portal_admin_provision_login_v2', {
         p_actor_user_id: actor.user.id,
@@ -126,6 +133,18 @@ export async function POST(req: NextRequest) {
       if (provision.error) {
         await admin.auth.admin.updateUserById(invite.data.user.id, { ban_duration: '876000h' })
         return portalJsonError('Invitation created but Portal link failed; invited account was disabled', 500)
+      }
+      if (useGraphMail) {
+        const actionLink = 'properties' in invite.data && invite.data.properties
+          ? (invite.data.properties as { action_link?: string }).action_link
+          : null
+        if (!actionLink) return portalJsonError('Login created but invitation link is unavailable; use Reset by email', 500)
+        try {
+          await sendPortalGraphMail(email, 'invite', actionLink)
+        } catch {
+          return portalJsonError('Login created but invitation email was not accepted; use Reset by email or Recovery link', 502)
+        }
+        return Response.json({ ok: true, mode, mailAccepted: true }, { headers: { 'Cache-Control': 'no-store' } })
       }
       return Response.json({ ok: true, mode }, { headers: { 'Cache-Control': 'no-store' } })
     }
@@ -248,6 +267,17 @@ export async function POST(req: NextRequest) {
       return Response.json({ ok: true, actionLink }, { headers: { 'Cache-Control': 'no-store' } })
     }
 
+    if (portalGraphMailEnabled()) {
+      const generated = await admin.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo } })
+      const actionLink = generated.data?.properties?.action_link
+      if (generated.error || !actionLink) return portalJsonError('Login reset; unable to generate recovery link', 500)
+      try {
+        await sendPortalGraphMail(email, 'recovery', actionLink)
+      } catch {
+        return portalJsonError('Login reset; recovery email was not accepted. Use Recovery link or retry', 502)
+      }
+      return Response.json({ ok: true, mailAccepted: true }, { headers: { 'Cache-Control': 'no-store' } })
+    }
     const mail = await anonymousClient().auth.resetPasswordForEmail(email, { redirectTo })
     if (mail.error) return portalJsonError('Login reset; unable to send recovery email', 500)
     return Response.json({ ok: true })

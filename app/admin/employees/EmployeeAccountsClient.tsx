@@ -92,7 +92,7 @@ export default function EmployeeAccountsClient() {
     })
     const body = await response.json().catch(() => ({}))
     setBusy('')
-    if (!response.ok) { setMessage(body.error || 'Request failed.'); return }
+    if (!response.ok) { setMessage(body.error || 'Request failed.'); await load(); return }
     if (body.temporaryPassword && body.loginId) {
       setCredentials({ employeeName: employee.name, loginId: body.loginId, temporaryPassword: body.temporaryPassword })
       setMessage('Temporary credentials were created. They are shown only in the one-time dialog.')
@@ -101,6 +101,8 @@ export default function EmployeeAccountsClient() {
       setMessage('One-time recovery link generated and copied. Do not store it in email notes or audit logs.')
     } else if (body.email) {
       setMessage('Login email updated. Use Reset by email or Recovery link to send new instructions to the corrected address.')
+    } else if (body.mailAccepted) {
+      setMessage('Email accepted for delivery. Check the employee inbox; delivery is not guaranteed until received.')
     } else {
       setMessage('Account action completed.')
     }

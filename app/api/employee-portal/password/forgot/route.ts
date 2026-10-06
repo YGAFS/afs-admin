@@ -5,6 +5,8 @@ import {
   normalizePortalEmail,
   portalBusinessDate,
 } from '@/lib/portalAccess'
+import { portalRateLimitKey } from '@/lib/server/portalCredentials'
+import { portalGraphMailEnabled, sendPortalGraphMail } from '@/lib/server/portalGraphMail'
 import { anonymousClient, canonicalPortalOrigin, employeePortalV2SchemaEnabled, serviceRoleClient } from '@/lib/server/supabaseServer'
 
 export const dynamic = 'force-dynamic'
@@ -22,6 +24,20 @@ export async function POST(req: NextRequest) {
 
   try {
     const admin = serviceRoleClient()
+    if (portalGraphMailEnabled()) {
+      const ip = (req.headers.get('x-forwarded-for')?.split(',')[0] || req.headers.get('x-real-ip') || 'unknown').trim().slice(0, 128)
+      const limits = await Promise.all([
+        admin.rpc('portal_consume_login_attempt', {
+          p_key_hash: portalRateLimitKey('recovery-ip', ip), p_limit: 10,
+          p_window_seconds: 3600, p_block_seconds: 3600,
+        }),
+        admin.rpc('portal_consume_login_attempt', {
+          p_key_hash: portalRateLimitKey('recovery-email', email), p_limit: 3,
+          p_window_seconds: 3600, p_block_seconds: 3600,
+        }),
+      ])
+      if (limits.some(result => result.error || result.data !== true)) return Response.json(GENERIC_RESPONSE)
+    }
     const usersResult = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
     const user = usersResult.data?.users.find(candidate => normalizePortalEmail(candidate.email ?? '') === email)
     if (!user) return Response.json(GENERIC_RESPONSE)
@@ -44,9 +60,15 @@ export async function POST(req: NextRequest) {
       endDate: employee.data.end_date,
     }, portalBusinessDate())) return Response.json(GENERIC_RESPONSE)
 
-    await anonymousClient().auth.resetPasswordForEmail(email, {
-      redirectTo: `${canonicalPortalOrigin()}/portal/update-password`,
-    })
+    const redirectTo = `${canonicalPortalOrigin()}/portal/update-password`
+    if (portalGraphMailEnabled()) {
+      const generated = await admin.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo } })
+      const actionLink = generated.data?.properties?.action_link
+      if (generated.error || !actionLink) return Response.json(GENERIC_RESPONSE)
+      await sendPortalGraphMail(email, 'recovery', actionLink)
+    } else {
+      await anonymousClient().auth.resetPasswordForEmail(email, { redirectTo })
+    }
   } catch {
     // The response is deliberately non-enumerating even when the mail provider fails.
   }

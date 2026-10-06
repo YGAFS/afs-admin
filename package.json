@@ -18,6 +18,6 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:employee-portal": "node --experimental-strip-types scripts/test-employee-portal-access.ts && node --experimental-strip-types scripts/test-employee-portal-login-modes.ts && node --experimental-strip-types scripts/test-employee-portal-pto.ts && node --experimental-strip-types scripts/test-policy-markdown.ts"
+    "test:employee-portal": "node --experimental-strip-types scripts/test-employee-portal-access.ts && node --experimental-strip-types scripts/test-employee-portal-login-modes.ts && node --experimental-strip-types scripts/test-employee-portal-pto.ts && node --experimental-strip-types scripts/test-policy-markdown.ts && node --experimental-strip-types scripts/test-portal-graph-mail.ts"
   }
 }
