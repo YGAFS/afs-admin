@@ -19,7 +19,7 @@ import {
 export const dynamic = 'force-dynamic'
 
 type ActionBody = {
-  action?: 'create' | 'reset' | 'change_email' | 'disable' | 'enable' | 'archive'
+  action?: 'create' | 'link_existing' | 'reset' | 'change_email' | 'disable' | 'enable' | 'archive'
   employeeId?: string
   email?: string
   mode?: PortalLoginMode
@@ -97,6 +97,39 @@ export async function POST(req: NextRequest) {
   const employee = employeeResult.data
   const admin = serviceRoleClient()
   const redirectTo = `${canonicalPortalOrigin()}/portal/update-password`
+
+  if (input.action === 'link_existing') {
+    const email = normalizePortalEmail(input.email ?? '')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return portalJsonError('A valid existing Auth email is required', 400)
+    }
+    if (!isEmploymentPortalEligible({ employeeActive: employee.is_active, endDate: employee.end_date }, portalBusinessDate())) {
+      return portalJsonError('Employee is not active', 409)
+    }
+    const users = await allAuthUsers(admin).catch(() => null)
+    if (!users) return portalJsonError('Unable to verify Auth users', 500)
+    const matches = users.filter(user => normalizePortalEmail(user.email ?? '') === email)
+    if (matches.length !== 1) return portalJsonError('Exactly one active Auth user must match this email', 409)
+    const authUser = matches[0]
+    const existingLink = await admin.from('employee_user_links')
+      .select('employee_id')
+      .eq('user_id', authUser.id)
+      .maybeSingle()
+    if (existingLink.error) return portalJsonError('Unable to verify existing Portal links', 500)
+    if (existingLink.data) return portalJsonError('This Auth user is already linked to an employee', 409)
+    const provision = await admin.rpc('portal_admin_provision_login_v2', {
+      p_actor_user_id: actor.user.id,
+      p_employee_id: employee.id,
+      p_auth_user_id: authUser.id,
+      p_login_mode: 'email',
+      p_portal_login_id: null,
+      p_login_email: email,
+    })
+    if (provision.error) return portalJsonError(provision.error.message, 409)
+    return Response.json({ ok: true, mode: 'email', linked: true }, {
+      headers: { 'Cache-Control': 'no-store' },
+    })
+  }
 
   if (input.action === 'create') {
     const mode: PortalLoginMode = input.mode === 'admin_managed' ? 'admin_managed' : 'email'

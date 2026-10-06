@@ -27,6 +27,7 @@ type EmployeeRow = {
 }
 type ProvisionDialog = { employee: EmployeeRow; mode: PortalLoginMode; email: string }
 type EmailEditDialog = { employee: EmployeeRow; email: string }
+type ExistingLinkDialog = { employee: EmployeeRow; email: string }
 type OneTimeCredentials = { employeeName: string; loginId: string; temporaryPassword: string }
 
 type CompanyTab = 'all' | 'AFS' | 'TNT' | 'ZFS'
@@ -53,6 +54,7 @@ export default function EmployeeAccountsClient() {
   const [busy, setBusy] = useState('')
   const [provision, setProvision] = useState<ProvisionDialog | null>(null)
   const [emailEdit, setEmailEdit] = useState<EmailEditDialog | null>(null)
+  const [existingLink, setExistingLink] = useState<ExistingLinkDialog | null>(null)
   const [credentials, setCredentials] = useState<OneTimeCredentials | null>(null)
   const [companyTab, setCompanyTab] = useState<CompanyTab>('all')
   const [statusTab, setStatusTab] = useState<StatusTab>('active')
@@ -79,7 +81,7 @@ export default function EmployeeAccountsClient() {
 
   async function perform(
     employee: EmployeeRow,
-    actionName: 'create' | 'reset' | 'change_email' | 'disable' | 'enable' | 'archive',
+    actionName: 'create' | 'link_existing' | 'reset' | 'change_email' | 'disable' | 'enable' | 'archive',
     extra: Record<string, unknown> = {},
   ) {
     if (['disable', 'archive'].includes(actionName)
@@ -101,6 +103,8 @@ export default function EmployeeAccountsClient() {
       setMessage('One-time recovery link generated and copied. Do not store it in email notes or audit logs.')
     } else if (body.email) {
       setMessage('Login email updated. Use Reset by email or Recovery link to send new instructions to the corrected address.')
+    } else if (body.linked) {
+      setMessage('Existing Auth account linked. Use Reset by email or Recovery link if password setup is needed.')
     } else if (body.mailAccepted) {
       setMessage('Email accepted for delivery. Check the employee inbox; delivery is not guaranteed until received.')
     } else {
@@ -108,6 +112,7 @@ export default function EmployeeAccountsClient() {
     }
     setProvision(null)
     setEmailEdit(null)
+    setExistingLink(null)
     await load()
   }
 
@@ -127,7 +132,10 @@ export default function EmployeeAccountsClient() {
 
   function renderActions(employee: EmployeeRow) {
     if (!employee.account && statusTab === 'active') {
-      return <button disabled={!!busy} onClick={() => openProvision(employee)} className="rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Create login</button>
+      return <>
+        <button disabled={!!busy} onClick={() => openProvision(employee)} className="rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Create login</button>
+        <button disabled={!!busy} onClick={() => setExistingLink({ employee, email: '' })} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold disabled:opacity-50">Link existing Auth</button>
+      </>
     }
     if (!employee.account) return null
     return <>
@@ -143,7 +151,10 @@ export default function EmployeeAccountsClient() {
     </>
   }
 
+  const existingLinkDialog = existingLink && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-5"><div className="w-full max-w-lg rounded-3xl bg-white p-7 shadow-xl"><h2 className="text-xl font-bold">Link existing Auth account</h2><p className="mt-2 text-sm text-ink-muted">This reuses an existing Supabase Auth identity. It does not create a new user or send an invitation. The account must not already be linked to another employee.</p><label className="mt-5 block text-sm font-medium">Existing Auth email<input type="email" required value={existingLink.email} onChange={event => setExistingLink({ ...existingLink, email: event.target.value })} className="mt-2 w-full rounded-xl border border-line px-4 py-3" /></label><p className="mt-3 text-xs leading-5 text-amber-700">After linking, use Reset by email if password setup is needed.</p><div className="mt-7 flex justify-end gap-3"><button onClick={() => setExistingLink(null)} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold">Cancel</button><button disabled={!!busy || !existingLink.email.trim()} onClick={() => perform(existingLink.employee, 'link_existing', { email: existingLink.email.trim() })} className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? 'Linking…' : 'Link account'}</button></div></div></div>
+
   return <div className="p-6 md:p-10">
+    {existingLinkDialog}
     <h1 className="text-2xl font-bold">Employee Portal Accounts</h1>
     <p className="mt-2 text-sm text-ink-muted">Provision pilot accounts, reset access, or open the read-only Admin View. No bulk provisioning is available. Non-payroll employees are excluded.</p>
     {message && <div className="mt-5 rounded-xl bg-pill px-4 py-3 text-sm text-ink-muted">{message}</div>}
