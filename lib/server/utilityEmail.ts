@@ -177,15 +177,15 @@ export async function resendMonthlyThread(client: SupabaseClient, year: number, 
   return { ...updated.data, resent: true }
 }
 
-export async function notifyBills(client: SupabaseClient, billIds: string[], version?: string, groupId?: string, message?: string) {
+export async function notifyBills(client: SupabaseClient, billIds: string[], version?: string, groupId?: string, message?: string, year?: number, month?: number) {
   const { sender } = config(groupId)
   const uniqueBillIds = Array.from(new Set(billIds))
   if (!uniqueBillIds.length) throw new Error('At least one bill is required')
   const billResult = await client.from('utility_bills').select('id,provider,utility_name,amount,currency,due_date,billing_month,billing_year,account_number,company_id,onedrive_file_url,utility_locations(name,city),updated_at').in('id', uniqueBillIds)
   if (billResult.error || !billResult.data || billResult.data.length !== uniqueBillIds.length) throw new Error('One or more bills could not be found')
   const bills = billResult.data as Bill[]
-  const now = new Date(); const year = now.getUTCFullYear(); const month = now.getUTCMonth() + 1
-  const thread = await ensureMonthlyThread(client, year, month, groupId)
+  const now = new Date(); const threadYear = year ?? now.getUTCFullYear(); const threadMonth = month ?? now.getUTCMonth() + 1
+  const thread = await ensureMonthlyThread(client, threadYear, threadMonth, groupId)
   if (!thread) throw new Error('No bills are registered for this month')
   const notificationRows = bills.map(bill => ({ bill_id: bill.id, thread_id: thread.id, notification_type: 'bill_updated', idempotency_key: `bill:${bill.id}:manual:${version ?? Date.now()}:${crypto.randomUUID()}`, status: 'queued' }))
   const queued = await client.from('utility_email_notifications').insert(notificationRows).select('*')
@@ -207,6 +207,6 @@ export async function notifyBills(client: SupabaseClient, billIds: string[], ver
   }
 }
 
-export async function notifyBill(client: SupabaseClient, billId: string, version?: string, groupId?: string) {
-  return notifyBills(client, [billId], version, groupId)
+export async function notifyBill(client: SupabaseClient, billId: string, version?: string, groupId?: string, year?: number, month?: number) {
+  return notifyBills(client, [billId], version, groupId, undefined, year, month)
 }

@@ -8,9 +8,14 @@ function bearer(req: NextRequest) { const value = req.headers.get('authorization
 export async function GET(req: NextRequest) {
   const auth = await requireUtilityUser(bearer(req)); if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   if (auth.user.email?.trim().toLowerCase() !== 'admin@afstransco.com') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const now = new Date(); const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
+  const now = new Date(); const requestedMonth = req.nextUrl.searchParams.get('month') ?? `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
+  const match = /^(\d{4})-(\d{2})$/.exec(requestedMonth)
+  const year = match ? Number(match[1]) : now.getUTCFullYear()
+  const monthNumber = match ? Number(match[2]) : now.getUTCMonth() + 1
+  if (!match || monthNumber < 1 || monthNumber > 12) return NextResponse.json({ error: 'Invalid month' }, { status: 400 })
+  const month = `${year}-${String(monthNumber).padStart(2, '0')}-01`
+  const start = new Date(Date.UTC(year, monthNumber - 1, 1))
+  const end = new Date(Date.UTC(year, monthNumber, 1))
   const monthlyBills = await auth.db.from('utility_bills').select('id,provider,utility_name,account_number,company_id,location_id,created_at,utility_locations(name,city)').gte('created_at', start.toISOString()).lt('created_at', end.toISOString()).order('created_at', { ascending: false })
   const groupId = req.nextUrl.searchParams.get('recipientGroupId') ?? 'default'
   const thread = await auth.db.from('utility_email_threads').select('id,billing_month,sender_email,recipient_group_id,subject,created_at').eq('billing_month', month).eq('recipient_group_id', groupId).order('created_at', { ascending: false }).limit(1).maybeSingle()
@@ -33,16 +38,20 @@ export async function POST(req: NextRequest) {
   if (!db) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   if (auth && auth.user.email?.trim().toLowerCase() !== 'admin@afstransco.com') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   if (!ingestor && auth?.role !== 'admin') return NextResponse.json({ error: 'Only utility admins can send team notifications' }, { status: 403 })
-  const body = await req.json().catch(() => null) as { action?: string; billId?: string; billIds?: string[]; version?: string; force?: boolean; recipientGroupId?: string; message?: string } | null
+  const body = await req.json().catch(() => null) as { action?: string; billId?: string; billIds?: string[]; version?: string; force?: boolean; recipientGroupId?: string; message?: string; year?: number; month?: number } | null
   try {
+    const now = new Date()
+    const requestedYear = Number(body?.year)
+    const requestedMonth = Number(body?.month)
+    const year = Number.isInteger(requestedYear) && requestedYear >= 2020 && requestedYear <= 2100 ? requestedYear : now.getUTCFullYear()
+    const month = Number.isInteger(requestedMonth) && requestedMonth >= 1 && requestedMonth <= 12 ? requestedMonth : now.getUTCMonth() + 1
     if (body?.action === 'root') {
-      const now = new Date(); const year = now.getUTCFullYear(); const month = now.getUTCMonth() + 1
       const thread = body.force ? await resendMonthlyThread(db, year, month, body.recipientGroupId) : await ensureMonthlyThread(db, year, month, body.recipientGroupId)
       if (!thread) return NextResponse.json({ error: 'No new bills were registered this month, so no email was sent.' }, { status: 409 })
       return NextResponse.json({ thread })
     }
-    if (body?.action === 'bulk' && Array.isArray(body.billIds) && body.billIds.every(id => typeof id === 'string')) return NextResponse.json(await notifyBills(db, body.billIds, body.version, body.recipientGroupId, body.message))
-    if ((body?.action === 'notify' || body?.action === 'retry') && typeof body.billId === 'string') return NextResponse.json(await notifyBill(db, body.billId, body.version, body.recipientGroupId))
+    if (body?.action === 'bulk' && Array.isArray(body.billIds) && body.billIds.every(id => typeof id === 'string')) return NextResponse.json(await notifyBills(db, body.billIds, body.version, body.recipientGroupId, body.message, year, month))
+    if ((body?.action === 'notify' || body?.action === 'retry') && typeof body.billId === 'string') return NextResponse.json(await notifyBill(db, body.billId, body.version, body.recipientGroupId, year, month))
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {
     console.error('[utility-email-thread]', error)

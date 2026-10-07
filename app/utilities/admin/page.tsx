@@ -18,6 +18,16 @@ function formatDateTime(value?: string | null) {
   return new Date(value).toLocaleString('en-CA', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
+function currentMonthValue() {
+  const now = new Date()
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+function monthLabel(value: string) {
+  const [year, month] = value.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+}
+
 export default function UtilityAdminPage() {
   const { user, loading } = useAuth()
   const allowed = user?.email?.trim().toLowerCase() === 'admin@afstransco.com'
@@ -42,19 +52,21 @@ function UtilityEmailPanel() {
   const [selectedGroup, setSelectedGroup] = useState('')
   const [selectedBillIds, setSelectedBillIds] = useState<string[]>([])
   const [sendNote, setSendNote] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthValue)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const loadSequence = useRef(0)
 
-  async function load(groupId = selectedGroup) {
+  async function load(monthValue = selectedMonth, groupId = selectedGroup) {
     const session = (await supabase.auth.getSession()).data.session
     if (!session?.access_token) return
     const sequence = ++loadSequence.current
-    const query = groupId ? `?recipientGroupId=${encodeURIComponent(groupId)}` : ''
+    const params = new URLSearchParams({ month: monthValue })
+    if (groupId) params.set('recipientGroupId', groupId)
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), 30000)
     try {
-      const response = await fetch(`/api/utility/email-thread${query}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store', signal: controller.signal })
+      const response = await fetch(`/api/utility/email-thread?${params.toString()}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store', signal: controller.signal })
       const responseText = await response.text()
       if (!response.ok) { setMessage(`Unable to load email status (${response.status}).`); return }
       let data: { thread: Thread | null; notifications?: Notification[]; bills?: Bill[]; recipientGroups?: RecipientGroup[] }
@@ -70,9 +82,11 @@ function UtilityEmailPanel() {
     }
   }
 
-  useEffect(() => { void load('') }, [])
-  useEffect(() => { if (selectedGroup) void load(selectedGroup) }, [selectedGroup])
-  useEffect(() => { setSelectedBillIds([]) }, [selectedGroup])
+  useEffect(() => { void load(currentMonthValue(), '') }, [])
+  useEffect(() => { if (selectedGroup) void load(selectedMonth, selectedGroup) }, [selectedGroup, selectedMonth])
+  useEffect(() => { setSelectedBillIds([]) }, [selectedGroup, selectedMonth])
+
+  const [selectedYear, selectedMonthNumber] = selectedMonth.split('-').map(Number)
 
   async function send(billId?: string, forceRoot = false) {
     const prior = billId ? notifications.find(item => item.bill_id === billId) : undefined
@@ -84,7 +98,7 @@ function UtilityEmailPanel() {
     try {
       const response = await fetch('/api/utility/email-thread', {
         method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, billId, force: forceRoot, recipientGroupId: selectedGroup || undefined, version: billId ? `manual-resend:${Date.now()}` : undefined }),
+        body: JSON.stringify({ action, billId, force: forceRoot, year: selectedYear, month: selectedMonthNumber, recipientGroupId: selectedGroup || undefined, version: billId ? `manual-resend:${Date.now()}` : undefined }),
       })
       const text = await response.text()
       let data: { error?: string } = {}
@@ -94,7 +108,7 @@ function UtilityEmailPanel() {
       setMessage(error instanceof Error ? error.message : 'Email operation failed.')
     } finally {
       setBusy(false)
-      void load(selectedGroup)
+      void load(selectedMonth, selectedGroup)
     }
   }
 
@@ -109,7 +123,7 @@ function UtilityEmailPanel() {
     try {
       const response = await fetch('/api/utility/email-thread', {
         method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'bulk', billIds: selected.map(bill => bill.id), recipientGroupId: selectedGroup || undefined, version: `manual-bulk:${Date.now()}`, message: sendNote.trim() || undefined }),
+        body: JSON.stringify({ action: 'bulk', billIds: selected.map(bill => bill.id), year: selectedYear, month: selectedMonthNumber, recipientGroupId: selectedGroup || undefined, version: `manual-bulk:${Date.now()}`, message: sendNote.trim() || undefined }),
       })
       if (response.ok) sentCount = selected.length
       else failedCount = selected.length
@@ -122,7 +136,7 @@ function UtilityEmailPanel() {
       setMessage(error instanceof Error ? error.message : 'Email operation failed.')
     } finally {
       setBusy(false)
-      void load(selectedGroup)
+      void load(selectedMonth, selectedGroup)
     }
   }
 
@@ -134,9 +148,12 @@ function UtilityEmailPanel() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold text-ink">Monthly email thread</h2>
-          <p className="mt-1 text-xs text-ink-muted">September bills · {thread ? 'Root email sent' : 'Not sent yet'}</p>
+          <p className="mt-1 text-xs text-ink-muted">{monthLabel(selectedMonth)} bills · {thread ? 'Root email sent' : 'Not sent yet'}</p>
         </div>
-        <button onClick={() => { if (!thread || window.confirm('Warning: this sends a new email containing the complete Utility Bill list.\nIt will not be appended to the existing email. Continue?')) send(undefined, !!thread) }} disabled={busy} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">{busy ? 'Sending…' : thread ? 'Resend first email' : 'Send first email'}</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-xs font-semibold text-ink-muted">Month <input type="month" value={selectedMonth} onChange={event => setSelectedMonth(event.target.value)} disabled={busy} className="ml-1 rounded-lg border border-line-soft bg-white px-2 py-1.5 text-sm font-normal text-ink" /></label>
+          <button onClick={() => { if (!thread || window.confirm('Warning: this sends a new email containing the complete Utility Bill list.\nIt will not be appended to the existing email. Continue?')) send(undefined, !!thread) }} disabled={busy} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">{busy ? 'Sending…' : thread ? 'Resend first email' : 'Send first email'}</button>
+        </div>
       </div>
       <div className="mt-5 border-b border-line-soft pb-4">
         <div className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Send to</div>
@@ -156,8 +173,8 @@ function UtilityEmailPanel() {
         </div>
       </details>}
       <div className="mt-6 border-t border-line-soft pt-4">
-        <h3 className="text-sm font-semibold text-ink">Send this month’s bills manually</h3>
-        <p className="mt-1 text-xs text-ink-muted">Select one or more bills to send them together in a single email. Previously sent bills can be selected again for testing or follow-up.</p>
+        <h3 className="text-sm font-semibold text-ink">Send {monthLabel(selectedMonth)} bills manually</h3>
+        <p className="mt-1 text-xs text-ink-muted">Select one or more bills from the selected month. Previously sent bills can be selected again for testing or follow-up.</p>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-pill px-3 py-2">
           <label className="flex items-center gap-2 text-xs font-semibold text-ink">
             <input type="checkbox" checked={allBillsSelected} disabled={!bills.length || busy || !thread} onChange={event => setSelectedBillIds(event.target.checked ? bills.map(bill => bill.id) : [])} />
