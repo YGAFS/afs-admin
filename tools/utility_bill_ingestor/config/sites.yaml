@@ -39,6 +39,11 @@ tnt:
       db_location_name: "Pickering"
       aliases:
         - Pickering
+    RICHMOND:
+      db_location_name: "Richmond"
+      aliases:
+        - Richmond
+        - Richmond, ON
 
 zfs:
   multi_site: false

@@ -164,21 +164,14 @@ rogers_tnt_pickering:
     # stay in this list.
     - "5-0882-6140"
 
-# 2026-08-14: a second, unrelated Rogers account for TNT Biscayne -- a
-# wireless line, contract under "ACME Trucks and Trailers Express Lines
-# Ltd" (billed to 180 Biscayne Crescent, Brampton, ON; that address is
-# coincidentally where the "Biscayne" name comes from, not the vendor.name
-# match). Confirmed by the user as the TNT Biscayne site's account. Since
-# the bill text says "Brampton", not "Biscayne"/"TNT", the account number
-# below is the only reliable classification signal, same reasoning as
-# rogers_tnt_pickering above.
-rogers_tnt_biscayne:
-  db_name: "Biscayne Rogers"
+# 2026-10-07: the same Rogers account moved from TNT Biscayne to TNT
+# Richmond. Historical bills remain filed as Biscayne; this entry controls
+# classification for the service after the move.
+rogers_tnt_richmond:
+  db_name: "Richmond Rogers"
   archive_folder: "Rogers"
-  # Biscayne Rogers is now managed under AFS because the remaining/final bill
-  # is paid with the AFS card and the service is being closed.
-  company_id: afs
-  site_code: BISCAYNE
+  company_id: tnt
+  site_code: RICHMOND
   utility_name: "Internet (Wifi)"
   aliases:
     - Rogers
