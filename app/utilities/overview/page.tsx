@@ -94,6 +94,19 @@ function ordinalDay(day: number) {
   return `${day}${suffix}`
 }
 
+// Account numbers can arrive from different invoice layouts with or without
+// punctuation (for example, 50882140 vs 5-0882-6140). Use the digits-only
+// form for grouping while retaining the most readable value for display.
+function accountGroupKey(accountNumber: string | null): string {
+  return accountNumber?.replace(/\D/g, '') ?? ''
+}
+
+function preferFormattedAccount(current: string | null, candidate: string | null): string | null {
+  if (!current) return candidate
+  if (!candidate) return current
+  return candidate.includes('-') && !current.includes('-') ? candidate : current
+}
+
 // ── Abnormal detection ────────────────────────────────────────────────────────
 // Returns true if current_charges is >25% above or below the trailing 3-month avg
 
@@ -520,12 +533,13 @@ function OverviewContent() {
     for (const bill of filtered) {
       if (!bill.issue_date) continue
       const provider = bill.provider ?? bill.utility_name
-      const key = `${bill.company_id}|${provider}|${bill.account_number ?? ''}`
+      const key = `${bill.company_id}|${provider}|${accountGroupKey(bill.account_number)}`
       const existing = groups.get(key)
       const day = Number(bill.issue_date.slice(8, 10))
       if (existing) {
         existing.days.push(day)
         existing.issueDates.push(bill.issue_date)
+        existing.accountNumber = preferFormattedAccount(existing.accountNumber, bill.account_number)
       } else {
         groups.set(key, {
           companyId: bill.company_id,
