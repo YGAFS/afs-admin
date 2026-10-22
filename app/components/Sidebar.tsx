@@ -273,7 +273,7 @@ function UtilitySidebar() {
       footer={
         <button
           onClick={handleLogout}
-          className={`w-full flex items-center py-2.5 rounded-xl text-sm transition-colors text-ink-muted hover:bg-pill hover:text-ink ${open ? 'gap-2 px-3' : 'justify-center px-2'}`}
+          className={`w-full flex items-center py-2.5 rounded-xl text-sm transition-colors text-ink-muted hover:bg-pill hover:text-ink ${open ? 'justify-end gap-2 px-3' : 'justify-center px-2'}`}
           title={t('auth.logout', locale)}
         >
           <svg className="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
