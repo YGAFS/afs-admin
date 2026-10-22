@@ -163,7 +163,7 @@ function AppSidebar({
     ? {
         shell: 'bg-[#111318] text-white border-white/6',
         border: 'border-white/8',
-        brand: 'bg-white/10 ring-1 ring-white/8',
+        brand: 'bg-transparent',
         title: 'text-white',
         chevron: 'text-white/52 hover:text-white',
         navActive: 'bg-white text-[#111318]',
@@ -176,7 +176,7 @@ function AppSidebar({
     : {
         shell: 'bg-white text-ink border-line',
         border: 'border-line-soft',
-        brand: 'bg-ink',
+        brand: 'bg-transparent',
         title: 'text-ink',
         chevron: 'text-ink-faint hover:text-ink',
         navActive: 'bg-pill text-ink',
@@ -220,14 +220,14 @@ function AppSidebar({
         </div>
       </div>
 
-      <nav className={`px-2 py-2 space-y-0.5 flex-1 border-b ${theme.border}`}>
+      <nav className={`px-2 py-3 space-y-1 flex-1 border-b ${theme.border}`}>
         {items.map(({ href, label, icon: Icon, badge }) => {
           const active = activeMatcher(href)
           return (
             <Link
               key={href}
               href={href}
-              className={`flex items-center py-2 text-[15px] font-medium rounded-xl transition-colors ${open ? 'gap-3 px-3' : 'justify-center px-1'} ${active ? theme.navActive : theme.navIdle}`}
+              className={`flex items-center py-2.5 text-[15px] font-medium rounded-xl transition-colors ${open ? 'gap-3 px-3' : 'justify-center px-1'} ${active ? theme.navActive : theme.navIdle}`}
               title={!open ? label : undefined}
             >
               <span className={active ? theme.navActiveIcon : theme.navIdleIcon}>
@@ -266,7 +266,7 @@ function UtilitySidebar() {
     <AppSidebar
       open={open}
       onToggle={() => setOpen(value => !value)}
-      title="AFS Admin"
+      title="Admin Page"
       homeHref={canSeeHr ? '/hr' : '/utilities/overview'}
       items={UTILITY_NAV}
       activeMatcher={(href) => path.startsWith(href)}
@@ -292,7 +292,7 @@ export default function Sidebar() {
   const [open, setOpen] = useState(true)
   const path = usePathname()
   const router = useRouter()
-  const { user, allowedSections } = useAuth()
+  const { allowedSections } = useAuth()
   const { locale } = useLocale()
 
   const isUtility = path.startsWith('/utilities')
@@ -323,11 +323,6 @@ export default function Sidebar() {
       dark
       footer={
         <>
-          {open && user && (
-            <div className="px-1 text-center text-xs truncate" title={user.email}>
-              {user.email}
-            </div>
-          )}
           <button
             onClick={handleLogout}
             className={`w-full flex items-center py-2.5 rounded-xl text-[15px] transition-colors text-white/64 hover:bg-white/6 hover:text-white ${open ? 'justify-end gap-2 px-3' : 'justify-center px-2'}`}

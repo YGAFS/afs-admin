@@ -8,8 +8,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.licenses':      'Subscriptions',
     'nav.assets':        'IT Assets',
     'nav.supplies':      'Coffee Order',
-    'nav.admin':         'Admin',
-    'sidebar.title':     'AFS Admin',
+    'nav.admin':         'Setting',
+    'sidebar.title':     'Admin Page',
     'sidebar.collapse':  'Collapse',
     'sidebar.expand':    'Expand',
 
@@ -428,8 +428,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.licenses':      'Subscription Management',
     'nav.assets':        'IT Assets',
     'nav.supplies':      'Coffee Order',
-    'nav.admin':         'Admin',
-    'sidebar.title':     'AFS Admin',
+    'nav.admin':         'Setting',
+    'sidebar.title':     'Admin Page',
     'sidebar.collapse':  '접기',
     'sidebar.expand':    '펼치기',
 
