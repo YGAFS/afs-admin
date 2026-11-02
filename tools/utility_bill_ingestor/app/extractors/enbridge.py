@@ -21,14 +21,12 @@ class EnbridgeExtractor:
         account = re.sub(r"\s+", "", account_match.group(1))
         bill_date_raw = account_match.group(2)
 
-        long_dates = re.findall(r"[A-Z][a-z]{2}\s+\d{2},\s+\d{4}", text)
-        unique_dates: list[str] = []
-        for item in long_dates:
-            if item not in unique_dates:
-                unique_dates.append(item)
-        if len(unique_dates) < 3:
-            raise ValueError("Could not find due date among unique dates on Enbridge bill")
-        due_date_raw = unique_dates[2]
+        # The billing-period end date appears before the actual due date on
+        # current Enbridge layouts.  Anchor this to the Due Date label instead
+        # of relying on the position of a date in the PDF text stream.
+        due_date_raw = search(
+            r"Due Date\s+([A-Z][a-z]{2}\s+\d{2},\s+\d{4})", text
+        ).group(1)
 
         previous_match = re.search(r"Balance Forward\s+\$?(-?[\d,]+\.\d{2})", text)
         previous = (
@@ -37,6 +35,15 @@ class EnbridgeExtractor:
             else find_money_after(r"Balance from Previous Bill", text)
         )
         current = find_money_after(r"Charges for Natural Gas", text)
+        # Enbridge separates gas charges from other charges (rate adjustment,
+        # HST, etc.).  Both are part of the amount due and must be included in
+        # current_charges for the balance check to reconcile.
+        other_match = re.search(
+            r"Other Enbridge Charges\s+\$?(-?[\d,]+\.\d{2})", text,
+            re.IGNORECASE,
+        )
+        if other_match:
+            current += parse_money(other_match.group(1))
         total = find_money_after(r"Total Amount Due", text)
 
         issue_date = parse_date_long(bill_date_raw)
