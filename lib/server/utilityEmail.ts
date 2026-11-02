@@ -106,13 +106,17 @@ function monthRange(year: number, month: number) {
   return { start: start.toISOString(), end: end.toISOString() }
 }
 
-async function monthlyBillBody(client: SupabaseClient, year: number, month: number, title: string) {
+async function monthlyBillBody(client: SupabaseClient, year: number, month: number, title: string, billIds?: string[], message?: string) {
   // Email months are registration months. billing_month remains the bill's
   // issue/statement month and is used by the dashboard, not notification routing.
   const range = monthRange(year, month)
-  const bills = await client.from('utility_bills').select('provider,utility_name,amount,currency,due_date,account_number,company_id,onedrive_file_url,utility_locations(name,city)').gte('created_at', range.start).lt('created_at', range.end).order('provider')
+  const query = client.from('utility_bills').select('provider,utility_name,amount,currency,due_date,account_number,company_id,onedrive_file_url,utility_locations(name,city)')
+  const bills = billIds?.length
+    ? await query.in('id', billIds).gte('created_at', range.start).lt('created_at', range.end).order('provider')
+    : await query.gte('created_at', range.start).lt('created_at', range.end).order('provider')
   if (bills.error) throw bills.error
-  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:760px;margin:0 auto;line-height:1.5"><h2 style="text-align:center;margin:0 0 18px;color:#111827">${escapeHtml(title)}</h2><p style="text-align:center">Utility bill tracking is now available.</p><p style="text-align:center">Please review current bills, due dates, and payment status below.</p>${billTable(bills.data as Bill[]) || '<p style="text-align:center">No bills have been registered yet.</p>'}<p style="text-align:center;margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Dashboard</a></p><p style="text-align:center;color:#4b5563">Updates to individual bills will be posted in this email thread.</p></div>`
+  const note = message?.trim() ? `<div style="margin:18px auto;text-align:left;max-width:560px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px"><p style="margin:0 0 5px"><strong>Message</strong></p><p style="margin:0;white-space:normal">${escapeHtml(message.trim()).replace(/\r?\n/g, '<br>')}</p></div>` : ''
+  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;max-width:760px;margin:0 auto;line-height:1.5"><h2 style="text-align:center;margin:0 0 18px;color:#111827">${escapeHtml(title)}</h2><p style="text-align:center">Utility bill tracking is now available.</p><p style="text-align:center">Please review current bills, due dates, and payment status below.</p>${note}${billTable(bills.data as Bill[]) || '<p style="text-align:center">No bills have been registered yet.</p>'}<p style="text-align:center;margin:24px 0"><a href="${dashboardUrl()}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:bold;padding:11px 20px;border-radius:6px">View Utility Dashboard</a></p><p style="text-align:center;color:#4b5563">Updates to individual bills will be posted in this email thread.</p></div>`
 }
 
 function billTable(bills: Bill[]) {
@@ -125,7 +129,7 @@ function billTable(bills: Bill[]) {
   return rows ? `<table style="width:100%;border-collapse:collapse;margin:22px 0"><thead><tr style="background:#f3f4f6"><th style="padding:10px 12px;text-align:left">Utility / account</th><th style="padding:10px 12px;text-align:right">Amount</th><th style="padding:10px 12px;text-align:right">Due date</th><th style="padding:10px 12px;text-align:right">File</th></tr></thead><tbody>${rows}</tbody></table>` : ''
 }
 
-export async function ensureMonthlyThread(client: SupabaseClient, year: number, month: number, groupId?: string) {
+export async function ensureMonthlyThread(client: SupabaseClient, year: number, month: number, groupId?: string, billIds?: string[], message?: string) {
   const { sender, recipients, groupId: selectedGroupId } = config(groupId); const billingMonth = monthDate(year, month); const title = subject(year, month)
   const existing = await client.from('utility_email_threads').select('*').eq('billing_month', billingMonth).eq('sender_email', sender).eq('recipient_group_id', selectedGroupId).maybeSingle()
   if (existing.error) throw existing.error
@@ -150,7 +154,7 @@ export async function ensureMonthlyThread(client: SupabaseClient, year: number, 
       console.warn('[utility-email-thread] root recovery lookup failed', error)
     }
   }
-  const content = await monthlyBillBody(client, year, month, title)
+  const content = await monthlyBillBody(client, year, month, title, billIds, message)
   const created = await graph(`/users/${encodeURIComponent(sender)}/messages`, { method: 'POST', body: JSON.stringify({ subject: title, body: { contentType: 'HTML', content }, toRecipients: recipients.map(address => ({ emailAddress: { address } })) }) }) as GraphMessage
   if (!created?.id) throw new Error('Graph did not return a draft message id')
   const inserted = await client.from('utility_email_threads').insert({ billing_month: billingMonth, sender_email: sender, recipient_group_id: selectedGroupId, root_message_id: created.id, conversation_id: created.conversationId ?? null, subject: title, recipients }).select('*').single()

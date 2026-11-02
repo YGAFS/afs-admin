@@ -123,11 +123,11 @@ function UtilityEmailPanel() {
     try {
       const response = await fetch('/api/utility/email-thread', {
         method: 'POST', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'bulk', billIds: selected.map(bill => bill.id), year: selectedYear, month: selectedMonthNumber, recipientGroupId: selectedGroup || undefined, version: `manual-bulk:${Date.now()}`, message: sendNote.trim() || undefined }),
+        body: JSON.stringify({ action: thread ? 'bulk' : 'root-selected', billIds: selected.map(bill => bill.id), year: selectedYear, month: selectedMonthNumber, recipientGroupId: selectedGroup || undefined, version: `manual-bulk:${Date.now()}`, message: sendNote.trim() || undefined }),
       })
       if (response.ok) sentCount = selected.length
       else failedCount = selected.length
-      setMessage(`${sentCount} bill${sentCount === 1 ? '' : 's'} sent in one email${failedCount ? `, ${failedCount} failed.` : '.'}`)
+      setMessage(thread ? `${sentCount} bill${sentCount === 1 ? '' : 's'} sent in one email${failedCount ? `, ${failedCount} failed.` : '.'}` : `${selected.length} bill${selected.length === 1 ? '' : 's'} sent as the first email.`)
       if (response.ok) {
         setSelectedBillIds([])
         setSendNote('')
@@ -177,16 +177,16 @@ function UtilityEmailPanel() {
         <p className="mt-1 text-xs text-ink-muted">Select one or more bills from the selected month. Previously sent bills can be selected again for testing or follow-up.</p>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-pill px-3 py-2">
           <label className="flex items-center gap-2 text-xs font-semibold text-ink">
-            <input type="checkbox" checked={allBillsSelected} disabled={!bills.length || busy || !thread} onChange={event => setSelectedBillIds(event.target.checked ? bills.map(bill => bill.id) : [])} />
+            <input type="checkbox" checked={allBillsSelected} disabled={!bills.length || busy} onChange={event => setSelectedBillIds(event.target.checked ? bills.map(bill => bill.id) : [])} />
             Select all bills ({bills.length})
           </label>
-          <button type="button" onClick={() => void sendSelected()} disabled={!selectedBillIds.length || busy || !thread} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">
-            {busy ? 'Sending…' : `Send selected${selectedBillIds.length ? ` (${selectedBillIds.length})` : ''}`}
+          <button type="button" onClick={() => void sendSelected()} disabled={!selectedBillIds.length || busy} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">
+            {busy ? 'Sending…' : `${thread ? 'Send selected' : 'Send selected as first email'}${selectedBillIds.length ? ` (${selectedBillIds.length})` : ''}`}
           </button>
         </div>
         <label className="mt-3 block text-xs font-semibold text-ink">
           Message (optional)
-          <textarea value={sendNote} onChange={event => setSendNote(event.target.value)} disabled={busy || !thread} rows={3} maxLength={2000} placeholder="Add a note or announcement to include above the bill table…" className="mt-1 block w-full resize-y rounded-lg border border-line-soft bg-white px-3 py-2 text-sm font-normal text-ink outline-none focus:border-ink-muted disabled:bg-pill" />
+          <textarea value={sendNote} onChange={event => setSendNote(event.target.value)} disabled={busy} rows={3} maxLength={2000} placeholder="Add a note or announcement to include above the bill table…" className="mt-1 block w-full resize-y rounded-lg border border-line-soft bg-white px-3 py-2 text-sm font-normal text-ink outline-none focus:border-ink-muted disabled:bg-pill" />
         </label>
         <div className="mt-3 divide-y divide-line-soft rounded-lg border border-line-soft">
           {bills.map(bill => {
@@ -194,7 +194,7 @@ function UtilityEmailPanel() {
             const isNew = !prior
             return <div key={bill.id} className="flex items-center justify-between gap-3 px-3 py-3">
               <div className="flex min-w-0 items-start gap-3">
-                <input type="checkbox" checked={selectedBillIds.includes(bill.id)} disabled={busy || !thread} onChange={event => setSelectedBillIds(current => event.target.checked ? [...current, bill.id] : current.filter(id => id !== bill.id))} aria-label={`Select ${bill.provider ?? bill.utility_name}`} className="mt-1" />
+                <input type="checkbox" checked={selectedBillIds.includes(bill.id)} disabled={busy} onChange={event => setSelectedBillIds(current => event.target.checked ? [...current, bill.id] : current.filter(id => id !== bill.id))} aria-label={`Select ${bill.provider ?? bill.utility_name}`} className="mt-1" />
                 <div className="min-w-0"><div className="text-sm font-medium text-ink">{bill.provider ?? bill.utility_name}</div><div className="mt-0.5 text-xs text-ink-muted">{COMPANY_LABEL[bill.company_id ?? ''] ?? bill.company_id ?? '—'} · {Array.isArray(bill.utility_locations) ? (bill.utility_locations[0]?.name ?? bill.utility_locations[0]?.city) : (bill.utility_locations?.name ?? bill.utility_locations?.city) ?? 'No location'} · Account {bill.account_number?.trim() ? `****${bill.account_number.trim().slice(-4)}` : '—'}</div><div className="mt-1 text-xs text-ink-muted">Uploaded {formatDateTime(bill.created_at)} · {prior?.sent_at ? `Email sent ${formatDateTime(prior.sent_at)}` : prior ? `Email ${prior.status}` : 'Email not sent yet'}</div></div>
               </div>
               <span className={`shrink-0 text-xs font-semibold ${isNew ? 'text-blue-700' : 'text-ink-muted'}`}>{isNew ? 'New' : 'Sent'}</span>

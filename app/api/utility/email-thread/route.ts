@@ -50,6 +50,11 @@ export async function POST(req: NextRequest) {
       if (!thread) return NextResponse.json({ error: 'No new bills were registered this month, so no email was sent.' }, { status: 409 })
       return NextResponse.json({ thread })
     }
+    if (body?.action === 'root-selected' && Array.isArray(body.billIds) && body.billIds.length > 0 && body.billIds.every(id => typeof id === 'string')) {
+      const thread = await ensureMonthlyThread(db, year, month, body.recipientGroupId, body.billIds, body.message)
+      if (!thread) return NextResponse.json({ error: 'No bills were found for this month, so no email was sent.' }, { status: 409 })
+      return NextResponse.json({ thread })
+    }
     if (body?.action === 'bulk' && Array.isArray(body.billIds) && body.billIds.every(id => typeof id === 'string')) return NextResponse.json(await notifyBills(db, body.billIds, body.version, body.recipientGroupId, body.message, year, month))
     if ((body?.action === 'notify' || body?.action === 'retry') && typeof body.billId === 'string') return NextResponse.json(await notifyBill(db, body.billId, body.version, body.recipientGroupId, year, month))
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
