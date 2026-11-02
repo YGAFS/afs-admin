@@ -38,10 +38,25 @@ class RogersExtractor:
 
     def _extract_business_layout(self, text: str) -> ParsedBill:
         warnings: list[str] = []
-        account = normalize_account_number(
-            search(r"Account number\s+([\d-]+)", text).group(1)
+        account_match = re.search(r"Account number\s+([\d-]+)", text, re.IGNORECASE)
+        tabular_match = None
+        if not account_match:
+            # Some Rogers business PDFs render the column headers first and
+            # put the account number on the following row:
+            # 5-0860-8702 3253561439 50860870208 Oct 22, 2026
+            tabular_match = re.search(
+                r"(?m)^\s*([\d-]{8,})\s+\d{6,}\s+\d{8,}\s+([A-Za-z]{3}\s+\d{2},\s+\d{4})",
+                text,
+            )
+            account_match = tabular_match
+        if not account_match:
+            raise ParseError("Rogers account number could not be read")
+        account = _format_business_account(account_match.group(1))
+        bill_date_raw = (
+            tabular_match.group(2)
+            if tabular_match
+            else search(r"Bill date\s+([A-Za-z]{3}\s+\d{2},\s+\d{4})", text).group(1)
         )
-        bill_date_raw = search(r"Bill date\s+([A-Za-z]{3}\s+\d{2},\s+\d{4})", text).group(1)
         due_date_raw = search(
             r"Required Payment Date:\s*([A-Za-z]{3}\s+\d{2},\s+\d{4})", text
         ).group(1)
@@ -53,13 +68,18 @@ class RogersExtractor:
             re.IGNORECASE,
         )
         adjustments = parse_money(adjustment_match.group(1)) if adjustment_match else parse_money("0.00")
-        current = find_money_after(r"Total \(Includes taxes\)", text)
-        total = find_money_after(r"Total Due", text)
+        current = find_money_after(r"Total\s*\(Includes taxes\)", text)
+        total = find_money_after(r"Total(?: amount)? Due", text)
 
         issue_date = parse_date_long(bill_date_raw)
         due_date = parse_date_long(due_date_raw)
 
-        if previous + current + adjustments != total:
+        # On some business layouts, adjustments are already included in
+        # Balance brought forward. Only add them separately when the printed
+        # balance requires it (the older layout used by existing tests does).
+        if previous + current == total:
+            adjustments = parse_money("0.00")
+        elif previous + current + adjustments != total:
             warnings.append(f"previous({previous}) + current({current}) + adjustments({adjustments}) != total({total})")
 
         return ParsedBill(
@@ -77,7 +97,6 @@ class RogersExtractor:
             confidence=0.9,
             warnings=warnings,
         )
-
     def _extract_simple_layout(self, text: str) -> ParsedBill:
         warnings: list[str] = []
         account = normalize_account_number(search(r"Account\s+(\d+)", text).group(1))
@@ -131,3 +150,12 @@ class RogersExtractor:
             confidence=0.85 if terms_match else 0.75,
             warnings=warnings,
         )
+
+
+def _format_business_account(raw: str) -> str:
+    digits = normalize_account_number(raw)
+    # Rogers 9-digit business accounts are conventionally displayed as
+    # 5-####-####. Keep shorter accounts (for example 860900) unchanged.
+    if len(digits) == 9 and digits.startswith("5"):
+        return f"{digits[0]}-{digits[1:5]}-{digits[5:]}"
+    return digits
