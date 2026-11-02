@@ -45,6 +45,7 @@ interface Vendor {
   onedrive_url: string | null; website_url: string | null
   billing_portal_url: string | null; notes: string | null
   location_id: string | null
+  status?: 'active' | 'cancelled'
   created_at: string
   utility_vendor_contacts: Contact[]
   utility_service_accounts: ServiceAccount[]
@@ -77,6 +78,11 @@ const CO_BADGE: Record<Company, string> = {
   afs: 'text-blue-600',
   tnt: 'text-amber-600',
   zfs: 'text-emerald-600',
+}
+const FALLBACK_CANCELLED_VENDOR_KEYS = new Set(['afs::biscayne rogers', 'tnt::richmond rogers'])
+
+function isCancelledVendor(v: Pick<Vendor, 'company_id' | 'name' | 'status'>) {
+  return v.status === 'cancelled' || FALLBACK_CANCELLED_VENDOR_KEYS.has(`${v.company_id}::${v.name.trim().toLowerCase()}`)
 }
 
 function toCAD(amount: number | null, currency: string) {
@@ -182,6 +188,7 @@ const emptyVendor: Omit<Vendor,
   company_id: 'afs', name: '', service_type: '', contact_name: '', contact_email: '',
   contact_phone: '', contract_start: '', contract_end: '', onedrive_url: '',
   website_url: '', billing_portal_url: '', notes: '', location_id: null,
+  status: 'active',
 }
 
 // ── VendorDetailPanel ─────────────────────────────────────────────────────────
@@ -867,6 +874,7 @@ function VendorModal({
       contract_start: form.contract_start || null, contract_end: form.contract_end || null,
       website_url: form.website_url || null, billing_portal_url: form.billing_portal_url || null,
       location_id: form.location_id || null,
+      status: form.status ?? 'active',
     }
     if ((initial as any).id) {
       await supabase.from('utility_vendors').update(payload).eq('id', (initial as any).id)
@@ -950,6 +958,15 @@ function VendorModal({
             <input type="text" value={form.service_type ?? ''} onChange={e => setForm(f => ({ ...f, service_type: e.target.value }))}
               placeholder="e.g. Electricity, Gas, Internet"
               className="w-full border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ink" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-ink-muted mb-1">Service status</label>
+            <select value={form.status ?? 'active'} onChange={e => setForm(f => ({ ...f, status: e.target.value as 'active' | 'cancelled' }))}
+              className="border border-line rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ink">
+              <option value="active">Active</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <p className="text-xs text-ink-faint mt-1">Cancelled services stay available in history but are removed from the main board.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1267,6 +1284,7 @@ function VendorsContent() {
   const [showModal,  setShowModal]  = useState(false)
   const [editVendor, setEditVendor] = useState<Partial<Vendor> | null>(null)
   const [delConfirm, setDelConfirm] = useState<string | null>(null)
+  const [vendorView, setVendorView] = useState<'active' | 'cancelled'>('active')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1322,6 +1340,7 @@ function VendorsContent() {
   )
 
   const filtered = useMemo(() => vendors.filter(v => {
+    if ((isCancelledVendor(v) ? 'cancelled' : 'active') !== vendorView) return false
     if (coFilter !== 'all' && v.company_id !== coFilter) return false
     if (locFilter !== 'all') {
       const hasLoc = v.location_id === locFilter ||
@@ -1336,7 +1355,7 @@ function VendorsContent() {
         v.utility_service_accounts.some(a => a.account_number.toLowerCase().includes(q))
     }
     return true
-  }), [vendors, coFilter, locFilter, search])
+  }), [vendors, coFilter, locFilter, search, vendorView])
 
   async function deleteVendor(id: string) {
     await supabase.from('utility_vendors').delete().eq('id', id)
@@ -1363,6 +1382,16 @@ function VendorsContent() {
                   coFilter === c ? 'bg-white text-ink shadow-sm' : 'text-ink-muted hover:text-ink'
                 }`}>
                 {c === 'all' ? 'All' : c.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-1 bg-pill rounded-lg p-1">
+            {(['active', 'cancelled'] as const).map(view => (
+              <button key={view} onClick={() => setVendorView(view)}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${vendorView === view ? 'bg-white text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}>
+                {view === 'active' ? 'Active Services' : 'Cancelled'}
+                <span className="ml-1 text-ink-faint">({vendors.filter(v => (isCancelledVendor(v) ? 'cancelled' : 'active') === view).length})</span>
               </button>
             ))}
           </div>

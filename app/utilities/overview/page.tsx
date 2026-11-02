@@ -43,6 +43,7 @@ interface Vendor {
   company_id: Company
   name: string
   service_type: string | null
+  status?: 'active' | 'cancelled'
 }
 
 interface Location {
@@ -55,6 +56,7 @@ interface Location {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const USD_RATE = 1.36
+const FALLBACK_CANCELLED_VENDOR_KEYS = new Set(['afs::biscayne rogers', 'tnt::richmond rogers'])
 
 function toCAD(amount: number | null, currency: string): number {
   if (amount == null) return 0
@@ -379,7 +381,7 @@ function OverviewContent() {
       setLoading(true)
       const [{ data: b }, { data: v }, { data: l }] = await Promise.all([
         supabase.from('utility_bills').select('*,balance_status,invoice_status,total_due,remaining_balance').order('due_date', { ascending: false, nullsFirst: false }),
-        supabase.from('utility_vendors').select('id,company_id,name,service_type'),
+        supabase.from('utility_vendors').select('*'),
         supabase.from('utility_locations').select('id,company_id,name,city'),
       ])
       setBills((b as Bill[]) ?? [])
@@ -390,14 +392,18 @@ function OverviewContent() {
     load()
   }, [])
 
-  const filtered = useMemo(() =>
-    coFilter ? bills.filter(b => b.company_id === coFilter) : bills,
-    [bills, coFilter]
-  )
   const filteredVendors = useMemo(() =>
-    coFilter ? vendors.filter(v => v.company_id === coFilter) : vendors,
+    vendors.filter(v => !((v.status ?? 'active') === 'cancelled' || FALLBACK_CANCELLED_VENDOR_KEYS.has(`${v.company_id}::${v.name.trim().toLowerCase()}`)) && (!coFilter || v.company_id === coFilter)),
     [vendors, coFilter]
   )
+  const filtered = useMemo(() => {
+    const cancelled = new Set([...FALLBACK_CANCELLED_VENDOR_KEYS, ...vendors.filter(v => (v.status ?? 'active') === 'cancelled').map(v => `${v.company_id}::${v.name.trim().toLowerCase()}`)])
+    return bills.filter(b => {
+      if (coFilter && b.company_id !== coFilter) return false
+      const key = `${b.company_id}::${(b.provider ?? b.utility_name).trim().toLowerCase()}`
+      return !cancelled.has(key)
+    })
+  }, [bills, vendors, coFilter])
 
   // ── Build month keys for trend window ─────────────────────────────────────
 

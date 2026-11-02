@@ -38,6 +38,7 @@ interface VendorRef {
   id: string
   company_id: Company
   name: string
+  status?: 'active' | 'cancelled'
 }
 
 // A standalone account-balance adjustment (e.g. a duplicate/overpayment) not tied to any
@@ -105,6 +106,7 @@ const CO_COLORS: Record<Company, string> = {
   tnt: 'text-amber-600',
   zfs: 'text-emerald-600',
 }
+const FALLBACK_CANCELLED_VENDOR_KEYS = new Set(['afs::biscayne rogers', 'tnt::richmond rogers'])
 
 const STATUS_FILTER_OPTIONS: { id: StatusFilter; label: string }[] = [
   { id: 'all',            label: 'All' },
@@ -436,7 +438,7 @@ export default function UtilityPage() {
         .order('due_date', { ascending: true, nullsFirst: false }),
       supabase.from('payment_methods').select('*').order('label'),
       supabase.from('utility_credits').select('*').order('credit_date', { ascending: false }),
-      supabase.from('utility_vendors').select('id, company_id, name').order('name'),
+      supabase.from('utility_vendors').select('*').order('name'),
     ])
     setBills((data as Bill[]) ?? [])
     setMethods((pm as PaymentMethod[]) ?? [])
@@ -502,9 +504,19 @@ export default function UtilityPage() {
     return map
   }, [vendors])
 
+  const cancelledVendorKeys = useMemo(() => new Set(
+    [...FALLBACK_CANCELLED_VENDOR_KEYS, ...vendors
+      .filter(v => (v.status ?? 'active') === 'cancelled')
+      .map(v => `${v.company_id}::${v.name.trim().toLowerCase()}`)
+    ]), [vendors])
+
   function effectiveCompanyId(bill: Bill): Company {
     const providerKey = (bill.provider ?? bill.utility_name).trim().toLowerCase()
     return vendorCompanyByName.get(providerKey) ?? bill.company_id
+  }
+
+  function isCancelledBill(bill: Bill) {
+    return cancelledVendorKeys.has(`${effectiveCompanyId(bill)}::${(bill.provider ?? bill.utility_name).trim().toLowerCase()}`)
   }
 
   const filtered = bills.filter(b => {
@@ -556,11 +568,13 @@ export default function UtilityPage() {
   const inSevenDays = new Date(today.getTime() + 7 * 86400000)
 
   const overdueBills  = bills.filter(b => {
+    if (isCancelledBill(b)) return false
     if (coFilter !== 'all' && effectiveCompanyId(b) !== coFilter) return false
     const s = computeBillStatus(b)
     return s === 'overdue' || s === 'overdue_partial'
   })
   const upcomingBills = bills.filter(b => {
+    if (isCancelledBill(b)) return false
     if (coFilter !== 'all' && effectiveCompanyId(b) !== coFilter) return false
     if (!isActiveOutstanding(b) || !b.due_date) return false
     const due = new Date(b.due_date + 'T00:00:00')
@@ -573,6 +587,7 @@ export default function UtilityPage() {
   const curYear   = today.getFullYear()
   const nextMonthDate = new Date(curYear, curMonth + 1, 1)
   const currentBills = bills.filter(b => {
+    if (isCancelledBill(b)) return false
     if (coFilter !== 'all' && effectiveCompanyId(b) !== coFilter) return false
     const s = computeBillStatus(b)
     const isUpcomingAutoPay = b.is_auto_pay && s === 'paid' && !!b.due_date && daysUntilDue(b)! >= 0
@@ -831,6 +846,7 @@ export default function UtilityPage() {
           expandedVendor={expandedVendor}
           setExpandedVendor={setExpandedVendor}
           focusedBillId={focusedBillId}
+          vendorRefs={vendors}
           role={role}
           onUpdateStatus={updateBillStatus}
           onCarryForward={setCarryForwardBill}
@@ -2020,6 +2036,7 @@ function DashboardTab({
   coFilter, setCoFilter, searchTerm, setSearchTerm,
   effectiveCompanyId,
   expandedVendor, setExpandedVendor, focusedBillId,
+  vendorRefs,
   role, onUpdateStatus, onCarryForward, onPartialPayment, onEdit,
   deleteConfirm, setDeleteConfirm, onDelete,
   noteEdit, setNoteEdit, onSaveNote,
@@ -2032,6 +2049,7 @@ function DashboardTab({
   searchTerm: string
   setSearchTerm: (s: string) => void
   effectiveCompanyId: (bill: Bill) => Company
+  vendorRefs: VendorRef[]
   expandedVendor: string | null
   setExpandedVendor: (v: string | null) => void
   focusedBillId: string | null
@@ -2086,6 +2104,11 @@ function DashboardTab({
     return true
   })
 
+  const cancelledVendorKeys = useMemo(() => new Set(
+    vendorRefs.filter(v => (v.status ?? 'active') === 'cancelled')
+      .map(v => `${v.company_id}::${v.name.trim().toLowerCase()}`)
+  ), [vendorRefs])
+
   // Group scoped bills by vendor (provider, falling back to utility name)
   const vendors = useMemo(() => {
     const map = new Map<string, Bill[]>()
@@ -2100,13 +2123,51 @@ function DashboardTab({
         return {
           name,
           company_id: effectiveCompanyId(bs[0]),
+          cancelled: cancelledVendorKeys.has(`${effectiveCompanyId(bs[0])}::${name.trim().toLowerCase()}`),
           hasMultipleAccounts: distinctAccounts.size > 1,
           bills: [...bs].sort((a, b) => (b.issue_date ?? b.due_date ?? '').localeCompare(a.issue_date ?? a.due_date ?? '')),
         }
       })
       .sort((a, b) => a.name.localeCompare(b.name))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coFilter, searchTerm, bills])
+  }, [coFilter, searchTerm, bills, cancelledVendorKeys])
+
+  const activeVendorGroups = vendors.filter(v => !v.cancelled)
+  const cancelledVendorGroups = vendors.filter(v => v.cancelled)
+
+  function renderVendorGroups(groups: typeof vendors) {
+    return groups.length === 0 ? (
+      <div className="py-8 text-center text-sm text-ink-faint">No bills found.</div>
+    ) : (
+      <div className="divide-y divide-line-soft">
+        {groups.map(v => {
+          const isOpen = expandedVendor === v.name
+          return (
+            <div key={`${v.company_id}-${v.name}`}>
+              <button onClick={() => setExpandedVendor(isOpen ? null : v.name)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-pill transition-colors text-left">
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm transition-transform inline-block ${isOpen ? 'rotate-90' : ''}`}>▸</span>
+                  <span className={`text-xs font-bold ${CO_COLORS[v.company_id]}`}>{v.company_id.toUpperCase()}</span>
+                  <span className="font-medium text-ink text-base">{v.name}</span>
+                </div>
+                <span className="text-sm text-ink-faint">{v.bills.length} bill{v.bills.length !== 1 ? 's' : ''}</span>
+              </button>
+              {isOpen && (() => {
+                const byYear = new Map<number, Bill[]>()
+                for (const b of v.bills) { const y = billYear(b); if (!byYear.has(y)) byYear.set(y, []); byYear.get(y)!.push(b) }
+                return <div className="px-4 pb-3">{[...byYear.keys()].sort((a, b) => b - a).map(year => {
+                  const yearBills = byYear.get(year)!
+                  const yearKey = `${v.name}-${year}`
+                  const yearOpen = isYearOpen(year, yearKey)
+                  return <div key={year}><button onClick={() => toggleYear(yearKey)} className="w-full flex items-center gap-2 py-1.5 pl-6 text-left hover:bg-pill transition-colors"><span className={`text-xs transition-transform inline-block ${yearOpen ? 'rotate-90' : ''}`}>▸</span><span className="text-sm font-semibold text-ink-muted">{year || 'Unknown'}</span><span className="text-xs text-ink-faint">({yearBills.length})</span></button>{yearOpen && yearBills.map(b => <div key={b.id}>{renderBillRow(b, 'text-ink', dueDateColor(b))}</div>)}</div>
+                })}</div>
+              })()}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   const sortedCurrent = [...currentBills].sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
   const sortedOverdue = [...overdueBills].sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
@@ -2222,11 +2283,11 @@ function DashboardTab({
       {/* Vendor-grouped monthly history (accordion) */}
       <div className="bg-white rounded-xl border border-line overflow-hidden">
         <div className="px-4 py-3 border-b border-line-soft text-base font-semibold text-ink-muted">Bill History by Vendor</div>
-        {vendors.length === 0 ? (
+        {activeVendorGroups.length === 0 ? (
           <div className="py-10 text-center text-sm text-ink-faint">No bills found.</div>
         ) : (
           <div className="divide-y divide-line-soft">
-            {vendors.map(v => {
+            {activeVendorGroups.map(v => {
               const isOpen = expandedVendor === v.name
               return (
                 <div key={v.name}>
@@ -2317,6 +2378,13 @@ function DashboardTab({
             })}
           </div>
         )}
+      </div>
+      <div className="bg-white rounded-xl border border-line overflow-hidden mt-4">
+        <div className="px-4 py-3 border-b border-line-soft text-base font-semibold text-ink-muted flex items-center justify-between">
+          <span>Cancelled Services</span>
+          <span className="text-xs font-normal text-ink-faint">Historical bills retained</span>
+        </div>
+        {renderVendorGroups(cancelledVendorGroups)}
       </div>
     </div>
   )
