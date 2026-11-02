@@ -140,6 +140,14 @@ function UtilityEmailPanel() {
     }
   }
 
+  function sendPrimary() {
+    if (selectedBillIds.length) {
+      void sendSelected()
+      return
+    }
+    if (!thread || window.confirm('Warning: this sends a new email containing the complete Utility Bill list.\nIt will not be appended to the existing email. Continue?')) void send(undefined, !!thread)
+  }
+
   const sent = notifications.filter(item => item.status === 'sent')
   const sentEmailIds = new Set(sent.map(item => item.graph_message_id ?? item.id))
   const allBillsSelected = bills.length > 0 && bills.every(bill => selectedBillIds.includes(bill.id))
@@ -152,7 +160,7 @@ function UtilityEmailPanel() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="text-xs font-semibold text-ink-muted">Month <input type="month" value={selectedMonth} onChange={event => setSelectedMonth(event.target.value)} disabled={busy} className="ml-1 rounded-lg border border-line-soft bg-white px-2 py-1.5 text-sm font-normal text-ink" /></label>
-          <button onClick={() => { if (!thread || window.confirm('Warning: this sends a new email containing the complete Utility Bill list.\nIt will not be appended to the existing email. Continue?')) send(undefined, !!thread) }} disabled={busy} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">{busy ? 'Sending…' : thread ? 'Resend first email' : 'Send first email'}</button>
+          <button onClick={sendPrimary} disabled={busy} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink/90 disabled:opacity-50">{busy ? 'Sending…' : selectedBillIds.length ? `Send selected (${selectedBillIds.length})` : thread ? 'Resend first email' : 'Send first email'}</button>
         </div>
       </div>
       <div className="mt-5 border-b border-line-soft pb-4">
