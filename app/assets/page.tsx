@@ -242,7 +242,9 @@ function AssetModal({ initial, clone, employees, assetPeople, nextAssetId, onClo
   const { locale } = useLocale()
   const src = initial ?? clone
   const [form, setForm] = useState<AssetForm>(src ? {
-    asset_id: initial ? (src.asset_id ?? '') : '',
+    // Editing keeps the existing ID; cloning gets the next generated ID.
+    // This prevents cloned assets from accidentally reusing the source ID.
+    asset_id: initial ? (src.asset_id ?? '') : nextAssetId,
     company: src.company ?? '',
     category: src.category ?? '',
     item_name: src.item_name ?? '',
