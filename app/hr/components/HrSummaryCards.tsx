@@ -11,6 +11,7 @@ type PendingReport = {
   employeeName: string
   companyCode: string
   leaveCode: string
+  date: string
 }
 type EmployeeRow = {
   id: string
@@ -24,6 +25,8 @@ type EmployeeRow = {
 const leaveLabel: Record<string, string> = {
   L: 'Paid Leave', L1: 'Paid Leave (AM Half)', L2: 'Paid Leave (PM Half)', L3: 'Paid Leave (Hourly)',
   S: 'Sick Leave', S1: 'Sick Leave (AM Half)', S2: 'Sick Leave (PM Half)', S3: 'Sick Leave (Hourly)',
+  T: 'Unpaid Leave', T1: 'Unpaid Leave (AM Half)', T2: 'Unpaid Leave (PM Half)', T3: 'Unpaid Leave (Hourly)',
+  C: 'Special Leave',
 }
 
 export default function HrSummaryCards() {
@@ -36,6 +39,7 @@ export default function HrSummaryCards() {
       const current = new Date()
       const today = [current.getFullYear(), current.getMonth() + 1, current.getDate()]
         .map((part, index) => index === 0 ? String(part) : String(part).padStart(2, '0')).join('-')
+      const currentMonth = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`
 
       const { data: result } = await hrFetch<{
         employees: Array<EmployeeRow & { company?: { code?: string } | null }>
@@ -55,7 +59,7 @@ export default function HrSummaryCards() {
       for (const emp of payrollEmps) {
         const codes = entryMap[emp.id]
         if (!codes) continue
-        if (codes.some(c => ['L','L1','L2','L3','S','S1','S2','S3','T'].includes(c))) absent++
+        if (codes.some(c => ['L','L1','L2','L3','S','S1','S2','S3','T','T1','T2','T3'].includes(c))) absent++
         if (codes.includes('W')) wfh++
       }
 
@@ -71,10 +75,14 @@ export default function HrSummaryCards() {
       }
       const highVac = Object.values(vacUsed).filter(v => v >= 18).length
 
-      const reportableToday = new Set(['L', 'L1', 'L2', 'L3', 'S', 'S1', 'S2', 'S3'])
+      const reportableThisMonth = new Set(['L', 'L1', 'L2', 'L3', 'S', 'S1', 'S2', 'S3', 'T', 'T1', 'T2', 'T3', 'C'])
       const employeeById = new Map(emps.map(emp => [emp.id, emp]))
-      setPendingReports(todayEntries
-        .filter(entry => reportableToday.has(entry.leave_code) && !entry.reported_at)
+      const payrollEmployeeIds = new Set(payrollEmps.map(emp => emp.id))
+      setPendingReports((result?.entries ?? [])
+        .filter(entry => entry.date?.startsWith(`${currentMonth}-`)
+          && reportableThisMonth.has(entry.leave_code)
+          && !entry.reported_at
+          && payrollEmployeeIds.has(entry.employee_id))
         .map(entry => {
           const employee = employeeById.get(entry.employee_id)
           return {
@@ -82,6 +90,7 @@ export default function HrSummaryCards() {
             employeeName: employee?.name ?? 'Unknown employee',
             companyCode: employee?.company?.code ?? '',
             leaveCode: entry.leave_code,
+            date: entry.date ?? '',
           }
         }))
 
@@ -142,23 +151,23 @@ export default function HrSummaryCards() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold text-ink">Unreported leave today</p>
+                  <p className="font-semibold text-ink">{t('hr.report.title', locale)}</p>
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-                    {pendingReports.length} {pendingReports.length === 1 ? 'entry' : 'entries'}
+                    {pendingReports.length} {t(pendingReports.length === 1 ? 'hr.report.entry' : 'hr.report.entries', locale)}
                   </span>
                 </div>
                 <p className="mt-1 text-sm text-ink-muted">
-                  The following leave entries have not been included in an email report yet.
+                  {t('hr.report.description', locale)}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {pendingReports.map((entry, index) => (
                     <span key={`${entry.employeeId}-${entry.leaveCode}-${index}`} className="rounded-lg border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-medium text-ink">
-                      {entry.companyCode ? `${entry.companyCode} · ` : ''}{entry.employeeName}
+                      {entry.date.slice(5)} · {entry.companyCode ? `${entry.companyCode} · ` : ''}{entry.employeeName}
                       <span className="ml-1.5 font-normal text-ink-muted">{leaveLabel[entry.leaveCode] ?? entry.leaveCode}</span>
                     </span>
                   ))}
                 </div>
-                <p className="mt-3 text-xs text-ink-faint">Open the relevant company attendance page and select Report to send the notification.</p>
+                <p className="mt-3 text-xs text-ink-faint">{t('hr.report.open', locale)}</p>
               </div>
             </div>
           </div>

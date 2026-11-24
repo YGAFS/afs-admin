@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react'
 import { hrFetch } from '@/lib/hrApi'
-import { useLocale } from '@/app/providers'
+import { useAuth, useLocale } from '@/app/providers'
 import { t } from '@/lib/i18n'
 
 type LeaveCode = 'L'|'L1'|'L2'|'L3'|'S'|'S1'|'S2'|'S3'|'W'|'W1'|'W2'|'W3'|'T'|'T1'|'T2'|'T3'|'B'|'O'|'C'
@@ -132,6 +132,7 @@ function effectiveAccrualStart(
 export default function AttendanceGrid({ companyId, companyCode, year, month, onReactivate }: {
   companyId: string; companyCode?: string; year: number; month: number; onReactivate?: () => void
 }) {
+  const { user } = useAuth()
   const { locale } = useLocale()
   const [employees,    setEmployees]    = useState<Employee[]>([])
   const [leaveMap,     setLeaveMap]     = useState<Record<string, LeaveCell[]>>({})
@@ -378,7 +379,7 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
     })
     if (!existing) applyStatsDelta(empId, code, 1, dateStr)
     saveTraceMark('fetch POST about to start')
-    const { data: saved, error } = await hrFetch<{ data?: Array<{ employee_id: string; date: string; leave_code: LeaveCode; hours: number | null; reported_at?: string | null }> }>('/api/hr/leave-entries', { method: 'POST', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code, hours: hours ?? null, reported_at: null, reported_to: null, reported_cc: null, reported_subject: null, reported_by: null }) })
+    const { data: saved, error } = await hrFetch<{ data?: Array<{ employee_id: string; date: string; leave_code: LeaveCode; hours: number | null; reported_at?: string | null }> }>('/api/hr/leave-entries', { method: 'POST', body: JSON.stringify({ employee_id: empId, date: dateStr, leave_code: code, hours: hours ?? null }) })
     saveTraceMark('fetch POST/API complete')
     if (error) {
       alert(`Save failed: ${error.message}`)
@@ -396,6 +397,44 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
     saveTraceMark('finishSaving() call')
     finishSaving(); setPendingCode(null); setPendingHours('')
     console.info(`[HR timing] save ${code} total ${Math.round(performance.now() - saveStartedAt)}ms; POST only; post-save load removed`)
+  }
+
+  async function toggleReportedEntry(empId: string, day: number, code: LeaveCode, isReported: boolean) {
+    beginSaveTrace(`${isReported ? 'UNMARK' : 'MARK'} REPORT ${code}`)
+    saveTraceMark('startSaving() call')
+    startSaving()
+    const dateStr = `${year}-${pad(month)}-${pad(day)}`
+    const key = `${empId}_${day}`
+    const previousEntries = leaveMap[key] ?? []
+    const reportedAt = isReported ? null : new Date().toISOString()
+    const reportedBy = isReported ? null : (user?.email ?? null)
+    const patch = isReported
+      ? { employee_id: empId, date: dateStr, leave_code: code, reported_at: null, reported_to: null, reported_cc: null, reported_subject: null, reported_by: null }
+      : { employee_id: empId, date: dateStr, leave_code: code, reported_at: reportedAt, reported_by: reportedBy }
+
+    setLeaveMap(prev => ({
+      ...prev,
+      [key]: (prev[key] ?? []).map(entry => entry.code === code ? { ...entry, reportedAt } : entry),
+    }))
+    saveTraceMark('fetch PATCH about to start')
+    const { data: saved, error } = await hrFetch<{ data?: Array<{ reported_at?: string | null }> }>('/api/hr/leave-entries', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })
+    saveTraceMark('fetch PATCH/API complete')
+    if (error) {
+      alert(t('grid.report.error', locale))
+      setLeaveMap(prev => ({ ...prev, [key]: previousEntries }))
+      finishSaving()
+      return
+    }
+    const savedReportedAt = saved?.data?.[0]?.reported_at ?? reportedAt
+    setLeaveMap(prev => ({
+      ...prev,
+      [key]: (prev[key] ?? []).map(entry => entry.code === code ? { ...entry, reportedAt: savedReportedAt } : entry),
+    }))
+    saveTraceMark('finishSaving() call')
+    finishSaving()
   }
 
   async function removeEntry(empId: string, day: number, code: LeaveCode) {
@@ -831,8 +870,18 @@ export default function AttendanceGrid({ companyId, companyCode, year, month, on
                 {dayEntries.map(en => (
                   <div key={en.code} className={`flex items-center justify-between px-3 py-1 text-xs ${CODE_COLOR[en.code]}`}>
                     <span className="font-medium">{en.code}{en.hours ? ` — ${en.hours}h` : ''}</span>
-                    <button onClick={e => { e.stopPropagation(); removeEntry(editing.empId, editing.day, en.code) }}
-                      className="text-current opacity-60 hover:opacity-100 font-bold px-1">✕</button>
+                    <span className="flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); toggleReportedEntry(editing.empId, editing.day, en.code, Boolean(en.reportedAt)) }}
+                        title={t(en.reportedAt ? 'grid.report.unmark' : 'grid.report.mark', locale)}
+                        aria-label={t(en.reportedAt ? 'grid.report.unmark' : 'grid.report.mark', locale)}
+                        className={`px-1 font-bold ${en.reportedAt ? 'text-signal-pos' : 'text-current opacity-60 hover:opacity-100'}`}>
+                        {en.reportedAt ? '✓' : '○'}
+                      </button>
+                      <button type="button" onClick={e => { e.stopPropagation(); removeEntry(editing.empId, editing.day, en.code) }}
+                        className="text-current opacity-60 hover:opacity-100 font-bold px-1">✕</button>
+                    </span>
                   </div>
                 ))}
                 <div className="border-t border-line-soft my-1" />

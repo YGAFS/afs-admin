@@ -217,6 +217,11 @@ const translations: Record<Locale, Record<string, string>> = {
     'hr.cards.wfh':          "Today's WFH",
     'hr.cards.high_vac':     '18+ Vacation Days Used',
     'hr.cards.unit':         'people',
+    'hr.report.title':       'Unreported leave this month',
+    'hr.report.entry':       'entry',
+    'hr.report.entries':     'entries',
+    'hr.report.description': 'The following leave entries have not been included in an email report yet.',
+    'hr.report.open':        'Open the relevant company attendance page and select Report to send the notification.',
 
     // ── Attendance Page ───────────────────────────────────────────────────────
     'hr.attendance.management':   'Attendance',
@@ -275,6 +280,9 @@ const translations: Record<Locale, Record<string, string>> = {
     'grid.hours_placeholder':'e.g. 2',
     'grid.hours':            'hrs',
     'grid.confirm':          'OK',
+    'grid.report.mark':      'Mark as reported',
+    'grid.report.unmark':    'Unmark reported',
+    'grid.report.error':     'Failed to update report status.',
     // Row badges
     'grid.upcoming':          'Starting',
     'grid.terminated_label':  'Left',
@@ -637,6 +645,11 @@ const translations: Record<Locale, Record<string, string>> = {
     'hr.cards.wfh':          '오늘 재택',
     'hr.cards.high_vac':     '연차 18일+ 사용',
     'hr.cards.unit':         '명',
+    'hr.report.title':       '이번 달 미보고 휴가',
+    'hr.report.entry':       '건',
+    'hr.report.entries':     '건',
+    'hr.report.description': '다음 출결 항목이 아직 이메일로 보고되지 않았습니다.',
+    'hr.report.open':        '해당 회사의 출결 페이지에서 Report를 선택해 알림을 보내세요.',
 
     // ── Attendance Page ───────────────────────────────────────────────────────
     'hr.attendance.management':   '근태 관리',
@@ -692,6 +705,9 @@ const translations: Record<Locale, Record<string, string>> = {
     'grid.hours_placeholder': '예) 2',
     'grid.hours':             '시간',
     'grid.confirm':           '확인',
+    'grid.report.mark':       '보고 완료 표시',
+    'grid.report.unmark':     '보고 표시 해제',
+    'grid.report.error':      '보고 상태를 저장하지 못했습니다.',
     'grid.upcoming':          '입사예정',
     'grid.terminated_label':  '퇴사',
     'grid.probation_active':  '수습중',
