@@ -9,7 +9,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.assets':        'IT Assets',
     'nav.supplies':      'Coffee Order',
     'nav.admin':         'Setting',
-    'sidebar.title':     'Admin Page',
+    'sidebar.title':     'AFS HR',
     'sidebar.collapse':  'Collapse',
     'sidebar.expand':    'Expand',
 
@@ -437,7 +437,7 @@ const translations: Record<Locale, Record<string, string>> = {
     'nav.assets':        'IT Assets',
     'nav.supplies':      'Coffee Order',
     'nav.admin':         'Setting',
-    'sidebar.title':     'Admin Page',
+    'sidebar.title':     'AFS HR',
     'sidebar.collapse':  '접기',
     'sidebar.expand':    '펼치기',
 

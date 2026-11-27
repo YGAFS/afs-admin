@@ -39,8 +39,10 @@ export default function AccountMenu() {
   if (!user?.email) return null
 
   const accountLabel = locale === 'ko' ? '현재 로그인 계정' : 'Signed-in account'
+  const hrLabel = 'AFS HR'
   const utilityLabel = 'AFS Utility'
   const warehousingLabel = 'AFS Warehousing'
+  const canAccessHr = isSuperAdmin || allowedSections === null || Boolean(allowedSections?.includes('hr'))
   const canAccessUtility = isSuperAdmin || allowedSections === null || Boolean(allowedSections?.includes('utilities'))
 
   return (
@@ -66,6 +68,20 @@ export default function AccountMenu() {
             <p className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">{accountLabel}</p>
             <p className="mt-1 truncate text-sm font-medium text-ink" title={user.email}>{user.email}</p>
           </div>
+          {canAccessHr && (
+            <a
+              href="/hr"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-ink-muted transition-colors hover:bg-pill hover:text-ink"
+            >
+              <svg className="h-4 w-4 text-ink-faint" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+                <rect x="3" y="4" width="14" height="13" rx="2" />
+                <path strokeLinecap="round" d="M6 2v4M14 2v4M3 8h14M6.5 11h.01M10 11h.01M13.5 11h.01M6.5 14h.01M10 14h.01" />
+              </svg>
+              {hrLabel}
+            </a>
+          )}
           {canAccessUtility && (
             <a
               href="/utilities"
