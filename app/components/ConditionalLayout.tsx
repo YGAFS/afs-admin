@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Sidebar from './Sidebar'
+import AccountMenu from './AccountMenu'
 import { useAuth } from '../providers'
 
 export default function ConditionalLayout({ children }: { children: React.ReactNode }) {
@@ -50,6 +51,7 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
     <>
       <Sidebar />
       <main className="flex-1 overflow-auto">{children}</main>
+      <AccountMenu />
     </>
   )
 }

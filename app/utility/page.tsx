@@ -1864,7 +1864,7 @@ function NotificationBell({
   }, [open])
 
   return (
-    <div ref={bellRef} className="fixed top-4 right-6 z-50">
+    <div ref={bellRef} className="fixed top-4 right-20 z-50">
       <button
         onClick={() => setOpen(v => !v)}
         className="relative w-9 h-9 flex items-center justify-center text-ink-muted bg-white border border-line rounded-lg shadow-sm hover:bg-pill hover:text-ink transition-colors"
