@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 
 const ROOT_SECTION_KEYS = ['hr', 'utilities', 'licenses', 'assets', 'supplies', 'admin'] as const
 const ADMIN_EMAILS = ['admin@afstransco.com']
+const WAREHOUSING_ROLES = new Set(['requester', 'purchasing', 'operations', 'bookkeeping', 'admin'])
 
 function getSupabase() {
   return supabase
@@ -18,8 +19,20 @@ function getSupabase() {
 
 // allowedSections: null = full access to every section. Otherwise, only these
 // top-level sidebar sections (e.g. 'utilities', 'hr') are visible/reachable.
-type AuthCtx = { user: User | null; loading: boolean; allowedSections: string[] | null; isSuperAdmin: boolean }
-const AuthContext = createContext<AuthCtx>({ user: null, loading: true, allowedSections: [], isSuperAdmin: false })
+type AuthCtx = {
+  user: User | null
+  loading: boolean
+  allowedSections: string[] | null
+  isSuperAdmin: boolean
+  canAccessWarehousing: boolean
+}
+const AuthContext = createContext<AuthCtx>({
+  user: null,
+  loading: true,
+  allowedSections: [],
+  isSuperAdmin: false,
+  canAccessWarehousing: false,
+})
 export const useAuth = () => useContext(AuthContext)
 
 // ── Locale ────────────────────────────────────────────────────────────────────
@@ -38,6 +51,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const [accessLoading, setAccessLoading] = useState(true)
   const [allowedSections, setAllowedSections] = useState<string[] | null>([])
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  const [canAccessWarehousing, setCanAccessWarehousing] = useState(false)
   const [locale,  setLocaleState] = useState<Locale>('en')
 
   useEffect(() => {
@@ -77,6 +91,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     if (isPortal) {
       setAllowedSections([])
       setIsSuperAdmin(false)
+      setCanAccessWarehousing(false)
       setAccessLoading(false)
       return
     }
@@ -84,12 +99,14 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     if (!userId) {
       setAllowedSections([])
       setIsSuperAdmin(false)
+      setCanAccessWarehousing(false)
       setAccessLoading(false)
       return
     }
     setAccessLoading(true)
     setAllowedSections([])
     setIsSuperAdmin(false)
+    setCanAccessWarehousing(false)
 
     async function loadAuthorization() {
       const sb = getSupabase()
@@ -113,6 +130,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         if (globalError) return
         if (globalRole) {
           setIsSuperAdmin(true)
+          setCanAccessWarehousing(true)
           setAllowedSections([...ROOT_SECTION_KEYS])
           return
         }
@@ -122,6 +140,13 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           .eq('user_id', userId)
         if (grantsError) return
         setAllowedSections((grants ?? []).map(row => row.section_key))
+        const { data: warehousingRole, error: warehousingError } = await sb
+          .from('app_user_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .eq('app_key', 'warehousing')
+          .maybeSingle()
+        if (!warehousingError && warehousingRole && WAREHOUSING_ROLES.has(warehousingRole.role)) setCanAccessWarehousing(true)
         return
       }
 
@@ -136,6 +161,13 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       if (legacy) {
         const sections = legacy.allowed_sections as string[] | null
         setAllowedSections(sections === null ? [...ROOT_SECTION_KEYS] : sections)
+        const { data: warehousingRole, error: warehousingError } = await sb
+          .from('app_access')
+          .select('role')
+          .eq('email', normalizedEmail)
+          .eq('app', 'warehousing')
+          .maybeSingle()
+        if (!warehousingError && warehousingRole && WAREHOUSING_ROLES.has(warehousingRole.role)) setCanAccessWarehousing(true)
         return
       }
       // Utility users are authorized by the utility-specific role table. They
@@ -149,11 +181,19 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       if (utilityRoleError) return
       if (utilityRole?.role === 'admin' || utilityRole?.role === 'ap') {
         setAllowedSections(['utilities'])
+        const { data: warehousingRole, error: warehousingError } = await sb
+          .from('app_access')
+          .select('role')
+          .eq('email', normalizedEmail)
+          .eq('app', 'warehousing')
+          .maybeSingle()
+        if (!warehousingError && warehousingRole && WAREHOUSING_ROLES.has(warehousingRole.role)) setCanAccessWarehousing(true)
         return
       }
       // Explicit legacy ADMIN_EMAILS compatibility for the administrator with no row.
       if (ADMIN_EMAILS.includes(normalizedEmail)) {
         setIsSuperAdmin(true)
+        setCanAccessWarehousing(true)
         setAllowedSections([...ROOT_SECTION_KEYS])
       }
     }
@@ -169,7 +209,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading: loading || accessLoading, allowedSections, isSuperAdmin }}>
+    <AuthContext.Provider value={{ user, loading: loading || accessLoading, allowedSections, isSuperAdmin, canAccessWarehousing }}>
       <LocaleContext.Provider value={{ locale, setLocale }}>
         {children}
       </LocaleContext.Provider>

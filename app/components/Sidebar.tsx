@@ -22,7 +22,6 @@ type UtilityNavItem = {
 
 const NAV: NavItem[] = [
   { href: '/hr', key: 'nav.hr', icon: CalendarIcon },
-  { href: '/utilities', key: 'nav.utility', icon: BoltIcon },
   { href: '/licenses', key: 'nav.licenses', icon: FileIcon },
   { href: '/assets', key: 'nav.assets', icon: FolderIcon },
   { href: '/supplies', key: 'nav.supplies', icon: CupIcon },
@@ -98,14 +97,6 @@ function PersonIcon() {
   return (
     <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
       <path fillRule="evenodd" d="M10 2a4 4 0 100 8 4 4 0 000-8zM3 18a7 7 0 0114 0H3z" clipRule="evenodd" />
-    </svg>
-  )
-}
-
-function BoltIcon() {
-  return (
-    <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-      <path d="M11 0L3 11h5l-1 9 8-11h-5l1-9z" />
     </svg>
   )
 }

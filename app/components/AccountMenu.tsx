@@ -13,7 +13,7 @@ function initialsFor(email: string) {
 }
 
 export default function AccountMenu() {
-  const { user } = useAuth()
+  const { user, allowedSections, isSuperAdmin, canAccessWarehousing } = useAuth()
   const { locale } = useLocale()
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -39,10 +39,12 @@ export default function AccountMenu() {
   if (!user?.email) return null
 
   const accountLabel = locale === 'ko' ? '현재 로그인 계정' : 'Signed-in account'
-  const warehousingLabel = locale === 'ko' ? 'Warehousing 열기' : 'Open Warehousing'
+  const utilityLabel = 'AFS Utility'
+  const warehousingLabel = 'AFS Warehousing'
+  const canAccessUtility = isSuperAdmin || allowedSections === null || Boolean(allowedSections?.includes('utilities'))
 
   return (
-    <div ref={menuRef} className="fixed top-4 right-6 z-[60]">
+    <div ref={menuRef} className="fixed top-4 right-8 z-[60]">
       <button
         type="button"
         onClick={() => setOpen(value => !value)}
@@ -64,22 +66,33 @@ export default function AccountMenu() {
             <p className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">{accountLabel}</p>
             <p className="mt-1 truncate text-sm font-medium text-ink" title={user.email}>{user.email}</p>
           </div>
-          <a
-            href={WAREHOUSING_URL}
-            target="_blank"
-            rel="noreferrer"
-            role="menuitem"
-            onClick={() => setOpen(false)}
-            className="flex items-center justify-between px-4 py-3 text-sm font-medium text-ink-muted transition-colors hover:bg-pill hover:text-ink"
-          >
-            <span className="flex items-center gap-2.5">
+          {canAccessUtility && (
+            <a
+              href="/utilities"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-ink-muted transition-colors hover:bg-pill hover:text-ink"
+            >
+              <svg className="h-4 w-4 text-ink-faint" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M11 0L3 11h5l-1 9 8-11h-5l1-9z" />
+              </svg>
+              {utilityLabel}
+            </a>
+          )}
+          {(canAccessUtility && canAccessWarehousing) && <div className="mx-4 border-t border-line-soft" />}
+          {canAccessWarehousing && (
+            <a
+              href={WAREHOUSING_URL}
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-ink-muted transition-colors hover:bg-pill hover:text-ink"
+            >
               <svg className="h-4 w-4 text-ink-faint" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 17h14M4 17V7l6-4 6 4v10M7 17v-4h6v4M7 9h.01M10 9h.01M13 9h.01" />
               </svg>
               {warehousingLabel}
-            </span>
-            <span className="text-ink-faint" aria-hidden="true">↗</span>
-          </a>
+            </a>
+          )}
         </div>
       )}
     </div>
